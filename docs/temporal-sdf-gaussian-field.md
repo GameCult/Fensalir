@@ -2,11 +2,11 @@
 
 ## Objective
 
-Aquarium owns the renderer feature for live volumetric point-cloud/splat input:
+Fensalir owns the renderer feature for live volumetric point-cloud/splat input:
 clients provide stable world-space Gaussian observations, and the engine turns
-them into a buffered, reprojectable, D3D12-rendered field. LocalCastBridge can
-then feed sensor-fusion output into Aquarium as a normal scene contract instead
-of smuggling renderer policy through client code.
+them into a buffered, reprojectable, D3D12-rendered field. Mimir can feed
+sensor-fusion output into Fensalir as a normal scene contract instead of
+smuggling renderer policy through app code.
 
 The historical `SDF` name is now backend baggage. This contract is a temporal
 Form-field path: opaque producers may resolve to SDF/level-set surfaces, while
@@ -50,23 +50,12 @@ Gaussian kernel in world space, writes HDR scene color/travel, field metadata,
 normal, and temporal-control coverage so the existing resolve sees the field as
 diegetic scene content.
 
-`Aquarium.LocalCast` is the first concrete live client for this contract. It
-reads `localcast.visual.render_frame` from LocalCastBridge's typed CultCache
-MessagePack document. That point/seed route is now explicitly a fallback and
-debug harness: it proves the million-slot temporal Gaussian draw and keeps OBS
-fed while the live capture path moves into Aquarium. The production ownership
-line is `AquariumGpuSensorFrame`: camera and Leap inputs arrive as calibrated
-sensor records plus shared GPU texture handles, the D3D12 backend owns their
-metadata buffers, and fusion kernels lower those GPU-resident inputs into the
-temporal Gaussian buffer consumed by the SDF Gaussian draw.
-
-LocalCast GPU fusion also has its own live-history accumulator. New frames
-update stable-key tracks, stale tracks expire after a bounded horizon, and the
-whole retained set is sent to the GPU seed buffer every frame. The default
-history horizon is 18 seconds and may be overridden with
-`LOCALCAST_GPU_HISTORY_SECONDS` from 1 to 120 seconds. That is the reconstruction
-buffer: long enough to harvest samples, bounded enough to remain a machine
-instead of a scrapbook with a power cord.
+The production ownership line is `AquariumGpuSensorFrame`: camera and Leap
+inputs arrive as calibrated sensor records plus shared GPU texture handles, the
+D3D12 backend owns their metadata buffers, and fusion kernels lower those
+GPU-resident inputs into the temporal Gaussian buffer consumed by the SDF
+Gaussian draw. `AquariumGpuFusionField` remains a generic fallback/debug
+contract for already-derived point claims.
 
 ## Invariants
 
@@ -80,7 +69,7 @@ instead of a scrapbook with a power cord.
   transparent medium may remain a participating Form field with Appearance and
   Transport payloads instead of being collapsed into a fake SDF.
 - Client code may construct observations or a field for diagnostics, but
-  Aquarium owns live sensor texture import, packet layout, root binding, shader
+  Fensalir owns live sensor texture import, packet layout, root binding, shader
   evaluation, fusion, and temporal-control metadata.
 - JSON is not a renderer boundary. CultCache/CultNet producers should lower into
   typed contract rows before Aquarium sees the data.
@@ -90,22 +79,21 @@ instead of a scrapbook with a power cord.
 This cut deliberately claims million-slot ingestion, not a finished million-splat
 renderer architecture. The live D3D12 path can draw up to 1,048,576 temporal
 Gaussians through instanced proxy quads, only uploads the active seed/packet
-span, and now owns the GPU lowering step. Python/LocalCastBridge may still
-produce calibration artifacts and reference captures, but it must not own
-per-frame dense stereo, feature tracking, or reconstruction compute. The next
-scaling cut belongs to the Aquarium renderer: shared texture import, packed
-camera planes, Leap packed-map channel extraction, selected-cut residency,
-tiled/bin dispatch, GPU accumulation, and clustered visibility.
+span, and now owns the GPU lowering step. Mimir may still produce calibration
+artifacts and reference captures, but it must not own Fensalir renderer policy.
+The next scaling cut belongs to the Fensalir renderer: shared texture import,
+packed camera planes, Leap packed-map channel extraction, selected-cut
+residency, tiled/bin dispatch, GPU accumulation, and clustered visibility.
 
 ## GPU Fusion Spine
 
 The active GPU boundary is deliberately narrow:
 
 ```text
-LocalCast calibration/device metadata
+Mimir calibration/device metadata
 -> AquariumGpuSensorFrame { calibrated cameras + shared GPU textures }
 -> D3D12 sensor metadata buffers + imported texture SRVs
--> D3D12 LocalCast fusion compute shader
+-> D3D12 GPU sensor fusion compute shader
 -> RWStructuredBuffer<TemporalGaussian>
 -> instanced SDF Gaussian draw
 -> TAA/resolve
@@ -117,13 +105,9 @@ Ownership:
   input.
 - `AquariumGpuFusionField` remains a temporary fallback/debug contract for
   already-derived point claims.
-- `LocalCastGpuFusionMapper` converts typed LocalCast point claims into compact
-  seeds only for that fallback path.
-- `LocalCastGpuFusionAccumulator` is only the LocalCast adapter around
-  `TemporalSpatialEvidenceReservoir`; it maps fallback stable seeds into shared
-  evidence observations and lowers reservoir samples back to
-  `AquariumGpuFusionSeed`.
-- `D3D12LocalCastFusion.hlsl` owns the first compute lowering pass.
+- Mimir-owned adapters may convert app-specific point claims into compact seeds
+  for that fallback path.
+- `D3D12GpuSensorFusion.hlsl` owns the first compute lowering pass.
 - `D3D12Renderer` owns GPU sensor camera metadata storage, UAV-capable temporal
   Gaussian storage, dispatch, and the transition back to shader-resource state
   for the draw.

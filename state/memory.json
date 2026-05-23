@@ -81,7 +81,7 @@
       "The current Fensalir cathedral screen-space guide is scaffolding. Replace it with a .aquageo-lowered transparent pane/rune/material field target separate from the marsh height field.",
       "src/Aquarium.Sample.Minimal is the minimal non-client-policy boundary proof.",
       "src/Aquarium.Zyphos is the planetary-scale demo. Terrain should move toward cube-sphere/QSC-family addressing and reservoir-backed fractal surfaces.",
-      "src/Aquarium.LocalCast is the LocalCast/Mimir-facing runtime bridge lane. Sensor-fusion claims should lower into typed temporal field evidence rather than JSON or private adapters."
+      "Mimir owns the sensor-fusion app/adapter surface. Fensalir should keep only generic sensor contracts, GPU sensor fusion shader machinery, and temporal evidence lowerings."
     ],
     "research_notes": [
       "Renderer notes live under docs/ and research/rendering/ in this repo after the split.",

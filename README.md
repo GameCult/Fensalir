@@ -66,8 +66,8 @@ Every sample declares both layer and encoding. The current layer split is:
 - `Transport`: density, extinction, phase, radiance, confidence, fog, smoke,
   plasma, and other volumetric participation claims.
 
-The same reservoir spine serves fractal rendering and Mimir/LocalCast-style
-sensor fusion. The renderer-facing TAA guide uses confidence, sample age, domain
+The same reservoir spine serves fractal rendering and Mimir-style sensor
+fusion. The renderer-facing TAA guide uses confidence, sample age, domain
 validity, and invalidation codes so temporal reuse can be explained instead of
 merely hoped for. CPU reservoirs, fractal probe samples, track state, and
 validator coverage exist now; full GPU reservoir storage and page residency are
@@ -131,7 +131,6 @@ how WASAPI or Faust got invited to the party.
 - `src/Aquarium.Fensalir`: Fensalir splash/art reconstruction demo.
 - `src/Aquarium.Sample.Minimal`: tiny client proving the runtime boundary.
 - `src/Aquarium.Zyphos`: planetary/fractal terrain demo.
-- `src/Aquarium.LocalCast`: LocalCast/Mimir-facing bridge experiments.
 - `tools/Aquarium.Fractal.Receipt`: CPU/GPU fractal receipt harness.
 
 The assemblies still use `Aquarium.*` names for API continuity. That naming is

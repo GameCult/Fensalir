@@ -30,7 +30,7 @@ public sealed class AquariumShaderManifest
 
     public string TemporalGaussianShader { get; private set; } = "D3D12TemporalGaussian.hlsl";
 
-    public string LocalCastFusionShader { get; private set; } = "D3D12LocalCastFusion.hlsl";
+    public string GpuSensorFusionShader { get; private set; } = "D3D12GpuSensorFusion.hlsl";
 
     public string FractalReservoirShader { get; private set; } = "D3D12FractalReservoirCompute.hlsl";
 
@@ -74,9 +74,9 @@ public sealed class AquariumShaderManifest
         return this;
     }
 
-    public AquariumShaderManifest LocalCastFusion(string path)
+    public AquariumShaderManifest GpuSensorFusion(string path)
     {
-        LocalCastFusionShader = path;
+        GpuSensorFusionShader = path;
         return this;
     }
 

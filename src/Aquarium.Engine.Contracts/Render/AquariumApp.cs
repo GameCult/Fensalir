@@ -138,9 +138,9 @@ public sealed class AquariumShaderBuilder(AquariumShaderManifest manifest)
         return this;
     }
 
-    public AquariumShaderBuilder LocalCastFusion(string path)
+    public AquariumShaderBuilder GpuSensorFusion(string path)
     {
-        manifest.LocalCastFusion(path);
+        manifest.GpuSensorFusion(path);
         return this;
     }
 

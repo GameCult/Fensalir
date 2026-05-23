@@ -24,9 +24,9 @@ current_model:
     fensalir_splash: src/Aquarium.Fensalir
     minimal: src/Aquarium.Sample.Minimal
     zyphos: src/Aquarium.Zyphos
-    localcast: src/Aquarium.LocalCast
   external_clients:
     epiphany_aquarium: E:\Projects\Aquarium-Engine
+    mimir: owns the sensor-fusion app/adapter surface formerly prototyped here
   dependencies:
     cult_math: E:\Projects\CultMath
     cult_lib: E:\Projects\CultLib
@@ -43,4 +43,5 @@ next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.
   - Keep `dotnet build Fensalir.sln` green after the split.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
+  - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

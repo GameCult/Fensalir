@@ -153,7 +153,7 @@ float AcousticSupport(float3 center, out float3 velocityBias)
 }
 
 [numthreads(128, 1, 1)]
-void D3D12LocalCastFusionCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+void D3D12GpuSensorFusionCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     uint index = dispatchThreadId.x;
     uint outputCount = (uint)temporalGaussianInfo.x;

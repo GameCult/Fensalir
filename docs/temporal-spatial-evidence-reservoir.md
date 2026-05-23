@@ -2,11 +2,11 @@
 
 ## Objective
 
-Aquarium owns the shared temporal evidence machine for two customers:
+Fensalir owns the shared temporal evidence machine for two customers:
 
 - fractal rendering, where Form/Appearance/Transport candidates need bounded
   reuse across pixels, frames, and nested domains;
-- Mimir/LocalCast sensor fusion, where camera and microphone features need a
+- Mimir sensor fusion, where camera and microphone features need a
   delayed coherence window before the resolved field is rendered.
 
 The old stable-key accumulator was useful, but it was not ReSTIR. The live
@@ -127,7 +127,7 @@ Built:
   proportional to `target / sourcePdf`, merges reservoirs, preserves represented
   candidate count, and exposes the RIS contribution weight.
 - `TemporalSpatialEvidenceReservoir` remains the stable track layer used by
-  temporal Gaussian fields and LocalCast fallback GPU fusion.
+  temporal Gaussian fields and GPU sensor fusion.
 - `FractalContributionCache` remains the node-summary LOD estimator, and now
   frames scheduled update nodes as weighted reservoir candidates with a
   per-frame reservoir snapshot for debug and tests. It is the candidate source,

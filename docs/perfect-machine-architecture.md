@@ -103,7 +103,7 @@ Aquarium.Zyphos
 Aquarium.Epiphany
   Agent/body policy, role grammar selection, semantic bindings.
 
-Mimir/LocalCast
+Mimir
   Sensor capture, raw rolling retention, feature extraction, calibration facts.
   It does not own resolved spatial evidence history.
 ```
@@ -292,7 +292,7 @@ provenance. Aquarium receives resolved candidate observations:
 camera/audio feature -> calibrated local/world candidate -> target evaluator
 ```
 
-Sensor adapters own modality interpretation. Aquarium owns spatial evidence
+Sensor adapters own modality interpretation. Fensalir owns spatial evidence
 history after lowering.
 
 ### 4. Target Evaluation
@@ -610,7 +610,7 @@ mapping; real cube-sphere and torus mappings remain open.
 ### Phase H: Mimir Adapter
 
 Add sensor candidate adapters after the fractal reservoir path proves the
-contract. Camera/audio features become candidates; Aquarium owns resolved
+contract. Camera/audio features become candidates; Fensalir owns resolved
 evidence. Sensor fusion initially emits confidence/density form claims; only
 coherent gradients and multi-view/acoustic agreement should promote them into
 surface claims.

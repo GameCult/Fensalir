@@ -1,117 +1,103 @@
 # HLSL Renderer
 
-Aquarium's visible world is currently a D3D12 HLSL renderer with a small,
-explicit frame graph.
+Fensalir's renderer is a D3D12/HLSL runtime that consumes client-declared render
+plans and frame state. The renderer owns GPU resources, command recording,
+shader compilation/reload, presentation, debug views, and final overlay text.
+Clients own the scene meaning and shader modules they declare.
 
-## Current Path
+## Frame Path
 
-1. Engine-owned `D3D12HeightField.hlsl` renders a 128x128 scalar height-field
-   target from client-authored brush data.
-2. Engine-owned `D3D12Scene.hlsl` traces the background and Grid into
-   scene-linear HDR targets.
-3. Epiphany-owned body shaders each get their own proxy pipeline:
-   `D3D12FaceAgent.hlsl`, `D3D12ImaginationAgent.hlsl`,
-   `D3D12EyesAgent.hlsl`, `D3D12BodyAgent.hlsl`, `D3D12HandsAgent.hlsl`,
-   `D3D12SoulAgent.hlsl`, `D3D12LifeAgent.hlsl`, `D3D12SelfBody.hlsl`, and
-   `D3D12CursorBody.hlsl`. Shared proxy mechanics live in the engine includes
-   `D3D12SdfCommon.hlsli`, `D3D12SdfProxy.hlsli`, and `D3D12SdfMath.hlsli`.
-4. Engine-owned `D3D12Post.hlsl` builds bloom, resolves diagnostics/history, applies
-   exposure and ACES, then presents.
-5. `DirectWriteOverlay` draws crisp final-pixel debug UI after scene rendering.
+The current frame path is deliberately small:
 
-C# feeds explicit frame constants: resolution, time, Grid radius, camera
-position, presentation controls, previous frame state, cursor anchors, and debug
-mode. CultMath is the CPU-side math grammar. Vortice math stays at the graphics
-API membrane.
+1. `D3D12HeightField.hlsl` renders a scalar height target from client-authored
+   `AquariumHeightFieldBrush` rows.
+2. A client-selected scene shader renders the main HDR scene target. The default
+   engine scene shader is `D3D12Scene.hlsl`; demos may provide their own.
+3. Client-declared SDF proxy shaders render bounded object passes through shared
+   engine includes: `D3D12SdfCommon.hlsli`, `D3D12SdfProxy.hlsli`, and
+   `D3D12SdfMath.hlsli`.
+4. Optional fractal/field passes consume GPU-resident splat/reservoir buffers.
+5. `D3D12Post.hlsl` resolves temporal diagnostics, builds bloom, applies
+   exposure/ACES, and presents.
+6. `DirectWriteOverlay` draws crisp final-pixel debug UI after scene rendering.
 
-## Grid
+The C# renderer feeds explicit constants for resolution, time, camera,
+presentation controls, previous-frame state, cursor anchors, and debug mode.
+Vortice stays at the graphics API membrane; clients talk through contracts.
 
-The Grid height target is centered on the camera target; body anchors remain in
-world space. The target stores height in `.r` only. A future useful expansion is
-packed gradients in `.g/.b` if normal cost becomes worth the extra bandwidth.
+## Render Plan
 
-Grid linework is derivative-aware in the final scene pass. Cartesian lines use
-screen-space `fwidth` against their world-domain coordinate so minor and major
-lines stay the same pixel width across zoom distances. Terrain isolines derive
-from the Grid height field, while field lines quantize terrain gradient angle
-and fade out on flat surfaces.
+Clients build an `AquariumRenderPlan` with `AquariumApp`:
 
-The fullscreen scene pass owns environment and Grid only. Bodies are not folded
-into that pass. After the Grid writes scene color and travel-derived depth,
-each body gets its own proxy draw and shader pipeline. The shared proxy vertex
-shader computes a conservative screen rectangle from the uploaded body center
-and bound radius. The body-specific pixel shader raymarches only that object
-and writes travel-derived depth so the Grid and nearer bodies arbitrate
-visibility through the depth target.
+- render targets and formats;
+- cameras;
+- fullscreen, proxy, and feature passes;
+- shader paths;
+- SDF libraries and per-object proxy shaders;
+- debug target views;
+- presentation features such as bloom and DirectWrite overlay.
 
-## Solids
+The live renderer still contains some fixed execution paths, but ownership is
+already split: clients declare intent, Fensalir owns D3D12 lowering.
 
-Epiphany uploads Self, Face, Imagination, Eyes, Body, Hands, Soul, Life, and the
-cursor through the engine `AquariumSdfObject` buffer, including current center,
-previous center, and state scalars. Aquarium owns the D3D12 upload, proxy draw,
-depth, and presentation machinery; Epiphany owns which bodies exist, where they
-are, and which shader files describe them.
+## Height Fields
 
-The cursor is a luminous three-lobed hibiscus SDF that lives on the XY plane:
-its center is one cursor radius above XY, so its lower contact tip lands at
-Grid z=0 instead of sampling the Grid height field. The previous MathWorld
-teardrop formula remains in `D3D12SdfMath.hlsli` for later reuse. Agent visuals
-carry their previous centers in the structured buffer for temporal reprojection.
+The height-field target is currently a 128x128 `R16Float` scalar field. Client
+brushes may use circular or shaped anisotropic envelopes. The target stores
+height in `.r`; extra channels are not free and need a pass contract before they
+exist.
 
-Lighting is currently direct and diegetic: Self is the emitter. No ambient fill
-is allowed to quietly solve a bad light story.
+The height-field lane is used by multiple clients and demos as a cheap scalar
+surface, not as a global engine worldview. Future terrain, water, and projected
+field work should move through explicit field/page contracts instead of growing
+one magic grid.
+
+## SDF Proxies
+
+SDF objects render as bounded proxy draws. The shared proxy vertex shader builds
+a conservative screen rectangle from the uploaded object center and bound
+radius. The object-specific pixel shader raymarches only that object and writes
+travel-derived depth so surfaces and nearer proxies arbitrate visibility through
+normal depth testing.
+
+SDF control flow is split by cost:
+
+- `sdfDistance` participates in marching and normals.
+- `sdfSurface` runs once at the refined hit.
+- Material output uses base color, metallic, roughness, and emission.
+
+Reusable math belongs in engine includes. Client anatomy, symbols, bodies, and
+materials belong in client shaders.
+
+## Fractal And Field Passes
+
+Fensalir has a GPU-resident fractal/field lane:
+
+- `.aquageo` and flame fixtures compile into semantic ownership trees and
+  backend packets.
+- persistent flame state lives in GPU UAV rows so samples advance over frames;
+- Form/Appearance/Transport reservoirs keep stable temporal evidence;
+- opaque signed-distance splats and transparent density/extinction splats render
+  through separate pipeline states over shared packed buffers;
+- guide output follows the TAA schema: confidence, sample age, domain validity,
+  invalidation code.
+
+The receipt harness lives in `tools/Aquarium.Fractal.Receipt`.
 
 ## Temporal Diagnostics
 
-The temporal resolver is documented in `docs/tsr-inspired-taa-spec.md`. The live
-frame keeps color, metadata, and control history. Projection jitter uses a small
-Halton sequence, and final presentation blends validated history. SDF object
-highlights get a narrow hot-current history path so transient specular spikes
-can be damped without relaxing travel, field, or normal validation. Bloom is
-clamped at prefilter for unsupported single-pixel HDR spikes, then attenuated
-when the resolved scene has damped a much hotter current sample, so transient
-fireflies do not keep blooming through the current-frame bloom path.
-Dormant event lanes are not preserved without a producer and pass contract.
+`D3D12Post.hlsl` keeps color, metadata, and control history. Projection jitter
+uses a small Halton sequence. History is accepted only when travel, field,
+normal, coverage, and control signals stay coherent.
 
-Debug modes:
-
-- `0` final
-- `1` raw current scene
-- `2` reprojected history sample
-- `3` history age
-- `4` history weight
-- `5` coverage and step ratio
-- `6` current field identity
-- `7` bloom contribution
-- `8` exposed luminance
-- `9` agent identity
-- `10` agent SDF step count
-
-`F1` cycles modes. Number keys select the first modes directly. Startup mode can
-be set with `--render-debug` or `AQUARIUM_RENDER_DEBUG_MODE`.
+Debug modes include final color, raw current scene, history, history age,
+history weight, coverage/step ratio, field identity, bloom contribution,
+exposed luminance, proxy identity, proxy step count, and reservoir/TAA guide
+views. Startup mode can be set with `--render-debug` or
+`AQUARIUM_RENDER_DEBUG_MODE`.
 
 ## HDR
 
-Presentation applies explicit exposure before display transformation and adds a
-low-gain pre-tonemap bloom/veil pyramid. The bloom pass renders exposed
-scene-linear HDR color into half-, quarter-, and eighth-resolution targets, uses
-firefly-safe downsampling, blurs each level with separable horizontal/vertical
-passes, then contributes gently before the ACES fit. This is not threshold glow.
-
-## Overlay Text
-
-Readable overlay text is handled by `DirectWriteOverlay`, using DirectWrite for
-font layout/rasterization and Direct2D for final draw. D3D12 reaches that path
-through D3D11On12 only after the scene frame is rendered. The bridge is
-overlay-only.
-
-The debug controls live in `Render/Ui/DebugUi.cs`. The grammar is a native
-version of CultLib's generator API: panels, sections, sliders, toggles, options,
-and buttons are declared in code and bound to engine state with explicit read
-and write delegates. The visual language is compact, flat, and allowed to have
-taste. Frighteningly controversial, apparently.
-
-The overlay owns a private DirectWrite font collection built from bundled Google
-Fonts files in `Assets/Fonts`: Montserrat for thin small-cap display text and
-Ubuntu Sans for body/debug copy. Runtime must not depend on system-installed
-fonts.
+Presentation is scene-linear until the final display transform. Bloom is a
+low-gain pre-tonemap veil pyramid with firefly-safe downsampling; it is not a
+threshold glow sticker over a broken exposure model.

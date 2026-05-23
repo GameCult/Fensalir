@@ -1,6 +1,7 @@
 project:
   name: Fensalir
   root: E:\Projects\Fensalir
+  upstream: https://github.com/GameCult/Fensalir.git
   purpose: >
     Native C# runtime and renderer dependency for Aquarium-style clients. The
     engine owns Win32 hosting, D3D12 rendering, input, hot reload, debug UI,
@@ -39,7 +40,7 @@ invariants:
   - Public `Aquarium.*` assembly names remain for continuity until a deliberate namespace/package migration.
 
 next_actions:
-  - Set the real Git remote for this repo once `GameCult/Fensalir` exists.
+  - Keep origin pointed at https://github.com/GameCult/Fensalir.git.
   - Keep `dotnet build Fensalir.sln` green after the split.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

@@ -134,7 +134,7 @@ Tasks:
 
 Exit gate:
 
-- `dotnet build Aquarium.Engine.sln`
+- `dotnet build Fensalir.sln`
 - `dotnet test tests/Aquarium.Engine.Fractal.Tests`
 
 Cut line:
@@ -591,7 +591,7 @@ Start here:
 
 Definition of done:
 
-- `dotnet build Aquarium.Engine.sln`
+- `dotnet build Fensalir.sln`
 - new fractal tests pass;
 - projection report is checked into test output or docs;
 - `state/evidence.jsonl` records the chosen first projection default and why.

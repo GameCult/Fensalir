@@ -31,7 +31,7 @@ public static class AquariumHost
             runtime.RenderPlan,
             runtime.GraphicsSettings,
             message => window.PaintSplash("Fensalir", message));
-        renderer.DebugUiVisible = !runtime.Options.Headless;
+        renderer.DebugUiVisible = !runtime.Options.Headless && ParseDebugUiVisible(args);
         var settingsRuntime = runtimeLoader.Runtime;
 
         var frameClock = Stopwatch.StartNew();
@@ -113,6 +113,24 @@ public static class AquariumHost
     private static bool ParseHeadless(IEnumerable<string> args)
     {
         return args.Any(arg => string.Equals(arg, "--headless", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool ParseDebugUiVisible(IReadOnlyCollection<string> args)
+    {
+        if (args.Any(arg => string.Equals(arg, "--show-debug-ui", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(arg, "--debug-ui", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (args.Any(arg => string.Equals(arg, "--hide-debug-ui", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(arg, "--no-debug-ui", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        return IsTruthy(Environment.GetEnvironmentVariable("AQUARIUM_SHOW_DEBUG_UI"))
+            || IsTruthy(Environment.GetEnvironmentVariable("AQUARIUM_DEBUG_UI_VISIBLE"));
     }
 
     private static int ParseHeadlessReadyFrames()
@@ -235,6 +253,11 @@ public static class AquariumHost
         return int.TryParse(Environment.GetEnvironmentVariable(environmentName), out var environmentValue)
             ? Math.Max(1, environmentValue)
             : fallback;
+    }
+
+    private static bool IsTruthy(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() is "1" or "true" or "yes" or "on";
     }
 
     private static IAquariumRenderer CreateRenderer(

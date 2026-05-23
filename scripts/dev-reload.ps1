@@ -3,7 +3,7 @@ param(
     [switch]$NoStop,
     [switch]$BuildOnly,
     [switch]$Reopen,
-    [string]$ClientProject = "src\Aquarium.Epiphany\Aquarium.Epiphany.csproj",
+    [string]$ClientProject = "src\Aquarium.Fensalir\Aquarium.Fensalir.csproj",
     [int]$RetainSlots = 12,
     [int]$StartupTimeoutSeconds = 5,
     [int]$HeadlessTimeoutSeconds = 60

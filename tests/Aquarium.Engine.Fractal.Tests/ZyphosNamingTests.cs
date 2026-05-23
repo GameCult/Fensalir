@@ -23,7 +23,7 @@ public sealed class ZyphosNamingTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "Aquarium.Engine.sln")))
+            if (File.Exists(Path.Combine(directory.FullName, "Fensalir.sln")))
             {
                 return directory.FullName;
             }
@@ -31,6 +31,6 @@ public sealed class ZyphosNamingTests
             directory = directory.Parent;
         }
 
-        throw new DirectoryNotFoundException("Could not find Aquarium.Engine.sln.");
+        throw new DirectoryNotFoundException("Could not find Fensalir.sln.");
     }
 }

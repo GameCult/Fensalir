@@ -1,232 +1,45 @@
 project:
-  name: Aquarium Engine
-  root: E:\Projects\Aquarium-Engine
-  upstream: https://github.com/GameCult/Aquarium-Engine
+  name: Fensalir
+  root: E:\Projects\Fensalir
   purpose: >
-    Native C# runtime and renderer core for Aquarium clients. The engine owns
-    the Win32 host, D3D12 renderer, input loop, client reload boundary, debug UI,
-    audio host, persistent-state transport, and future render graph
-    abstractions. Epiphany is the current first-party client: it owns frontend
-    intent, agent visuals, CultCache/CultNet semantics, and render-plan
-    configuration through the engine contracts.
+    Native C# runtime and renderer dependency for Aquarium-style clients. The
+    engine owns Win32 hosting, D3D12 rendering, input, hot reload, debug UI,
+    audio output, client contracts, fractal/field machinery, and engine demos.
 
 current_model:
+  solution: Fensalir.sln
   host:
-    solution: Aquarium.Engine.sln
-    window: src/Aquarium.Engine/Platform/Win32Window.cs
-    renderer: src/Aquarium.Engine/Render/D3D12Renderer.cs
-    height_field_shader: src/Aquarium.Engine/Render/Shaders/D3D12HeightField.hlsl
-    scene_shader: src/Aquarium.Engine/Render/Shaders/D3D12Scene.hlsl
-    sdf_common_include: src/Aquarium.Engine/Render/Shaders/D3D12SdfCommon.hlsli
-    sdf_proxy_include: src/Aquarium.Engine/Render/Shaders/D3D12SdfProxy.hlsli
-    sdf_math_include: src/Aquarium.Engine/Render/Shaders/D3D12SdfMath.hlsli
-    post_shader: src/Aquarium.Engine/Render/Shaders/D3D12Post.hlsl
-    overlay_text: src/Aquarium.Engine/Render/DirectWriteOverlay.cs
-    debug_ui: src/Aquarium.Engine/Render/Ui/DebugUi.cs
-    synth_host: src/Aquarium.Engine/Audio/AquariumSynthHost.cs
-    wasapi_audio_device: src/Aquarium.Engine/Audio/WasapiAudioDevice.cs
-    faust_toolchain_sync: scripts/sync-faust-toolchain.ps1
-    synth_package_update: scripts/update-synth-package.ps1
-    local_package_feed: packages
-    runtime_loader: src/Aquarium.Engine/Runtime/ClientRuntimeLoader.cs
-    dev_reload: scripts/dev-reload.ps1
-    dev_watch: scripts/dev-watch.ps1
-  epiphany_client:
+    implementation: src/Aquarium.Engine
     contracts: src/Aquarium.Engine.Contracts
-    implementation: src/Aquarium.Epiphany
-    render_plan: src/Aquarium.Epiphany/EpiphanyRenderPlan.cs
-    scene_builder: src/Aquarium.Epiphany/EpiphanySceneBuilder.cs
-    agent_preview: src/Aquarium.Epiphany.AgentPreview
-    shaders: src/Aquarium.Epiphany/Shaders
-    state_store: src/Aquarium.Epiphany/State/AquariumCultStateStore.cs
-    state_document: epiphany.aquarium.live_state
-    graphics_settings_document: epiphany.aquarium.graphics_settings
-  zyphos_client:
-    implementation: src/Aquarium.Zyphos
-    render_plan: src/Aquarium.Zyphos/ZyphosRenderPlan.cs
-    scene_builder: src/Aquarium.Zyphos/ZyphosSceneBuilder.cs
-    shaders: src/Aquarium.Zyphos/Shaders
-    worldbuilding_sync: docs/zyphos-eusocial-sync.md
-    setting_authority: E:\Projects\Eusocial Interbeing
-    purpose: >
-      Non-Epiphany planetary-scale rendering demo using the shared Aquarium host,
-      D3D12 renderer, reload transport, UI contracts, bloom, and SDF proxy path.
-  fensalir_client:
-    implementation: src/Aquarium.Fensalir
-    render_plan: src/Aquarium.Fensalir/FensalirRenderPlan.cs
-    scene_builder: src/Aquarium.Fensalir/FensalirSceneBuilder.cs
-    shaders: src/Aquarium.Fensalir/Shaders
-    world_patch: src/Aquarium.Fensalir/Worlds/fensalir-spine-emblem.aquageo
-    splash_prompt: research/rendering/fensalir-spine-emblem-ifs-demo.md
-    ground_truth_image: src/Aquarium.Engine/Assets/Fensalir-Splash.png
-    fixed_capture: scripts/capture-fensalir-frame.ps1
-    latest_capture: artifacts/fensalir-captures/fixed-cathedral-guide-clean.png
-    purpose: >
-      First artistic Fensalir reconstruction client: loads a .aquageo scene
-      patch, lowers marsh/water surface claims into shaped 2D ripple brushes,
-      projects cathedral detail from the patch-owned 2D field, and renders the
-      central luminous stacked-diamond spine through the normal SDF proxy path.
-  samples:
-    minimal_client: src/Aquarium.Sample.Minimal
+    renderer: src/Aquarium.Engine/Render
+    shaders: src/Aquarium.Engine/Render/Shaders
+    assets: src/Aquarium.Engine/Assets
+    scripts: scripts
+  fractal:
+    implementation: src/Aquarium.Engine.Fractal
+    tests: tests/Aquarium.Engine.Fractal.Tests
+    receipt_tool: tools/Aquarium.Fractal.Receipt
+  demos:
+    fensalir_splash: src/Aquarium.Fensalir
+    minimal: src/Aquarium.Sample.Minimal
+    zyphos: src/Aquarium.Zyphos
+    localcast: src/Aquarium.LocalCast
+  external_clients:
+    epiphany_aquarium: E:\Projects\Aquarium-Engine
   dependencies:
     cult_math: E:\Projects\CultMath
     cult_lib: E:\Projects\CultLib
-    aqua_synth_faust: NuGet package AquaSynth.Faust 0.1.0-alpha.3 from repo-local packages feed
-    aqua_synth_core: transitive NuGet package AquaSynth.Core 0.1.0-alpha.3 from repo-local packages feed
-  docs:
-    doctrine: docs/aquarium-engine-doctrine.md
-    engine_client_boundary: docs/engine-client-boundary.md
-    epiphany_extraction_render_api_plan: docs/epiphany-extraction-render-api-plan.md
-    renderer: docs/hlsl-renderer.md
-    agent_sdf_visual_language: docs/epiphany-agent-sdf-visual-language.md
-    runtime_surface: docs/cult-runtime-surface.md
-    native_spine: docs/vortice-spine.md
-    tsr_inspired_taa_spec: docs/tsr-inspired-taa-spec.md
-    temporal_sdf_gaussian_field: docs/temporal-sdf-gaussian-field.md
-    temporal_spatial_evidence_reservoir: docs/temporal-spatial-evidence-reservoir.md
-    input: docs/input.md
-    zyphos_eusocial_sync: docs/zyphos-eusocial-sync.md
-    hdr_pbr_presentation: research/rendering/hdr-pbr-presentation.md
-    cube_sphere_fractal_brushes: research/rendering/cube-sphere-fractal-brushes.md
-    fractal_brush_architecture_plan: research/rendering/fractal-brush-architecture-plan.md
-    fractal_brush_implementation_roadmap: research/rendering/fractal-brush-implementation-roadmap.md
-    perfect_machine_architecture: docs/perfect-machine-architecture.md
-    fractal_reference_oracles: research/rendering/fractal-reference-oracles.md
+    aqua_synth_faust: repo-local NuGet package feed under packages
 
 invariants:
-  - The camera target is the Grid center on the global XY plane.
-  - Grid radius follows twice the clamped camera zoom distance, then clamps to [20, 80]; pitch/yaw/projection do not resize it.
-  - Body anchors remain world-space and independent of the moving Grid window.
-  - Visible scene lighting is diegetic; no default ambient/global fill.
-  - Overlay text is DirectWrite final-pixel UI; scene text needs renderer-owned billboards.
-  - CultCache persists live app state through reload.
-  - Global GraphicsSettings persists renderer debug/HDR presentation knobs through restart and live reload.
-  - Failed shader/live-runtime reloads must leave the last good frame alive.
-  - Closed visible dev windows can be reopened from the last good slot without rebuilding.
-
-renderer_state:
-  current:
-    - D3D12 default renderer behind IAquariumRenderer with explicit device/queue/swapchain, command allocators, fences, descriptor arenas, upload ring constants, tracked render targets, command events, resize rebuild, HDR/bloom/present, temporal diagnostics, and DirectWrite overlay bridge.
-    - Deferred scalar Grid height target rendered from additive brush passes.
-    - Epiphany owns its client surface brush list, SDF object table, SDF light table, shader manifest, and cursor projection policy through Aquarium.Engine.Contracts; the engine consumes those as generic rendering data.
-    - Direct-traced height-field surface is a terminating reflective surface over the scalar height field, sampling Studio2 PMREM mip 0.
-    - Fullscreen scene pass owns background and height-field surface only; each client-declared SDF shader owns a separate proxy pipeline, with shared proxy plumbing factored into generic engine HLSL includes. Proxy marching evaluates only sdfDistance; sdfSurface runs once at the refined hit and returns only PBR material values.
-    - Reusable SDF primitives live in engine D3D12SdfMath.hlsli; current Epiphany role character organs live under src/Aquarium.Epiphany/Shaders.
-    - Epiphany's cursor is a luminous five-petal hibiscus SDF centered one cursor radius above the XY plane so its contact tip reaches Grid z=0 without projecting to the Grid surface.
-    - SDF/analytic Epiphany role visuals upload current centers, previous centers, and state scalars through the public `AquariumSdfObject` contract.
-    - Agent SDF visual language is documented against Epiphany's published CultNet surfaces: identity from agent memory, motion from heartbeat, posture from role/coordinator/result surfaces, pressure from reorient/pressure surfaces, and expression through bounded orbit wandering plus CPU-visible gravity-well pulses.
-    - Life is a memory-nautilus seed-shell SDF: a protective revolved seed/cardioid shell owns the silhouette, a visible ember sits inside the aperture, and the logarithmic spiral domain owns seam, bead trail, pressure breathing, rupture scar, and surface masks. Nautilus references inform the coordinate mapping, not the object silhouette.
-    - SDF light buffer feeds Self emission and direct object lighting; future other Selves should join this light lane, not a generic field-instance table.
-    - Studio2 PMREM and irradiance DDS cubemaps are loaded as D3D12 TextureCubes; PMREM serves roughness-mip specular, irradiance serves Lambertian diffuse IBL for non-metal bodies.
-    - DirectWrite/Direct2D unified debug panel with tabs for Aquarium renderer controls, client-declared debug panels, terminal commands, and engine/client tooling surfaces.
-    - DirectWrite/Direct2D debug panels own body scrolling and clipping; overflowing client controls must stay inside the panel with a visible scrollbar.
-    - Client-declared UI panels are folded into the unified Debug tab strip by default; panels that opt into proximity fading render as independent floating overlays. Floating panels can right-anchor with negative left offsets and fade to 10% opacity when the mouse is not near.
-    - Aquarium UI exposes generic selectable tree rows with disclosure arrows. Clients use them for hierarchy navigation without teaching DebugUi about client-specific spatial domains.
-    - Aquarium exposes an optional synth/audio hosting boundary through AquariumSynthDocument; Aquarium consumes AquaSynth.Faust as a pinned repo-local NuGet package so synth-agent construction cannot break Aquarium builds until the package is intentionally updated. AquaSynth.Core arrives transitively for patch editor/parser surfaces. AquaSynth owns live patch compilation and native Faust factory lifetime; Aquarium owns debounce, playback scheduling, cached rendered buffers, and WASAPI output.
-    - Aquarium now exposes a generic queued PCM audio lane through AquariumAudioDocument. Epiphany Face voice uses it to play streamed Codex realtime output without reaching into the engine's WASAPI internals.
-    - Epiphany owns the first native Face realtime voice session controller. It stores loopback app-server URI, thread id, voice, and speech prompt in CultCache live state; starts `thread/realtime/start` with audio output over the experimental Codex app-server WebSocket JSON-RPC edge; sends text utterances; reflects ephemeral transcript/error/audio counters in the debug UI; and treats speech as transient Face surface, not durable memory or project authority.
-    - Face voice routing is no longer a singleton. Epiphany persists typed FaceVoiceEndpoint rows with id, display name, thread id, voice, prompt, enabled flag, XY proximity anchor, and an audible-radius scale. FaceVoiceRouter uses proximity only to choose the addressed endpoint for user input; enabled endpoints can all run concurrently so active rumination loops may speak regardless of listener distance. Distance shapes PCM output gain and stereo pan through AquariumAudioDocument/WasapiAudioDevice.
-    - Global GraphicsSettings document feeding render debug, exposure, bloom intensity, and bloom veil.
-    - Temporal resolve uses scene color, metadata, and control history only; dormant event history lanes are cut until a real producer and consumer contract exists.
-    - Aquarium owns the temporal SDF Gaussian field renderer boundary: clients can publish `AquariumTemporalGaussianField`, `TemporalGaussianAccumulator` can buffer stable keyed observations in world space, and D3D12 lowers those packets into an instanced compact-kernel splat pass that writes normal scene color/travel/metadata/control targets.
-    - Temporal Gaussian accumulation now lowers through `TemporalSpatialEvidenceReservoir`, a renderer-agnostic stable-key reservoir for confidence-weighted spatial samples with presentation delay, smoothing, velocity prediction, expiry, and max-track eviction. Evidence observations and samples carry explicit Form/Appearance/Transport layer and encoding metadata, and track identity is keyed by layer+encoding+stable key so opaque SDF and transparent density claims share the reservoir machinery without being blended into one track.
-    - LocalCast fallback GPU fusion history delegates to `TemporalSpatialEvidenceReservoir`. `LocalCastGpuFusionAccumulator` is now an adapter that maps LocalCast stable seeds into shared evidence observations and back into GPU fusion seeds; it does not own a parallel temporal sampling algorithm.
-    - The temporal reservoir ownership contract lives in docs/temporal-spatial-evidence-reservoir.md. `ResampledImportanceReservoir<TSample>` owns RIS/ReSTIR-style candidate selection math: selected sample, target value, weight sum, represented candidate count, merge, and contribution weight. Raw producer reservoirs own capture-time retention; Aquarium's temporal spatial evidence track layer owns stable resolved spatial history; lowerings own backend packet conversion; TAA owns pixel history validation.
-    - Isolated Epiphany agent preview renders run through the real D3D12 renderer from src/Aquarium.Epiphany.AgentPreview; preview isolation is owned by a preview-only scene shader, while the engine exposes only final-frame PNG capture.
-    - Zyphos is the first nontrivial non-Epiphany client: a planetary-scale demo with spherical-domain terrain, atmospheric rim lighting, night-side glints, fixed-sky Umbros, and first-pass eclipse cadence.
-    - Zyphos/Umbros render-scale binary constants live in src/Aquarium.Zyphos/ZyphosUmbrosSystem.cs: Umbros is modeled as a 0.9-radius mutually tidally locked twin at 8 Zyphos radii, while the dim primary star phase moves through the Zyphos-local frame.
-    - Zyphos simulates the neighboring Eusocial Interbeing setting; the vault at E:\Projects\Eusocial Interbeing owns canon, while Aquarium owns demo rendering constraints and feeds worldbuilding questions back through the vault's Zyphos Simulation Brief.
-    - Future planetary terrain and fractal body detail should use a cube-sphere/QSC-family address space: six quadtree cube faces projected to the sphere with a measured low-distortion warp, avoiding lat-long pole singularities.
-    - Fractal world patches can declare nested semantic domains before terrain tiles. The first .aquageo patch declares solar, orbital, planetary, lat/long, and cube-tile domains for both Zyphos and Umbros so DSL nodes can attach to explicit reference frames before backend lowering.
-    - The fractal grammar layer validates nested domain topology through FractalDomainGraph: duplicate keys, missing parents, cycles, and root-to-leaf paths are grammar concerns, not renderer folklore.
-    - Aquarium frames now carry a 3D camera target in addition to the legacy 2D ViewFrame center. Zyphos uses a camera composer to separate tracked subject, parent composition anchor, and camera orbit distance.
-    - Zyphos camera navigation is domain-key driven: selecting any solar/orbital/planetary/surface/object/tile domain in the floating Navigation tree changes the active camera mode, derives the parent pivot from the domain hierarchy, and lets mouse drag/wheel orbit or zoom that selected spatial frame. Zyphos and Umbros both expose lat/long surface domains, recursive subdomains, object-scale domains, and cube-tile children.
-    - Zyphos domain zoom is scale-aware: leaf/pebble domains can drive the camera below planetary distances, while larger domains retain broad framing. The parent star is a rendered SDF object as well as a light source, so selecting the Solar domain targets a visible sun instead of an invisible lamp.
-    - The current height-field stress backend uploads a fixed table of 64 shaped 2D brushes to D3D12. The richer Zyphos/Umbros .aquageo patch currently emits 61 brushes across recursive continent/forest/leaf/flame/coast/pebble and Umbros crater/boulder/pebble domains.
-    - Zyphos and Umbros SDF planet shaders include cheap bounded quadtree-style layered relief in object space, separate from the flattened 2D height-brush stress path.
-    - SceneState can disable the legacy height-field surface trace and request a procedural starfield background; Zyphos uses this for space views so the old Grid does not leak into planetary rendering.
-    - Future multiscale terrain and agent/body detail should come from bounded IFS brush grammars using shared shaped anisotropic envelopes; texture/material detail can be abundant, but traced SDF form detail must be proxy-bounded, LOD-gated, and measured.
-    - The IFS brush grammar should preserve a semantic ownership tree before backend lowering: local frames, deterministic seeds, named fields/captures, tags, payload bindings, LOD/cost tiers, and boolean-style union/subtract/common nodes should survive even if the first renderer path flattens them into fixed brush tables or SDF shader code.
-    - IFS LOD should be driven by cached node contribution summaries: each node carries bounds, projected error/material delta, coverage, cost, estimator state, residency, and summary/child payload handles so traversal can choose a stable hierarchy cut and render parent summaries while child details stream or fade in.
-    - Contribution weights cannot all be refreshed every frame; the cache needs a probabilistic online estimator that samples nodes under budget, updates mean/uncertainty/sample age/confidence, preserves nonzero exploration for visible or near-threshold nodes, and can later become a learned predictor without replacing conservative SDF bounds.
-    - Fractal resource planning is explicit: one plan coordinates CPU contribution updates, GPU selected-cut estimated cost, RAM resident payload budget, and SSD request pressure before backend packet compilation. This same budget language should generalize to Mimir-style sensor fusion because both fractal SDF probes and camera/microphone feature detections accumulate confidence-weighted spatial samples into temporal reservoirs.
-    - Fractal residency uses score-per-cost retention under RAM pressure and emits evicted node keys as planner output; real storage mutation waits for a page/payload store boundary.
-    - Compact 3D form splats now have explicit opaque and transparent CPU contracts: structural FractalProbeSample evidence carries layer/encoding metadata, Form/SignedDistance lowers through AquariumFractalSdfSplat3D and FractalSdfSplat3DCompiler, and Form/Density or Form/Extinction lowers through AquariumFractalDensitySplat3D and FractalDensitySplat3DCompiler. The same ResampledImportanceReservoir<FractalProbeSample> handles both; lowering rejects wrong encodings instead of silently forcing density through SDF semantics.
-    - The `.aquageo` DSL now accepts `density` and `extinction` field claims using the same compact brush syntax as `height`, and the recursive `flame` primitive emits Density payloads. FractalSummaryBuilder treats Height, SignedDistance, Density, and Extinction as Form contribution. FractalHeightBrushCompiler filters mixed trees to Height payloads for height-field lowering instead of forcing transparent fields into terrain brushes.
-    - The `.aquageo` DSL also accepts `ripple` claims for 2D surface domains. A ripple is a Height claim with the same compact shaped envelope plus explicit wave amplitude, radial frequency, speed, and sine-power, lowered into the existing AquariumHeightFieldBrush wave lane. This is the Aetheria-style cheap water primitive Fensalir uses for the marsh mirror plane.
-    - Hot fractal splats and their temporal cache layers must be GPU-resident packed buffers. AquariumPackedFractalSdfSplat3D is the first opaque 80-byte numeric Form packet; AquariumPackedFractalDensitySplat3D is the matching 80-byte transparent Form packet for density/extinction. The current SDF envelope, PBR material, and radiosity reservoir packets are distinct 64-byte UAV rows sampled in independent compute passes for Form, Appearance, and Transport, and FractalGpuReservoirBudgetPlanner now reports both backend pass kind and conceptual layer/encoding. SDF/PBR/radiosity are backend packet names, not the conceptual architecture. tools/Aquarium.Fractal.Receipt proves a D3D12 compute path can keep 2,000,000 splats and 2,000,000 reservoirs per layer resident on the GTX 1070. The fallback hash-fractal receipt updates 50,000 entries per reservoir layer per frame with 2 candidates/update and runs at 4.471 ms/frame, 223.7 FPS equivalent. The authored IFS-program path now uses precomposed selected-cut rows instead of replaying ancestry per splat; a depth-48 authored receipt with 4 compact transforms and 15,000 updates per reservoir layer runs at 4.908 ms/frame, 203.7 FPS equivalent, with full reservoir coverage in 133.3 frames. Receipts use only tiny checksum readback and compile the shared engine shader asset src/Aquarium.Engine/Render/Shaders/D3D12FractalReservoirCompute.hlsl.
-    - 2D-projected-to-3D splats have a pure compiler seam: FractalProjectedSdfSplatCompiler maps resident SignedDistance2D page payload samples through an explicit page-to-world function and normal into bounded AquariumFractalSdfSplat3D packets.
-    - AquariumSceneState now carries AquariumFractalReservoirField as the narrow client-to-renderer request for GPU-resident fractal reservoirs: resident splat count, stochastic splat updates per frame, IFS depth/seed, candidates per reservoir update, stochastic updates per pass, authored program transforms, and an explicit world center/radius. This is a budgeted GPU field request, not a CPU splat list.
-    - D3D12Renderer owns the first live fractal reservoir compute hook: a separate root signature, four compute pipelines from D3D12FractalReservoirCompute.hlsl, lazy UAV buffers for splats/SDF/PBR/radiosity/flame-state reservoirs, a UAV barrier after splat population, and per-frame dispatch when AquariumFractalReservoirField is present. The first frame seeds every resident splat; later frames dispatch only SplatUpdatesPerFrame. Zyphos requests the 2M-splat, 50k-splat-updates/frame, 20k-reservoir-updates/pass field by default.
-    - Fractal reservoir population can now be driven by authored `.aquageo` structure: FractalGpuProgramCompiler lowers selected DSL claims into compact, precomposed AquariumPackedFractalIfsTransform support rows, Zyphos passes those rows through AquariumFractalReservoirField.ProgramTransforms, and D3D12 uploads the small program buffer as a compute SRV so D3D12FractalReservoirCompute.hlsl can generate splats from authored selected-cut supports in O(1) per splat instead of replaying nested domain ancestry.
-    - The renderer now has a first visible layered-reservoir consumption path for computed fractal splats: D3D12FractalSplatRender.hlsl binds separate GPU SRVs for raw splats, SDF envelope reservoirs, PBR material reservoirs, and radiosity reservoirs, then draws a capped 524,288-instance tangent-frame surface subset into the scene after compute updates. This is an observability/render-consumption proof for the first Form/Appearance/Transport reservoir contract, not the final terrain/material/transport shading path.
-    - Zyphos now uses the fractal reservoir surface as its primary planetary terrain test path. The old direct SDF planet and Umbros proxy shaders are removed from the Zyphos render plan; the remaining SDF proxy is the parent star. Zyphos binds the fractal reservoir field to the Zyphos world center/radius, and D3D12FractalSplatRender maps SDF/PBR/radiosity reservoir splats into that world frame instead of drawing camera-relative blobs.
-    - Authored GPU fractal program rows preserve cube-sphere tile address through lowering: AquariumPackedFractalIfsTransform.TileAddress carries face, level, tile X, and tile Y while rotation cos/sin live in MaterialSeedShape.zw. D3D12FractalReservoirCompute maps selected-cut supports through that tile address onto cube-sphere faces instead of dumping every authored brush onto a generic +Z cap.
-    - Zyphos camera composition targets the selected domain's tracked center while preserving the parent domain as orbit/composition anchor. Parent pivots remain part of navigation, but selected planetary/tile domains must not be pushed offscreen by aiming the camera at their parent.
-    - Fractal reference parity starts before the renderer: FractalOwnershipTree can carry affine IFS definitions from `.aquageo`, FractalAffineIfsChaosGame generates deterministic point sets, and ApophysisReferenceParityTests compares a minimal Apophysis/FLAM3-style `.flame` linear Sierpinski fixture against an equivalent `.aquageo` candidate. Apophysis/FLAM3 are test oracles, not runtime code.
-    - The Apophysis/FLAM3 reference subset now has a runtime parser/evaluator boundary: FractalFlameFileParser reads `.flame` xforms with weight, color, affine coefficients, and `linear`/`spherical`/`bubble` variation weights; FractalFlameChaosGame produces deterministic point sets; FractalPointHistogramBuilder produces fixed histogram checksums for parity receipts.
-    - tools/Aquarium.Fractal.Receipt can now run a CPU flame histogram receipt with `--flame`; scripts/fractal-flame-receipt.ps1 emits the default linear/spherical/bubble fixture checksum 0xAEB1C81B under artifacts/fractal-flame-receipts. It can also hash binary PPM renders with `--reference-ppm`; scripts/fractal-flame-reference-render.ps1 drives a local external `flam3-render` through FLAM3's documented env vars and records image-shape/non-black/checksum receipts under artifacts/fractal-flame-reference without vendoring GPL renderer code.
-    - D3D12FractalReservoirCompute has an explicit flame 2D program mode for the proven FLAM3-style subset. FractalGpuProgramCompiler lowers flame rows into packed affine/variation program rows, and tools/Aquarium.Fractal.Receipt can run them with `--program-flame`. Flame mode now keeps 32-byte AquariumPackedFractalFlameState rows in a GPU UAV so touched splats advance persistent chaos-game state instead of replaying from the origin. Local GTX 1070 JWildfire selftest receipt after 8 full-population acquisition frames: 2,000,000 resident splats, 2,000,000 flame states, 2,000,000 first-slice Form/Appearance/Transport reservoirs each, steady 50,000 splat updates/frame, 15,000 reservoir updates/pass/frame, depth 8, 1.011 ms/frame, 988.8 FPS equivalent, 84.85% CPU-slice distribution parity, checksum 0xC633FADC3BD7E5BE.
-    - Fractal reservoir update selection now accepts a four-scalar PriorityFocus window: focus XY, radius, and strength. Under budget, D3D12FractalReservoirCompute samples a few stochastic candidate rows and prefers rows near the focus while preserving random exploration; full-refresh passes still map directly over every row. Zyphos derives the focus from the selected camera/domain target so zoomed domains can pressure reservoir work toward the visible region instead of treating every resident splat as equally urgent. The receipt harness exposes the same pressure through `--priority-focus` for focused GPU tests.
-    - The live GPU splat packet now carries a Form encoding tag in the existing material/confidence lane without changing the 80-byte stride. Flame-mode compute writes Density encoding; the visible fractal splat renderer uses two explicit graphics pipeline states over the same GPU-resident buffers: opaque signed-distance surface splats depth-test/write through D3D12FractalSurfaceSplatPS, while density/extinction splats run through D3D12FractalTransparentSplatPS with depth disabled and additive color-only blending. This is not full volume ray integration, but it makes depth/blend ownership explicit without adding a parallel transparent reservoir or buffer.
-    - Fractal splat render now writes the documented reservoir/TAA guide schema: x = combined reservoir confidence, y = sample age in frames, z = domain validity, w = invalidation code. Form/Appearance/Transport validation stays internal to the splat shader and no longer masquerades as guide-buffer age/validity.
-    - Render debug mode 12, `Reservoir/TAA Guide`, now displays the same schema it names: red confidence, green normalized sample age, blue domain validity.
-    - The first visual parity receipt compares GPU flame splat XY histograms against the CPU flame oracle. With 250,000 GPU readback splats and 1,000,000 CPU reference samples in 128x128 bounds -8,-8,8,8, the mixed flame fixture scores 84.05% distribution parity at frame 1, 84.10% at frame 5, 84.20% at frame 20, and 84.24% after the 60-frame/10-warmup receipt, with cosine similarity around 0.9955. This is a stable sampler score, not proof of learned convergence; visual-error feedback is still future work.
-    - View-conditioned visual parity now scores named camera windows instead of trusting one global histogram. For the depth-16 flame receipt, global -8..8 scores 97.09%, mid -1..1 scores 91.93%, close -0.5..0.5 scores 88.97%, and micro -0.25..0.25 scores 82.05% with 2,656 starved reference bins and 17.95% underrepresented mass. This is the current hard loss: the reservoir is not yet spending work based on camera-conditioned underrepresentation.
-    - FractalHistogramResidualFocus is the first pure residual-to-priority seam: given reference and candidate histograms, it estimates a focus center/radius/strength from underrepresented probability mass. tools/Aquarium.Fractal.Receipt now reports this suggested focus for each visual parity view, turning parity failure into a concrete reservoir pressure input instead of a contact-sheet shrug.
-    - tools/Aquarium.Fractal.Receipt has the first adaptive focus control-loop receipt. `--adaptive-focus` runs a warmup epoch, reads back the shared GPU-resident reservoir state, estimates a residual focus from visual parity, then continues measured frames over the same splat/reservoir/flame-state buffers using that focus. Local GTX 1070 smoke on the mixed flame fixture with 65,536 splats, 4,096 steady splat updates, 4,096 reservoir updates/pass, 50k CPU reference samples, and bounds -2..2 improved from the non-adaptive 67.07% distribution score to 70.89%, with 0.160 ms/frame measured GPU time. This proves the feedback shape, not a final no-stall runtime implementation.
-    - High-reference flame contact sheets should use at least 20M CPU oracle samples for visual judgment. The current artifact is artifacts/fractal-contact-sheet-hq/flame-parity-contact-sheet-hq.png, comparing 20M CPU oracle histograms against 250k Aquarium GPU readback samples for global frame 1/10 and zoom frame 1/10. The 1M-sample oracle was too noisy and should be treated as a scalar smoke check only.
-    - External flame visual references are now reproducible from ignored local artifacts. scripts/install-flame-reference-tools.ps1 hydrates JWildfire 9.00 plus Temurin JRE 17 under artifacts/reference-tools; scripts/fractal-flame-jwildfire-reference.ps1 prefers JWildfire's bundled FARenderJWF GPU renderer for explicit PNG output. Local GTX 1070 smoke rendered FARender's selftest.flame at 1024x1024 quality 2000 in 7.69 sec to artifacts/fractal-flame-jwildfire-reference/selftest-farender-20260520-233638.png. JWildfire/FARender is a visual reference artifact lane, not Aquarium runtime code.
-    - tools/Aquarium.Fractal.Receipt now has an external density oracle: --reference-density-ppm compares Aquarium GPU Form-envelope reservoir density against luminance density from a binary PPM rendered by an external flame renderer. scripts/new-jwildfire-baby-fixture.ps1 derives a smaller FARender-compatible julian-disc-baby.flame from JWildfire's selftest by reducing julian power and muting gaussian/wfield amounts while preserving FARender boilerplate. First GTX 1070 external-density receipt against FARender's 768x768 quality-2000 baby render scored only 15.33% when Aquarium still binned raw splat centers; after fixing JWildfire coefs packing and FARender disc angle convention the raw-center score reached 26.87%. Switching to reservoir density with full 2M-row reservoir refresh scored 22.14% at 42.053 ms/frame. Cutting the false JWildfire `normal` -> `linear` import and enforcing a one-bin density reconstruction footprint moved the score to 31.36% at 41.692 ms/frame in 256x256 bounds -2..2. Using `-HistogramBounds flame-camera` derives FARender-style bounds from flame size/scale/cam_zoom and raises the current score to about 43.1% with about 68% occupancy overlap. Full reservoir refresh now uses direct row indexing instead of stochastic hashing, so the same full-refresh gate runs at 7.508 ms/frame / 133.2 FPS equivalent instead of roughly 41 ms/frame. Aquarium still scores about 89.94% against its own CPU slice, so the remaining external gap is exact JWildfire variation/filter semantics, target density weighting, and view-conditioned reservoir feedback, not GPU sampling count.
-    - JWildfire selftest flame is the current honest faceplant target. After adding a first dialect slice for JWildfire coefficient layout, variationGroup, disc, julian, gaussian_blur, and post transforms, the depth-64 GTX 1070 receipt against Aquarium's CPU interpretation of artifacts/reference-tools/j-wildfire-9.00/lib/FARenderJWF/selftest.flame reaches 84.19% score in bounds -8..8 and 88.01% in bounds -128..128, but costs about 129 ms/frame. This is CPU/GPU slice parity, not external JWildfire visual parity. It proves the remaining hard work is richer dialect semantics plus persistent GPU iteration-state reservoirs; brute replaying deep flame iteration from zero per splat is not the final hot path.
-    - FractalFlameFileParser now has ParseFirstWithReport for import accountability. Receipt runs emit fractal-flame-import-report-*.json beside flame histogram/GPU receipts. The JWildfire selftest report currently records 15 accepted fields, 3 approximations, 45 ignored render/presentation fields, and 11 rejected geometry/sampling fields: wfield_* weighting-field attributes. Successful XML parsing is not successful translation.
-    - FractalFlameIterationState and FractalFlameIterationStepper define the persistent flame iteration invariant before GPU lowering: advancing a sample in chunks must match a one-shot advance from the same state. This is a parity/mock boundary for the future GPU state buffer, not a runtime CPU renderer.
-    - D3D12 capacity logging now reports active fractal reservoir resident MiB, splat count, visible debug splat count, updates/pass, and candidates/update so the GPU cache has a receipt in normal runtime logs, not just in the standalone benchmark.
-    - Fensalir has a fixed headless art-repro capture lane: `scripts/capture-fensalir-frame.ps1` builds disposable engine/client slots, launches the Fensalir client headless at an explicit resolution, waits for a ready frame, and writes a PNG through `IAquariumRenderer.SaveFramePng`. Headless capture disables overlay debug UI and locks the Fensalir camera/time so shader and `.aquageo` changes can be compared against `src/Aquarium.Engine/Assets/Fensalir-Splash.png` without manual window judgment.
-    - Fensalir currently has a temporary transparent cathedral guide in the scene shader to make splash-composition failures visible in fixed captures. This is scaffolding, not final architecture: the next coherent cut is a patch-lowered pane/rune/material field target separate from the marsh height field, so the cathedral glass/runes/waterline glow are authored DSL claims instead of hardcoded screen-space guidance.
-    - The consolidated fractal brush architecture plan defines the intended pipeline: client intent -> domain roots -> semantic IFS brush grammar -> ownership tree -> node summaries -> contribution cache/residency scheduler -> backend packets -> renderer passes -> debug/evidence, with explicit module boundaries and mockable unit-test seams.
-    - The Perfect Machine architecture lives in docs/perfect-machine-architecture.md. It is the current waterfall design authority for fast 2D/3D/projected scalar-field splats, Form/Appearance/Transport reservoir layers, SDF level-set surfaces for opaque solids, density/extinction/confidence fields for flames and sensor fusion, IFS `.aquageo` structural probes, Mimir-style camera/audio evidence candidates, ReSTIR/GRIS reservoir reuse, heuristic occupancy graph updates, resource-tier residency, and TAA guide-buffer integration.
-    - Fractal surface page planning now has a CPU boundary: FractalSurfacePagePlanner lowers selected IFS cuts into stable height, 2D signed-distance, material, and confidence page metadata; ZyphosFractalRenderPlan exposes these pages, while the live D3D12 page store and atlas remain future work.
-    - Surface page residency has its own mockable store boundary: IFractalSurfacePageStore plus FractalSurfacePageResidencyPlanner produce resident, missing, requested, evicted, and byte-budget rows for planned pages without collapsing page cache policy into node payload residency.
-    - Resident surface pages can now be rasterized on CPU through FractalSurfacePageRasterizer into height, 2D signed-distance support, material, and confidence sample payloads using the same shaped brush envelope math as the brush compiler. Zyphos caches those payloads by page key; D3D12 upload remains future work.
-    - The actionable fractal brush implementation roadmap lives in research/rendering/fractal-brush-implementation-roadmap.md and is the execution authority for the first pass.
-    - Bundled blue-noise texture assets are retained for future dithering/noise work even though the removed medium path no longer samples them.
-    - D3D11 scene renderer, runtime volumetrics, cloud/fog research, medium/froxel render targets, and the SDF-field renderer plan are shelved and removed from live repo state.
-  next:
-    - Extend explicit renderer debug modes for hits, normals, depth, bins, and lighting.
-    - Replace the current legacy fixed D3D12 pass execution with the declared AquariumRenderPlan graph compiler and executor.
-    - Keep src/Aquarium.Sample.Minimal building and launchable as the non-Epiphany boundary proof.
-    - Replace fixed fallback role motion with real CultNet-derived AgentVisualState.
-    - Build each agent role body from one coherent low-cost SDF form model before adding ornamental or state-reactive detail.
-    - Prototype cube-sphere projection candidates for Zyphos: tangent warp, fifth-order odd polynomial warp, and COBE/QSC-style bivariate warp. Measure area error, inverse lookup cost, and shader cost before committing the terrain address space.
-    - Define the first shaped brush envelope contract as a compact-support anisotropic kernel with rotation, radii/inverse covariance, falloff, shape controls, payload type, and explicit bounds shared by 2D terrain brushes and 3D SDF/body brushes.
-    - Design the first Aquarium IFS/CSG brush DSL as semantic claims plus an ownership tree, informed by VibeGeometry's `vg_grammar` and `vg_csg` tree: the tree is durable design; flattened shader packets are backend output.
-    - Define the first IFS LOD node-summary and contribution-cache layout before rendering recursive detail: stable domain keys, projected-error scoring, stochastic update priority, mean/variance/confidence estimator state, hysteresis fade weights, resident/missing child states, and debug views for score/uncertainty/sample-age/depth/cache/cost.
-    - Replace the legacy height-field plane with explicit 2D SDF domain surfaces. Aquarium's Grid should become a dynamic gravity-updated domain surface; Zyphos' terrain surfaces can stay static and should flow through the same cache-friendly surface-domain path.
-    - Follow the step-by-step roadmap in research/rendering/fractal-brush-architecture-plan.md before implementing recursive terrain or agent-body detail; first slice is cube-face projection harness, shaped 2D brush envelope, semantic claim/tree structs, flattening to the current height brush pass, and debug overlays.
-    - Begin fractal brush implementation with the first work packet from research/rendering/fractal-brush-implementation-roadmap.md: add Aquarium.Engine.Fractal plus tests, cube-face/tile keys, identity/tangent projection candidates, area distortion sampler, face-edge tests, and a projection report.
-    - Add diegetic labels and object-local menus after renderer and text contracts are stable.
-    - Continue replacing legacy fixed D3D12 pass execution with client-declared render targets, cameras, shaders, passes, resources, and features.
+  - Fensalir owns reusable host, renderer, audio, reload, contracts, and engine mechanisms.
+  - Client repos own policy, role names, narrative semantics, app state, and client shaders.
+  - Epiphany Aquarium depends on Fensalir; Fensalir must not depend on Epiphany.
+  - Demo projects inside this repo are allowed to exercise engine features but must not become hidden engine policy.
+  - Public `Aquarium.*` assembly names remain for continuity until a deliberate namespace/package migration.
 
 next_actions:
-  - Keep main as the live development branch.
-  - Keep scripts/verify-boundaries.ps1 green: Aquarium.Engine and Aquarium.Engine.Contracts must not contain Epiphany/client policy nouns such as grid, agent, body, or epiphany.
-  - Verify publish output after every packaging-affecting change.
-  - Update AquaSynth.Faust/Core only by packing new versions into packages and changing the pinned PackageReference version deliberately.
-  - Grow renderer debug controls through the Direct2D/DirectWrite overlay path.
-  - Use scripts/render-agent-preview.ps1 for multi-view isolated SDF review before asking the user to judge another agent body iteration.
-  - Follow research/rendering/hdr-pbr-presentation.md before changing HDR exposure, bloom, tonemapping, or display transforms.
-  - Follow research/rendering/cube-sphere-fractal-brushes.md before replacing planetary terrain addressing, height brushes, or agent/body detail grammars.
-  - Follow research/rendering/fractal-brush-architecture-plan.md before implementing the fractal brush DSL, IFS LOD cache, recursive detail residency, or learned contribution scoring.
-  - Follow docs/perfect-machine-architecture.md before expanding field splat backends, density/extinction packets, sensor-fusion candidate adapters, reservoir guide buffers, occupancy graph state, or stochastic learned priority.
-  - Use research/rendering/fractal-brush-implementation-roadmap.md as the actionable execution checklist for fractal brush work.
-  - Next Fensalir art slice: replace the temporary screen-space cathedral guide with a `.aquageo`-owned transparent pane/rune/material field target and feed it to the scene shader as its own texture/buffer, separate from the marsh height field.
-  - Next flame reference slice: build a JWildfire import/lowering report that separates supported, approximated, ignored, and rejected variation fields before expanding the GPU op set. Do not hide dialect loss behind successful XML parsing.
-  - Next flame renderer slice: mirror FractalFlameIterationState in a GPU UAV so program-flame mode can advance resident sample state over frames instead of replaying all depth from zero per splat. Weighting fields remain explicit rejected diagnostics until they become real DSL operator nodes.
-  - Follow docs/zyphos-eusocial-sync.md and E:\Projects\Eusocial Interbeing\Eusocial Interbeing\World\Zyphos Simulation Brief.md before turning Zyphos visual choices into setting claims.
-  - Follow docs/tsr-inspired-taa-spec.md when changing current temporal diagnostics.
-  - Use docs/temporal-sdf-gaussian-field.md before wiring LocalCastBridge visual sensor fusion into Aquarium or scaling the temporal Gaussian renderer beyond the current bounded instanced pass; despite the historical filename, the live contract is temporal Form-field evidence, not surface-only SDF.
-  - Use docs/temporal-spatial-evidence-reservoir.md before adding any stable-key temporal spatial cache, sensor-fusion accumulator, SDF probe reservoir, or new evidence packet lowering.
-  - Promote future runtime knobs into typed CultCache documents before they become process folklore.
-  - Next Face voice slice: replace text-only input with microphone/WebRTC or a native capture bridge, bind endpoint anchors to real Face/body spatial projections instead of manual XY rows, then move the transport contract from Codex JSON-RPC compatibility toward a typed CultNet FaceVoiceSession once Epiphany advertises that surface.
-  - Keep Aquarium and Epiphany in one repo until the contracts and graph API are stable enough for Epiphany to move out without carrying engine policy or reload folklore with it.
+  - Set the real Git remote for this repo once `GameCult/Fensalir` exists.
+  - Keep `dotnet build Fensalir.sln` green after the split.
+  - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
+  - Package contracts/host deliberately before replacing sibling source references in client repos.

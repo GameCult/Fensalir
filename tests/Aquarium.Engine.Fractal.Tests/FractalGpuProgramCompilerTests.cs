@@ -93,7 +93,7 @@ public sealed class FractalGpuProgramCompilerTests
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Aquarium.Engine.sln")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Fensalir.sln")))
         {
             directory = directory.Parent;
         }

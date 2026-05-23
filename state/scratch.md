@@ -2,66 +2,15 @@
 
 ## Current Slice
 
-Aquarium's active focus is the fractal reference gate for the Perfect Machine:
-prove compact IFS/flame fixtures numerically before asking Zyphos visuals to
-carry architectural truth.
+Fensalir has been split into its own adjacent repo.
 
-Keep the engine/client boundary strict:
-
-- Aquarium.Engine owns Win32, D3D12, input, reload, renderer abstractions,
-  debug UI plumbing, and device/toolchain integration.
-- Aquarium.Epiphany owns client policy, semantic state interpretation, role
-  layout, and render-plan configuration through Aquarium.Engine.Contracts.
-- Aquarium consumes AquaSynth.Faust as a pinned package in the repo-local
-  `packages` feed; AquaSynth.Core arrives transitively for patch editor/parser
-  surfaces. AquaSynth owns synth internals and tests; update
-  the package only through an intentional version bump.
-
-The renderer work that matters next:
-
-- Continue replacing legacy fixed D3D12 pass execution with the declared render
-  graph.
-- Keep body/SDF proxy passes bounded, per-object, and client-authored.
-- Build role visuals from coherent low-cost form models before ornament.
-- Use `research/rendering/cube-sphere-fractal-brushes.md` as the live map for
-  the cube-sphere planetary domain and shared IFS brush grammar migration.
-  Its IFS/CSG DSL notes now pull from neighboring VibeGeometry's `vg_grammar`
-  and `vg_csg` tree work.
-  Its LOD model uses cached node contribution summaries to select stable
-  hierarchy cuts and stream/fade child detail only when visible pixels justify
-  the cost. Contribution weights are online estimates: update a probabilistic
-  subset each frame, track uncertainty and sample age, and keep conservative
-  summaries as the safety floor if later learned scoring is added.
-- The consolidated architecture and roadmap live at
-  `research/rendering/fractal-brush-architecture-plan.md`, including module
-  boundaries, mock seams, and unit/performance test strategy.
-- The actionable execution checklist lives at
-  `research/rendering/fractal-brush-implementation-roadmap.md`; first work
-  packet is `Aquarium.Engine.Fractal` plus tests, cube-face/tile keys,
-  identity/tangent projections, area distortion sampler, face-edge tests, and
-  a projection report.
-- Use `research/rendering/fractal-reference-oracles.md` for Apophysis/FLAM3
-  parity. Local parser/evaluator receipts are not external renderer proof.
-  `scripts/fractal-flame-reference-render.ps1` is the optional FLAM3-compatible
-  PPM receipt path when a local `flam3-render` binary is installed.
-  `scripts/fractal-splat-receipt.ps1 -ProgramFlame ... -SplatUpdates 50000`
-  is the GPU-resident flame stress receipt path; it initializes resident splats
-  once and then performs budgeted stochastic updates.
-  Add `-VisualParity -ReadbackSplats 250000 -HistogramSize 128x128` to score
-  GPU splat histograms against the CPU flame oracle. Current score plateaus
-  near 84.2% distribution parity / 0.9955 cosine, so the next architectural
-  need is visual-error feedback, not more raw sampling theater.
-  Use `-VisualParityView name:minX,minY,maxX,maxY` for camera-window truth.
-  The depth-16 flame receipt loses hard under zoom: micro -0.25..0.25 is 82.05%
-  with 2,656 starved reference bins. This is the next real reservoir target.
-- Use `docs/zyphos-eusocial-sync.md` before evolving Zyphos world content.
-  Eusocial Interbeing owns canon in `E:\Projects\Eusocial Interbeing`; Zyphos
-  owns render constraints and feeds design questions back through the vault's
-  `Eusocial Interbeing/World/Zyphos Simulation Brief.md`.
-- Preserve debug UI as shared chrome and input capture, not parallel panels.
+- This repo owns the native runtime, renderer, contracts, fractal machinery,
+  host scripts, and engine demo clients.
+- `E:\Projects\Aquarium-Engine` now owns only the Epiphany Aquarium client.
+- There is no remote configured yet; set it to the future `GameCult/Fensalir`
+  remote before pushing.
 
 ## Verification
 
-- `dotnet build Aquarium.Engine.sln --no-restore`
-- `.\scripts\verify-boundaries.ps1`
-- `.\scripts\dev-reload.ps1 -Headless -RetainSlots 4`
+- `dotnet build Fensalir.sln`
+- `.\scripts\dev-reload.ps1 -Headless -RetainSlots 4 -ClientProject src\Aquarium.Fensalir\Aquarium.Fensalir.csproj`

@@ -10,10 +10,10 @@ $engineRoots = @(
 $forbiddenEngineTerms = "grid|agent|body|epiphany"
 $engineReferences = rg -n -i -- $forbiddenEngineTerms $engineRoots
 if ($LASTEXITCODE -eq 0) {
-    throw "Aquarium Engine and contracts must not contain Epiphany/client policy terms:`n$engineReferences"
+    throw "Fensalir engine and contracts must not contain Epiphany/client policy terms:`n$engineReferences"
 }
 elseif ($LASTEXITCODE -ne 1) {
-    throw "Boundary search for Aquarium Engine terms failed."
+    throw "Boundary search for Fensalir engine terms failed."
 }
 
-Write-Host "Aquarium boundary checks passed."
+Write-Host "Fensalir boundary checks passed."

@@ -81,7 +81,7 @@ public sealed class ProjectionTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "Aquarium.Engine.sln")))
+            if (File.Exists(Path.Combine(directory.FullName, "Fensalir.sln")))
             {
                 return directory.FullName;
             }
@@ -89,7 +89,7 @@ public sealed class ProjectionTests
             directory = directory.Parent;
         }
 
-        throw new DirectoryNotFoundException("Could not find Aquarium.Engine.sln.");
+        throw new DirectoryNotFoundException("Could not find Fensalir.sln.");
     }
 
     private static string NormalizeLineEndings(string value)

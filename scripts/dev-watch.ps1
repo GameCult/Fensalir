@@ -3,7 +3,7 @@ param(
     [switch]$NoInitialLaunch,
     [switch]$ReopenWhenClosed,
     [switch]$Once,
-    [string]$ClientProject = "src\Aquarium.Epiphany\Aquarium.Epiphany.csproj",
+    [string]$ClientProject = "src\Aquarium.Fensalir\Aquarium.Fensalir.csproj",
     [int]$IntervalMilliseconds = 1000,
     [int]$DebounceMilliseconds = 350,
     [int]$RetainSlots = 12,
@@ -46,7 +46,7 @@ function Get-SourceFiles {
     $roots = @(
         (Join-Path $repoRoot "src"),
         (Join-Path $repoRoot "scripts"),
-        (Join-Path $repoRoot "Aquarium.Engine.sln"),
+        (Join-Path $repoRoot "Fensalir.sln"),
         (Join-Path $repoRoot "global.json")
     )
 

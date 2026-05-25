@@ -1,8 +1,8 @@
 {
   "status": "starting",
-  "startedAt": "2026-05-25T20:53:53.844Z",
+  "startedAt": "2026-05-25T21:47:37.384Z",
   "stateFile": "E:\\Projects\\Fensalir\\.voidbot\\state\\fensalir.cc",
-  "reason": "repo_face_napping_with_short_term_memory",
+  "reason": "repo_face_stale_short_term_memory",
   "shortTermCount": 1,
   "newestShortTermUpdatedAt": "2026-05-25T05:02:02.855Z"
 }

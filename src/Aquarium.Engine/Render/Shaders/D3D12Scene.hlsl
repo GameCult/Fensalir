@@ -384,3 +384,50 @@ SceneOut D3D12ScenePS(VertexOut input)
     output.depth = saturate(result.travel / max(farDistance, 0.001));
     return output;
 }
+
+struct SplineVertexIn
+{
+    float3 position : POSITION;
+    float4 color : COLOR;
+};
+
+struct SplineVertexOut
+{
+    float4 position : SV_Position;
+    float4 color : COLOR;
+};
+
+SplineVertexOut D3D12SplineVS(SplineVertexIn input)
+{
+    float3 forward = normalize(cameraTarget - cameraPosition);
+    float3 worldUp = float3(0.0, 1.0, 0.0);
+    float3 right = normalize(cross(worldUp, forward));
+    float3 up = normalize(cross(forward, right));
+    float3 view = float3(
+        dot(input.position - cameraPosition, right),
+        dot(input.position - cameraPosition, up),
+        dot(input.position - cameraPosition, forward));
+
+    float aspect = resolution.x / max(resolution.y, 1.0);
+    float tangentHalfFov = 0.54;
+    float z = max(view.z, 0.001);
+    float2 ndc = float2(
+        view.x / (z * tangentHalfFov * aspect),
+        view.y / (z * tangentHalfFov));
+
+    SplineVertexOut output;
+    output.position = float4(ndc, saturate(z / max(farDistance, 1.0)), 1.0);
+    output.color = input.color;
+    return output;
+}
+
+SceneOut D3D12SplinePS(SplineVertexOut input)
+{
+    SceneOut output;
+    output.colorTravel = input.color;
+    output.metadata = float4(0.0, 0.0, 0.0, 0.0);
+    output.control = float4(0.0, 0.0, 0.0, 0.0);
+    output.reservoirGuide = float4(1.0, 0.0, 1.0, 0.0);
+    output.depth = input.position.z;
+    return output;
+}

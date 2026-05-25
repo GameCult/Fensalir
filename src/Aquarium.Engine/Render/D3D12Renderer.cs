@@ -119,6 +119,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private ID3D12PipelineState? heightFieldBrushPipelineState;
     private ID3D12PipelineState? scenePipelineState;
     private ID3D12PipelineState? temporalGaussianPipelineState;
+    private ID3D12PipelineState? splinePipelineState;
     private ID3D12PipelineState? gpuSensorFusionPipelineState;
     private ID3D12PipelineState? fractalSurfaceSplatRenderPipelineState;
     private ID3D12PipelineState? fractalTransparentSplatRenderPipelineState;
@@ -196,6 +197,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private AquariumPackedFractalIfsTransform[] activeFractalProgramTransforms = [];
     private bool temporalGaussiansGpuGenerated;
     private AquariumFractalReservoirField activeFractalReservoirField = AquariumFractalReservoirField.Empty;
+    private AquariumSplineFrame activeSplineFrame = AquariumSplineFrame.Empty;
     private Viewport viewport;
     private RawRect scissorRect;
     private int width;
@@ -817,6 +819,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         heightFieldBasePipelineState is not null
         && heightFieldBrushPipelineState is not null
         && scenePipelineState is not null
+        && splinePipelineState is not null
         && temporalGaussianPipelineState is not null
         && gpuSensorFusionPipelineState is not null
         && fractalSurfaceSplatRenderPipelineState is not null
@@ -1016,6 +1019,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         heightFieldBrush.Name = "Aquarium D3D12 Height Field Brush Pipeline";
         var scene = CreateScenePipelineState(paths.Scene);
         scene.Name = "Aquarium D3D12 Scene Pipeline";
+        var spline = CreateSplinePipelineState(paths.Scene);
+        spline.Name = "Aquarium D3D12 Spline Pipeline";
         var temporalGaussian = CreateTemporalGaussianPipelineState(paths.TemporalGaussian);
         temporalGaussian.Name = "Aquarium D3D12 Temporal Gaussian Pipeline";
         var gpuSensorFusion = CreateGpuSensorFusionPipelineState(paths.GpuSensorFusion);
@@ -1054,6 +1059,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             heightFieldBase,
             heightFieldBrush,
             scene,
+            spline,
             temporalGaussian,
             gpuSensorFusion,
             fractalSurfaceSplatRender,
@@ -1531,6 +1537,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 context.CommandList.SetPipelineState(fractalTransparentSplatRenderPipelineState!);
                 context.CommandList.DrawInstanced(6, (uint)visibleFractalSplatCount, 0, 0);
             }
+
+            RenderSplines(context.CommandList, frameResources);
         }
         finally
         {
@@ -1540,6 +1548,45 @@ public sealed class D3D12Renderer : IAquariumRenderer
         RenderBloom(context.CommandList, frameResources);
         PresentBackBuffer(context, frameResources);
     }
+
+    private void RenderSplines(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
+    {
+        if (!activeSplineFrame.HasInput || splinePipelineState is null)
+        {
+            return;
+        }
+
+        var vertices = new List<D3D12SplineVertex>(Math.Min(
+            32768,
+            activeSplineFrame.Splines.Sum(spline => Math.Max(0, spline.Vertices.Count - 1) * 2)));
+        foreach (var spline in activeSplineFrame.Splines)
+        {
+            if (spline.Vertices.Count < 2)
+            {
+                continue;
+            }
+
+            for (var index = 1; index < spline.Vertices.Count; index++)
+            {
+                vertices.Add(ToSplineVertex(spline.Vertices[index - 1]));
+                vertices.Add(ToSplineVertex(spline.Vertices[index]));
+            }
+        }
+
+        if (vertices.Count == 0)
+        {
+            return;
+        }
+
+        var upload = frameResources.UploadRing.WriteArray(CollectionsMarshal.AsSpan(vertices));
+        var view = new VertexBufferView(upload.GpuVirtualAddress, (uint)upload.DataBytes, (uint)Marshal.SizeOf<D3D12SplineVertex>());
+        activeCommandList.SetPipelineState(splinePipelineState);
+        activeCommandList.IASetPrimitiveTopology(PrimitiveTopology.LineList);
+        activeCommandList.IASetVertexBuffers(0, [view]);
+        activeCommandList.DrawInstanced((uint)vertices.Count, 1, 0, 0);
+    }
+
+    private static D3D12SplineVertex ToSplineVertex(AquariumSplineVertex vertex) => new(vertex.Position, vertex.Color);
 
     private void RenderBloom(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
     {
@@ -1917,6 +1964,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeFractalReservoirField = scene.FractalReservoirField.HasInput
             ? scene.FractalReservoirField
             : AquariumFractalReservoirField.Empty;
+        activeSplineFrame = scene.SplineFrame.HasInput
+            ? scene.SplineFrame
+            : AquariumSplineFrame.Empty;
         activeFractalProgramTransforms = activeFractalReservoirField.HasInput && scene.FractalReservoirField.ProgramTransforms.Count > 0
             ? scene.FractalReservoirField.ProgramTransforms as AquariumPackedFractalIfsTransform[] ?? scene.FractalReservoirField.ProgramTransforms.ToArray()
             : [];
@@ -2312,6 +2362,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 heightFieldBasePipelineState!,
                 heightFieldBrushPipelineState!,
                 scenePipelineState!,
+                splinePipelineState!,
                 temporalGaussianPipelineState!,
                 gpuSensorFusionPipelineState!,
                 fractalSurfaceSplatRenderPipelineState!,
@@ -2334,6 +2385,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         heightFieldBasePipelineState = pipelines.HeightFieldBase;
         heightFieldBrushPipelineState = pipelines.HeightFieldBrush;
         scenePipelineState = pipelines.Scene;
+        splinePipelineState = pipelines.Spline;
         temporalGaussianPipelineState = pipelines.TemporalGaussian;
         gpuSensorFusionPipelineState = pipelines.GpuSensorFusion;
         fractalSurfaceSplatRenderPipelineState = pipelines.FractalSurfaceSplatRender;
@@ -2678,6 +2730,66 @@ public sealed class D3D12Renderer : IAquariumRenderer
         return CreateFullscreenPipelineState(path, "FullscreenTriangleVS", "D3D12ScenePS", [SceneHdrFormat, SceneHdrFormat, SceneHdrFormat, SceneHdrFormat], enableDepth: true);
     }
 
+    private ID3D12PipelineState CreateSplinePipelineState(string path)
+    {
+        var vertexShader = CompileShader(path, "D3D12SplineVS", "vs_5_0");
+        var pixelShader = CompileShader(path, "D3D12SplinePS", "ps_5_0");
+        var blend = BlendDescription.Opaque;
+        blend.RenderTarget[0] = new RenderTargetBlendDescription(
+            true,
+            false,
+            Blend.SourceAlpha,
+            Blend.InverseSourceAlpha,
+            BlendOperation.Add,
+            Blend.One,
+            Blend.InverseSourceAlpha,
+            BlendOperation.Add,
+            LogicOp.Noop,
+            ColorWriteEnable.All);
+        for (var index = 1; index < 8; index++)
+        {
+            blend.RenderTarget[index] = new RenderTargetBlendDescription(
+                false,
+                false,
+                Blend.One,
+                Blend.Zero,
+                BlendOperation.Add,
+                Blend.One,
+                Blend.Zero,
+                BlendOperation.Add,
+                LogicOp.Noop,
+                ColorWriteEnable.None);
+        }
+
+        var description = new GraphicsPipelineStateDescription
+        {
+            RootSignature = fullscreenRootSignature,
+            VertexShader = vertexShader,
+            PixelShader = pixelShader,
+            BlendState = blend,
+            RasterizerState = RasterizerDescription.CullNone,
+            DepthStencilState = DepthStencilDescription.None,
+            SampleMask = uint.MaxValue,
+            PrimitiveTopologyType = PrimitiveTopologyType.Line,
+            InputLayout = new InputLayoutDescription(
+            [
+                new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
+                new InputElementDescription("COLOR", 0, Format.R32G32B32A32_Float, 12, 0),
+            ]),
+            RenderTargetFormats = [SceneHdrFormat, SceneHdrFormat, SceneHdrFormat, SceneHdrFormat],
+            SampleDescription = new SampleDescription(1, 0),
+        };
+
+        try
+        {
+            return device.CreateGraphicsPipelineState(description);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Failed to create D3D12 spline pipeline.", ex);
+        }
+    }
+
     private ID3D12PipelineState CreateSdfObjectProxyPipelineState(string path)
     {
         return CreateFullscreenPipelineState(path, "D3D12SdfObjectProxyVS", "D3D12SdfProxyPS", [SceneHdrFormat, SceneHdrFormat, SceneHdrFormat, SceneHdrFormat], enableDepth: true);
@@ -2946,6 +3058,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Vector4 FractalReservoirInfo,
         Vector4 FractalReservoirFrame);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct D3D12SplineVertex(
+        Vector3 Position,
+        Vector4 Color);
+
     private sealed record D3D12ShaderPaths(
         string HeightField,
         string Scene,
@@ -2988,6 +3105,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         ID3D12PipelineState HeightFieldBase,
         ID3D12PipelineState HeightFieldBrush,
         ID3D12PipelineState Scene,
+        ID3D12PipelineState Spline,
         ID3D12PipelineState TemporalGaussian,
         ID3D12PipelineState GpuSensorFusion,
         ID3D12PipelineState FractalSurfaceSplatRender,
@@ -3018,6 +3136,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             FractalSurfaceSplatRender.Dispose();
             GpuSensorFusion.Dispose();
             TemporalGaussian.Dispose();
+            Spline.Dispose();
             foreach (var sdfProxy in SdfProxies)
             {
                 sdfProxy.Dispose();

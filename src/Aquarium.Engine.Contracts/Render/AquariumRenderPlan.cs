@@ -500,4 +500,24 @@ public sealed class AquariumSceneState
     public AquariumCalibrationEventFrame CalibrationEventFrame { get; init; } = AquariumCalibrationEventFrame.Empty;
 
     public AquariumGpuFusionField GpuFusionField { get; init; } = AquariumGpuFusionField.Empty;
+
+    public AquariumSplineFrame SplineFrame { get; init; } = AquariumSplineFrame.Empty;
 }
+
+public sealed class AquariumSplineFrame
+{
+    public static AquariumSplineFrame Empty { get; } = new();
+
+    public IReadOnlyList<AquariumSpline3D> Splines { get; init; } = [];
+
+    public bool HasInput => Splines.Count > 0;
+}
+
+public sealed record AquariumSpline3D(
+    string Id,
+    IReadOnlyList<AquariumSplineVertex> Vertices,
+    float Thickness = 1.0f);
+
+public readonly record struct AquariumSplineVertex(
+    Vector3 Position,
+    Vector4 Color);

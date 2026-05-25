@@ -78,6 +78,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootFractalRadiosityReservoirs = 4;
     private const int RootFractalFlameStates = 5;
     private const int RootFractalProgramTransforms = 6;
+    private const int RootFractalTextureSplinePrograms = 7;
+    private const int RootFractalTextureSamples = 8;
     private static readonly DebugUi.DebugUiOption[] RenderDebugOptions =
     [
         new(0, "Final"),
@@ -177,6 +179,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private D3D12StructuredBuffer? fractalRadiosityReservoirBuffer;
     private D3D12StructuredBuffer? fractalFlameStateBuffer;
     private D3D12StructuredBuffer? fractalProgramTransformBuffer;
+    private D3D12StructuredBuffer? bufferFieldTextureSplineProgramBuffer;
+    private D3D12StructuredBuffer? bufferFieldTextureSampleBuffer;
     private readonly Dictionary<string, D3D12ExternalSensorTexture> externalSensorTextures = new(StringComparer.Ordinal);
     private readonly D3D12CubeTexture studioPmremTexture;
     private readonly D3D12CubeTexture studioIrradianceTexture;
@@ -198,6 +202,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private bool temporalGaussiansGpuGenerated;
     private AquariumFractalReservoirField activeFractalReservoirField = AquariumFractalReservoirField.Empty;
     private AquariumBufferFieldFrame activeBufferFieldFrame = AquariumBufferFieldFrame.Empty;
+    private AquariumPackedTextureSplineFieldProgram[] activeTextureSplinePrograms = [];
+    private float[] activeTextureFieldSamples = [];
     private AquariumSplineFrame activeSplineFrame = AquariumSplineFrame.Empty;
     private Viewport viewport;
     private RawRect scissorRect;
@@ -569,6 +575,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCameraTarget = frame.CameraTarget;
         EnsureFractalReservoirBuffers(activeFractalReservoirField);
         EnsureFractalProgramTransformBuffer();
+        EnsureBufferFieldProgramBuffers();
         var activeGpuSensorInput = frame.Scene.GpuSensorFrame.HasInput;
         var activeAccumulationWindow = activeGpuSensorInput
             ? frame.Scene.GpuSensorFrame.AccumulationWindowSeconds
@@ -875,6 +882,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         studioIrradianceTexture.Dispose();
         studioPmremTexture.Dispose();
         DisposeFractalReservoirBuffers();
+        bufferFieldTextureSplineProgramBuffer?.Dispose();
+        bufferFieldTextureSampleBuffer?.Dispose();
         temporalGaussianBuffer.Dispose();
         gpuFusionPointBuffer.Dispose();
         gpuFusionSeedBuffer.Dispose();
@@ -1422,8 +1431,46 @@ public sealed class D3D12Renderer : IAquariumRenderer
         resourceRegistry.Add("fractal-program-transform-buffer", fractalProgramTransformBuffer);
     }
 
+    private void EnsureBufferFieldProgramBuffers()
+    {
+        if (!activeFractalReservoirField.HasInput || !activeBufferFieldFrame.HasInput)
+        {
+            return;
+        }
+
+        var requiredProgramCount = Math.Max(activeTextureSplinePrograms.Length, 1);
+        if (bufferFieldTextureSplineProgramBuffer is null || bufferFieldTextureSplineProgramBuffer.ElementCount < requiredProgramCount)
+        {
+            WaitForGpu();
+            resourceRegistry.RemoveStructuredBuffer("buffer-field-texture-spline-program-buffer");
+            bufferFieldTextureSplineProgramBuffer?.Dispose();
+            bufferFieldTextureSplineProgramBuffer = new D3D12StructuredBuffer(
+                device,
+                requiredProgramCount,
+                Marshal.SizeOf<AquariumPackedTextureSplineFieldProgram>(),
+                "Aquarium D3D12 Buffer Field Texture Spline Program Buffer");
+            resourceRegistry.Add("buffer-field-texture-spline-program-buffer", bufferFieldTextureSplineProgramBuffer);
+        }
+
+        var requiredSampleCount = Math.Max(activeTextureFieldSamples.Length, 1);
+        if (bufferFieldTextureSampleBuffer is null || bufferFieldTextureSampleBuffer.ElementCount < requiredSampleCount)
+        {
+            WaitForGpu();
+            resourceRegistry.RemoveStructuredBuffer("buffer-field-texture-sample-buffer");
+            bufferFieldTextureSampleBuffer?.Dispose();
+            bufferFieldTextureSampleBuffer = new D3D12StructuredBuffer(
+                device,
+                requiredSampleCount,
+                Marshal.SizeOf<float>(),
+                "Aquarium D3D12 Buffer Field Texture Sample Buffer");
+            resourceRegistry.Add("buffer-field-texture-sample-buffer", bufferFieldTextureSampleBuffer);
+        }
+    }
+
     private void DisposeFractalReservoirBuffers()
     {
+        resourceRegistry.RemoveStructuredBuffer("buffer-field-texture-sample-buffer");
+        resourceRegistry.RemoveStructuredBuffer("buffer-field-texture-spline-program-buffer");
         resourceRegistry.RemoveStructuredBuffer("fractal-program-transform-buffer");
         resourceRegistry.RemoveStructuredBuffer("fractal-flame-state-buffer");
         resourceRegistry.RemoveStructuredBuffer("fractal-radiosity-reservoir-buffer");
@@ -1436,12 +1483,16 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fractalPbrReservoirBuffer?.Dispose();
         fractalSdfReservoirBuffer?.Dispose();
         fractalSplatBuffer?.Dispose();
+        bufferFieldTextureSampleBuffer?.Dispose();
+        bufferFieldTextureSplineProgramBuffer?.Dispose();
         fractalProgramTransformBuffer = null;
         fractalFlameStateBuffer = null;
         fractalRadiosityReservoirBuffer = null;
         fractalPbrReservoirBuffer = null;
         fractalSdfReservoirBuffer = null;
         fractalSplatBuffer = null;
+        bufferFieldTextureSampleBuffer = null;
+        bufferFieldTextureSplineProgramBuffer = null;
     }
 
     private (int Width, int Height) ResolveGraphTargetSize(AquariumTargetSize size)
@@ -1896,6 +1947,16 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 fractalProgramTransformBuffer.UploadPartial(activeCommandList, frameResources.UploadRing, emptyProgram);
             }
 
+            if (activeTextureSplinePrograms.Length > 0 && bufferFieldTextureSplineProgramBuffer is not null)
+            {
+                bufferFieldTextureSplineProgramBuffer.UploadPartial(activeCommandList, frameResources.UploadRing, activeTextureSplinePrograms);
+            }
+
+            if (activeTextureFieldSamples.Length > 0 && bufferFieldTextureSampleBuffer is not null)
+            {
+                bufferFieldTextureSampleBuffer.UploadPartial(activeCommandList, frameResources.UploadRing, activeTextureFieldSamples);
+            }
+
             fractalSplatBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
             fractalSdfReservoirBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
             fractalPbrReservoirBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
@@ -1912,6 +1973,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             activeCommandList.SetComputeRootUnorderedAccessView(RootFractalRadiosityReservoirs, fractalRadiosityReservoirBuffer.Resource.GPUVirtualAddress);
             activeCommandList.SetComputeRootUnorderedAccessView(RootFractalFlameStates, fractalFlameStateBuffer.Resource.GPUVirtualAddress);
             activeCommandList.SetComputeRootShaderResourceView(RootFractalProgramTransforms, fractalProgramTransformBuffer.Resource.GPUVirtualAddress);
+            activeCommandList.SetComputeRootShaderResourceView(RootFractalTextureSplinePrograms, bufferFieldTextureSplineProgramBuffer?.Resource.GPUVirtualAddress ?? fractalProgramTransformBuffer.Resource.GPUVirtualAddress);
+            activeCommandList.SetComputeRootShaderResourceView(RootFractalTextureSamples, bufferFieldTextureSampleBuffer?.Resource.GPUVirtualAddress ?? fractalProgramTransformBuffer.Resource.GPUVirtualAddress);
             Dispatch(fractalSplatPipelineState!, splatDispatchCount);
             activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(fractalSplatBuffer.Resource));
             Dispatch(fractalSdfReservoirPipelineState!, activeFractalReservoirField.ReservoirUpdatesPerPass);
@@ -1938,8 +2001,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCommandList.SetComputeRoot32BitConstant(RootFractalConstants, activeFractalReservoirField.Seed, 3);
         activeCommandList.SetComputeRoot32BitConstant(RootFractalConstants, (uint)activeFractalReservoirField.CandidatesPerReservoirUpdate, 4);
         activeCommandList.SetComputeRoot32BitConstant(RootFractalConstants, (uint)activeFractalReservoirField.ReservoirUpdatesPerPass, 5);
-        activeCommandList.SetComputeRoot32BitConstant(RootFractalConstants, (uint)activeFractalProgramTransforms.Length, 6);
-        activeCommandList.SetComputeRoot32BitConstant(RootFractalConstants, activeFractalProgramTransforms.Length > 0 ? 1u : 0u, 7);
+        activeCommandList.SetComputeRoot32BitConstant(RootFractalConstants, (uint)Math.Max(activeFractalProgramTransforms.Length, activeTextureSplinePrograms.Length), 6);
+        activeCommandList.SetComputeRoot32BitConstant(RootFractalConstants, activeBufferFieldFrame.TextureSplineFields.Count > 0 ? 3u : activeFractalReservoirField.ProgramMode, 7);
         activeCommandList.SetComputeRoot32BitConstant(RootFractalConstants, (uint)splatDispatchCount, 8);
         activeCommandList.SetComputeRoot32BitConstant(RootFractalConstants, BitConverter.SingleToUInt32Bits(activeFractalReservoirField.PriorityFocus.X), 9);
         activeCommandList.SetComputeRoot32BitConstant(RootFractalConstants, BitConverter.SingleToUInt32Bits(activeFractalReservoirField.PriorityFocus.Y), 10);
@@ -2047,12 +2110,16 @@ public sealed class D3D12Renderer : IAquariumRenderer
         gpuFusionPointCount = 0;
         gpuFusionPointSource = default;
         temporalGaussiansGpuGenerated = false;
-        activeFractalReservoirField = scene.FractalReservoirField.HasInput
+        activeFractalReservoirField = scene.BufferFieldFrame.Reservoir.HasInput
+            ? scene.BufferFieldFrame.Reservoir
+            : scene.FractalReservoirField.HasInput
             ? scene.FractalReservoirField
             : AquariumFractalReservoirField.Empty;
         activeBufferFieldFrame = scene.BufferFieldFrame.HasInput
             ? scene.BufferFieldFrame
             : AquariumBufferFieldFrame.Empty;
+        activeTextureSplinePrograms = PackTextureSplinePrograms(activeBufferFieldFrame);
+        activeTextureFieldSamples = FlattenTextureSamples(activeBufferFieldFrame);
         activeSplineFrame = scene.SplineFrame.HasInput
             ? scene.SplineFrame
             : AquariumSplineFrame.Empty;
@@ -2206,6 +2273,72 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new Vector4(orientation.X, orientation.Y, orientation.Z, orientation.W),
             gaussian.ColorOpacity,
             new Vector4(gaussian.ShapePower, 0.0f, 0.0f, 0.0f));
+    }
+
+    private static AquariumPackedTextureSplineFieldProgram[] PackTextureSplinePrograms(AquariumBufferFieldFrame frame)
+    {
+        if (!frame.HasInput || frame.TextureSplineFields.Count == 0)
+        {
+            return [];
+        }
+
+        var textureOffsets = new Dictionary<string, (AquariumTextureFieldBinding Texture, int Offset, int Index)>(StringComparer.Ordinal);
+        var offset = 0;
+        for (var index = 0; index < frame.Textures.Count; index++)
+        {
+            var texture = frame.Textures[index];
+            textureOffsets[texture.Id] = (texture, offset, index);
+            offset += texture.Samples.Count;
+        }
+
+        var programs = new AquariumPackedTextureSplineFieldProgram[frame.TextureSplineFields.Count];
+        for (var index = 0; index < frame.TextureSplineFields.Count; index++)
+        {
+            var program = frame.TextureSplineFields[index];
+            if (!textureOffsets.TryGetValue(program.TextureId, out var textureItem))
+            {
+                continue;
+            }
+
+            var texture = textureItem.Texture;
+            var appearance = program.Appearance.Normalized();
+            var policy = program.ProbePolicy.Normalized();
+            programs[index] = new AquariumPackedTextureSplineFieldProgram(
+                new Vector4(textureItem.Index, texture.Width, texture.Height, texture.Channels),
+                new Vector4((float)program.FrequencyAxis, (float)texture.RollingMode, texture.RollingOffset, textureItem.Offset),
+                new Vector4(program.FirstColumn, program.ColumnCount, program.ColumnStride, program.RollingWindowModulo),
+                new Vector4(program.Subdivisions, policy.MaxProbeCount, policy.BaseDensity, policy.MinimumVisualContribution),
+                new Vector4(program.Origin, program.AmplitudeScale),
+                new Vector4(program.AxisStep, appearance.Radius),
+                new Vector4(program.ColumnStep, appearance.Alpha),
+                appearance.Emission,
+                new Vector4(appearance.ZeroThreshold, appearance.Feather, appearance.TangentWeight, appearance.CurvatureWeight),
+                new Vector4(appearance.NormalWeight, appearance.DerivativeWeight, policy.Seed, 0.0f));
+        }
+
+        return programs;
+    }
+
+    private static float[] FlattenTextureSamples(AquariumBufferFieldFrame frame)
+    {
+        if (!frame.HasInput || frame.Textures.Count == 0)
+        {
+            return [];
+        }
+
+        var samples = new float[frame.Textures.Sum(texture => texture.Samples.Count)];
+        var offset = 0;
+        foreach (var texture in frame.Textures)
+        {
+            for (var index = 0; index < texture.Samples.Count; index++)
+            {
+                samples[offset + index] = texture.Samples[index];
+            }
+
+            offset += texture.Samples.Count;
+        }
+
+        return samples;
     }
 
     private static float SceneFlags(AquariumSceneState scene)
@@ -2791,6 +2924,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(3, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(4, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(0, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(1, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(2, 0), ShaderVisibility.All),
         };
         var description = new RootSignatureDescription(
             RootSignatureFlags.None,

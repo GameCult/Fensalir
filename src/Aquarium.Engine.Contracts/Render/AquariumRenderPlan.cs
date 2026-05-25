@@ -461,6 +461,8 @@ public sealed class AquariumFractalReservoirField
 
     public IReadOnlyList<AquariumPackedFractalIfsTransform> ProgramTransforms { get; init; } = [];
 
+    public uint ProgramMode { get; init; }
+
     public Vector4 WorldCenterRadius { get; init; }
 
     public Vector4 PriorityFocus { get; init; }
@@ -519,8 +521,81 @@ public sealed class AquariumBufferFieldFrame
 
     public IReadOnlyList<AquariumSplineTubeField> SplineTubeFields { get; init; } = [];
 
-    public bool HasInput => SplineTubeFields.Count > 0;
+    public IReadOnlyList<AquariumTextureFieldBinding> Textures { get; init; } = [];
+
+    public IReadOnlyList<AquariumTextureSplineFieldProgram> TextureSplineFields { get; init; } = [];
+
+    public AquariumFractalReservoirField Reservoir { get; init; } = AquariumFractalReservoirField.Empty;
+
+    public string? SourceScript { get; init; }
+
+    public bool HasInput => SplineTubeFields.Count > 0 || TextureSplineFields.Count > 0;
 }
+
+public enum AquariumTextureAxis
+{
+    X = 0,
+    Y = 1,
+}
+
+public enum AquariumRollingModuloMode
+{
+    None = 0,
+    Columns = 1,
+    Rows = 2,
+}
+
+public sealed record AquariumTextureFieldBinding(
+    string Id,
+    int Width,
+    int Height,
+    int Channels,
+    int RollingOffset,
+    AquariumRollingModuloMode RollingMode,
+    IReadOnlyList<float> Samples)
+{
+    public bool HasInput =>
+        !string.IsNullOrWhiteSpace(Id) &&
+        Width > 0 &&
+        Height > 0 &&
+        Channels > 0 &&
+        Samples.Count >= Width * Height * Channels;
+}
+
+public sealed record AquariumTextureSplineFieldProgram(
+    string Id,
+    string TextureId,
+    AquariumTextureAxis FrequencyAxis,
+    int FirstColumn,
+    int ColumnCount,
+    int ColumnStride,
+    int RollingWindowModulo,
+    int Subdivisions,
+    Vector3 Origin,
+    Vector3 AxisStep,
+    Vector3 ColumnStep,
+    float AmplitudeScale,
+    AquariumSplineTubeAppearance Appearance,
+    AquariumSplineTubeProbePolicy ProbePolicy,
+    IReadOnlyList<AquariumFieldGraphNode> SurfaceGraph);
+
+public sealed record AquariumFieldGraphNode(
+    string Id,
+    string Op,
+    IReadOnlyList<string> Inputs,
+    Vector4 Value);
+
+public readonly record struct AquariumPackedTextureSplineFieldProgram(
+    Vector4 DimensionsAxisMode,
+    Vector4 AxisModeOffset,
+    Vector4 ColumnModulo,
+    Vector4 SubdivisionProbe,
+    Vector4 OriginAmplitude,
+    Vector4 AxisStepRadius,
+    Vector4 ColumnStepAlpha,
+    Vector4 Emission,
+    Vector4 SurfaceWeights0,
+    Vector4 SurfaceWeights1);
 
 public sealed record AquariumSplineTubeField(
     string Id,
@@ -597,6 +672,10 @@ public readonly record struct AquariumSplineTubeProbePolicy(
 public sealed class AquariumBufferFieldFrameBuilder
 {
     private readonly List<AquariumSplineTubeField> splineTubeFields = [];
+    private readonly List<AquariumTextureFieldBinding> textures = [];
+    private readonly List<AquariumTextureSplineFieldProgram> textureSplineFields = [];
+    private AquariumFractalReservoirField reservoir = AquariumFractalReservoirField.Empty;
+    private string? sourceScript;
 
     public AquariumBufferFieldFrameBuilder SplineTube(
         string id,
@@ -616,7 +695,51 @@ public sealed class AquariumBufferFieldFrameBuilder
         return this;
     }
 
-    public AquariumBufferFieldFrame Build() => new() { SplineTubeFields = splineTubeFields };
+    public AquariumBufferFieldFrameBuilder Texture(
+        string id,
+        int width,
+        int height,
+        int channels,
+        int rollingOffset,
+        AquariumRollingModuloMode rollingMode,
+        IReadOnlyList<float> samples)
+    {
+        var texture = new AquariumTextureFieldBinding(id, width, height, channels, rollingOffset, rollingMode, samples);
+        if (!texture.HasInput)
+        {
+            throw new ArgumentException($"Texture field `{id}` has invalid dimensions or sample count.", nameof(samples));
+        }
+
+        textures.Add(texture);
+        return this;
+    }
+
+    public AquariumBufferFieldFrameBuilder TextureSplineField(AquariumTextureSplineFieldProgram program)
+    {
+        textureSplineFields.Add(program);
+        return this;
+    }
+
+    public AquariumBufferFieldFrameBuilder Reservoir(AquariumFractalReservoirField field)
+    {
+        reservoir = field;
+        return this;
+    }
+
+    public AquariumBufferFieldFrameBuilder Script(string script)
+    {
+        sourceScript = script;
+        return this;
+    }
+
+    public AquariumBufferFieldFrame Build() => new()
+    {
+        SplineTubeFields = splineTubeFields,
+        Textures = textures,
+        TextureSplineFields = textureSplineFields,
+        Reservoir = reservoir,
+        SourceScript = sourceScript,
+    };
 }
 
 public sealed class AquariumSplineFrame

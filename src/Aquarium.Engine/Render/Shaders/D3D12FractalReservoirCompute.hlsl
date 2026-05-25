@@ -41,6 +41,20 @@ struct FractalIfsTransform
     float4 postTranslation;
 };
 
+struct TextureSplineFieldProgram
+{
+    float4 dimensionsAxisMode;
+    float4 axisModeOffset;
+    float4 columnModulo;
+    float4 subdivisionProbe;
+    float4 originAmplitude;
+    float4 axisStepRadius;
+    float4 columnStepAlpha;
+    float4 emission;
+    float4 surfaceWeights0;
+    float4 surfaceWeights1;
+};
+
 struct FlameIterationState
 {
     float4 pointSupportMaterial;
@@ -70,6 +84,8 @@ RWStructuredBuffer<PbrMaterialReservoir> PbrReservoirs : register(u2);
 RWStructuredBuffer<RadiosityReservoir> RadiosityReservoirs : register(u3);
 RWStructuredBuffer<FlameIterationState> FlameStates : register(u4);
 StructuredBuffer<FractalIfsTransform> ProgramTransforms : register(t0);
+StructuredBuffer<TextureSplineFieldProgram> TextureSplinePrograms : register(t1);
+StructuredBuffer<float> TextureFieldSamples : register(t2);
 
 static const float FIELD_ENCODING_SIGNED_DISTANCE = 0.0;
 static const float FIELD_ENCODING_DENSITY = 2.0;
@@ -146,6 +162,63 @@ float3 CubeSphereDirection(float face, float2 uv)
 
 float3 FractalPoint(uint index, out float radius, out float fieldEncoding)
 {
+    if (ProgramTransformCount > 0u && ProgramMode == 3u)
+    {
+        uint programIndex = index % ProgramTransformCount;
+        TextureSplineFieldProgram program = TextureSplinePrograms[programIndex];
+        uint localIndex = index / ProgramTransformCount;
+        uint width = max((uint)round(program.dimensionsAxisMode.y), 1u);
+        uint height = max((uint)round(program.dimensionsAxisMode.z), 1u);
+        uint channels = max((uint)round(program.dimensionsAxisMode.w), 1u);
+        uint frequencyAxis = (uint)round(program.axisModeOffset.x);
+        uint rollingMode = (uint)round(program.axisModeOffset.y);
+        uint rollingOffset = (uint)round(program.axisModeOffset.z);
+        uint sampleOffset = (uint)round(program.axisModeOffset.w);
+        uint firstColumn = (uint)max(round(program.columnModulo.x), 0.0);
+        uint columnCount = max((uint)round(program.columnModulo.y), 1u);
+        uint columnStride = max((uint)round(program.columnModulo.z), 1u);
+        uint rollingModulo = (uint)max(round(program.columnModulo.w), 0.0);
+        uint axisSamples = frequencyAxis == 0u ? width : height;
+        uint column = (localIndex / axisSamples) % columnCount;
+        uint frequencyIndex = localIndex % axisSamples;
+        uint textureColumn = firstColumn + column * columnStride;
+        if (rollingModulo > 0u)
+        {
+            textureColumn = (textureColumn + rollingOffset) % rollingModulo;
+        }
+
+        uint x = frequencyAxis == 0u ? frequencyIndex : textureColumn;
+        uint y = frequencyAxis == 0u ? textureColumn : frequencyIndex;
+        if (rollingMode == 1u)
+        {
+            x = (x + rollingOffset) % width;
+        }
+        else if (rollingMode == 2u)
+        {
+            y = (y + rollingOffset) % height;
+        }
+
+        x = min(x, width - 1u);
+        y = min(y, height - 1u);
+        uint sampleIndex = sampleOffset + ((y * width + x) * channels);
+        float amplitude = TextureFieldSamples[sampleIndex];
+        uint h = Hash(index + FrameIndex * 1664525u + asuint(program.surfaceWeights1.z));
+        float jitter = (Random01(h) - 0.5) / max((float)axisSamples, 1.0);
+        float t = ((float)frequencyIndex + 0.5 + jitter) / max((float)axisSamples, 1.0);
+        float c = ((float)column + 0.5) / max((float)columnCount, 1.0);
+        float3 p = program.originAmplitude.xyz +
+            program.axisStepRadius.xyz * ((float)frequencyIndex + jitter) +
+            program.columnStepAlpha.xyz * (float)column +
+            float3(0.0, amplitude * program.originAmplitude.w, 0.0);
+
+        float neighbor = TextureFieldSamples[sampleOffset + ((y * width + min(x + 1u, width - 1u)) * channels)];
+        float derivative = neighbor - amplitude;
+        float visualContribution = saturate(abs(amplitude) + abs(derivative) * program.surfaceWeights0.w);
+        radius = max(program.axisStepRadius.w * (0.55 + visualContribution * 0.90), 0.0002);
+        fieldEncoding = FIELD_ENCODING_DENSITY;
+        return p + float3(0.0, 0.0, (Random01(h + 31u) - 0.5) * radius * 0.35 + t * 0.0 + c * 0.0);
+    }
+
     if (ProgramTransformCount > 0u && ProgramMode == 2u)
     {
         fieldEncoding = FIELD_ENCODING_DENSITY;
@@ -403,7 +476,10 @@ void D3D12FractalSplatReceiptCS(uint3 id : SV_DispatchThreadID)
     splat.centerRadius = float4(p, radius);
     splat.orientation = float4(0.0, 0.0, 0.0, 1.0);
     splat.radiiFalloff = float4(radius, radius * 0.72, radius * 0.45, 4.0);
-    splat.materialConfidence = float4((float)(h & 1023u) / 1023.0, 1.0, fieldEncoding, 1.0);
+    float material = ProgramMode == 3u
+        ? saturate(abs(p.y) * 0.7 + radius * 18.0 + Random01(h) * 0.15)
+        : (float)(h & 1023u) / 1023.0;
+    splat.materialConfidence = float4(material, 1.0, fieldEncoding, 1.0);
     splat.key = float4((float)index, (float)FrameIndex, (float)Depth, asfloat(h));
     Splats[index] = splat;
 }

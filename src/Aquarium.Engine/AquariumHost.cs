@@ -22,7 +22,7 @@ public static class AquariumHost
         var splashPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Fensalir-Splash.bmp");
         using var window = Win32Window.Create("Fensalir", width, height, input, iconPath, splashPath, visible: !runtime.Options.Headless);
         window.PaintSplash("Fensalir", "Preparing runtime state");
-        using var synthHost = new AquariumSynthHost();
+        AquariumSynthHost? synthHost = null;
         using var renderer = CreateRenderer(
             window.Handle,
             window.ClientWidth,
@@ -43,75 +43,84 @@ public static class AquariumHost
         var capturedFrame = false;
         IAquariumRuntime? sceneReadyRuntime = null;
 
-        while (true)
+        try
         {
-            input.BeginFrame();
-            if (!window.PumpMessages())
+            while (true)
             {
-                break;
-            }
-
-            var now = frameClock.Elapsed;
-            var deltaSeconds = (float)(now - lastFrame).TotalSeconds;
-            lastFrame = now;
-
-            renderer.UpdateUi(input, runtimeLoader.Runtime.Ui);
-            if (runtime.Options.Headless)
-            {
-                renderer.DebugUiVisible = false;
-            }
-
-            var runtimeInput = renderer.CapturesInput ? input.WithoutInteractiveInput() : input;
-            if (!renderer.CapturesInput)
-            {
-                ApplyRendererDebugInput(renderer, input);
-            }
-
-            SyncRendererSettingsToRuntime(renderer, runtimeLoader.Runtime);
-            runtimeLoader.Update(deltaSeconds, runtimeInput);
-            synthHost.Update(AquariumSynthDocument.Combine(runtimeLoader.Runtime.Synth, renderer.DebugSynth), runtimeLoader.Runtime.Audio, deltaSeconds);
-            if (!ReferenceEquals(settingsRuntime, runtimeLoader.Runtime))
-            {
-                settingsRuntime = runtimeLoader.Runtime;
-                renderer.ApplyGraphicsSettings(settingsRuntime.GraphicsSettings);
-            }
-
-            var renderFrame = runtimeLoader.Runtime.ComposeFrame(
-                runtimeLoader.Runtime.Frame,
-                new AquariumFrameInput(input.MousePosition, window.ClientWidth, window.ClientHeight));
-            renderer.Render(renderFrame, window.ClientWidth, window.ClientHeight);
-            if (!runtime.Options.Headless && !renderer.HasPresentedReadyFrame)
-            {
-                window.PaintSplash("Fensalir", "Compiling renderer pipelines");
-            }
-
-            frames++;
-            if (renderer.HasPresentedReadyFrame)
-            {
-                readyFrames++;
-                var activeRuntime = runtimeLoader.Runtime;
-                if (!ReferenceEquals(sceneReadyRuntime, activeRuntime))
+                input.BeginFrame();
+                if (!window.PumpMessages())
                 {
-                    activeRuntime.OnSceneReady();
-                    sceneReadyRuntime = activeRuntime;
+                    break;
+                }
+
+                var now = frameClock.Elapsed;
+                var deltaSeconds = (float)(now - lastFrame).TotalSeconds;
+                lastFrame = now;
+
+                renderer.UpdateUi(input, runtimeLoader.Runtime.Ui);
+                if (runtime.Options.Headless)
+                {
+                    renderer.DebugUiVisible = false;
+                }
+
+                var runtimeInput = renderer.CapturesInput ? input.WithoutInteractiveInput() : input;
+                if (!renderer.CapturesInput)
+                {
+                    ApplyRendererDebugInput(renderer, input);
+                }
+
+                SyncRendererSettingsToRuntime(renderer, runtimeLoader.Runtime);
+                runtimeLoader.Update(deltaSeconds, runtimeInput);
+                synthHost?.Update(AquariumSynthDocument.Combine(runtimeLoader.Runtime.Synth, renderer.DebugSynth), runtimeLoader.Runtime.Audio, deltaSeconds);
+                if (!ReferenceEquals(settingsRuntime, runtimeLoader.Runtime))
+                {
+                    settingsRuntime = runtimeLoader.Runtime;
+                    renderer.ApplyGraphicsSettings(settingsRuntime.GraphicsSettings);
+                }
+
+                var renderFrame = runtimeLoader.Runtime.ComposeFrame(
+                    runtimeLoader.Runtime.Frame,
+                    new AquariumFrameInput(input.MousePosition, window.ClientWidth, window.ClientHeight));
+                renderer.Render(renderFrame, window.ClientWidth, window.ClientHeight);
+                if (!runtime.Options.Headless && !renderer.HasPresentedReadyFrame)
+                {
+                    window.PaintSplash("Fensalir", "Compiling renderer pipelines");
+                }
+
+                frames++;
+                if (renderer.HasPresentedReadyFrame)
+                {
+                    readyFrames++;
+                    var activeRuntime = runtimeLoader.Runtime;
+                    if (!ReferenceEquals(sceneReadyRuntime, activeRuntime))
+                    {
+                        activeRuntime.OnSceneReady();
+                        sceneReadyRuntime = activeRuntime;
+                        synthHost ??= new AquariumSynthHost();
+                        lastFrame = frameClock.Elapsed;
+                    }
+                }
+
+                if (runtime.Options.Headless
+                    && !capturedFrame
+                    && !string.IsNullOrWhiteSpace(captureFramePath)
+                    && readyFrames >= requiredReadyFrames)
+                {
+                    renderer.SaveFramePng(captureFramePath);
+                    Console.WriteLine($"Headless Aquarium frame captured: {Path.GetFullPath(captureFramePath)}");
+                    capturedFrame = true;
+                }
+
+                if (runtime.Options.Headless && frames >= 2 && readyFrames >= requiredReadyFrames)
+                {
+                    Console.WriteLine("Headless Aquarium completed requested frames.");
+                    break;
                 }
             }
-
-            if (runtime.Options.Headless
-                && !capturedFrame
-                && !string.IsNullOrWhiteSpace(captureFramePath)
-                && readyFrames >= requiredReadyFrames)
-            {
-                renderer.SaveFramePng(captureFramePath);
-                Console.WriteLine($"Headless Aquarium frame captured: {Path.GetFullPath(captureFramePath)}");
-                capturedFrame = true;
-            }
-
-            if (runtime.Options.Headless && frames >= 2 && readyFrames >= requiredReadyFrames)
-            {
-                Console.WriteLine("Headless Aquarium completed requested frames.");
-                break;
-            }
+        }
+        finally
+        {
+            synthHost?.Dispose();
         }
 
         return 0;

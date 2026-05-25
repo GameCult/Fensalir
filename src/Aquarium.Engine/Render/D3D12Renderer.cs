@@ -197,6 +197,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private AquariumPackedFractalIfsTransform[] activeFractalProgramTransforms = [];
     private bool temporalGaussiansGpuGenerated;
     private AquariumFractalReservoirField activeFractalReservoirField = AquariumFractalReservoirField.Empty;
+    private AquariumBufferFieldFrame activeBufferFieldFrame = AquariumBufferFieldFrame.Empty;
     private AquariumSplineFrame activeSplineFrame = AquariumSplineFrame.Empty;
     private Viewport viewport;
     private RawRect scissorRect;
@@ -2049,6 +2050,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeFractalReservoirField = scene.FractalReservoirField.HasInput
             ? scene.FractalReservoirField
             : AquariumFractalReservoirField.Empty;
+        activeBufferFieldFrame = scene.BufferFieldFrame.HasInput
+            ? scene.BufferFieldFrame
+            : AquariumBufferFieldFrame.Empty;
         activeSplineFrame = scene.SplineFrame.HasInput
             ? scene.SplineFrame
             : AquariumSplineFrame.Empty;

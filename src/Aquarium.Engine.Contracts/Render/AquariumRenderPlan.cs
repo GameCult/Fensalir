@@ -501,7 +501,122 @@ public sealed class AquariumSceneState
 
     public AquariumGpuFusionField GpuFusionField { get; init; } = AquariumGpuFusionField.Empty;
 
+    public AquariumBufferFieldFrame BufferFieldFrame { get; init; } = AquariumBufferFieldFrame.Empty;
+
     public AquariumSplineFrame SplineFrame { get; init; } = AquariumSplineFrame.Empty;
+}
+
+public sealed class AquariumBufferFieldFrame
+{
+    public static AquariumBufferFieldFrame Empty { get; } = new();
+
+    public static AquariumBufferFieldFrame Compose(Action<AquariumBufferFieldFrameBuilder> compose)
+    {
+        var builder = new AquariumBufferFieldFrameBuilder();
+        compose(builder);
+        return builder.Build();
+    }
+
+    public IReadOnlyList<AquariumSplineTubeField> SplineTubeFields { get; init; } = [];
+
+    public bool HasInput => SplineTubeFields.Count > 0;
+}
+
+public sealed record AquariumSplineTubeField(
+    string Id,
+    string BufferId,
+    AquariumSpline3D Spline,
+    AquariumFieldDomainBinding Domain,
+    AquariumSplineTubeAppearance Appearance,
+    AquariumSplineTubeProbePolicy ProbePolicy);
+
+public readonly record struct AquariumFieldDomainBinding(
+    string SplineDomain,
+    string ObjectDomain,
+    string ParentDomain,
+    Matrix4x4 ObjectToParent,
+    Matrix4x4 ParentToWorld)
+{
+    public static AquariumFieldDomainBinding Identity(string splineDomain, string objectDomain, string parentDomain) => new(
+        splineDomain,
+        objectDomain,
+        parentDomain,
+        Matrix4x4.Identity,
+        Matrix4x4.Identity);
+}
+
+public readonly record struct AquariumSplineTubeAppearance(
+    Vector4 Emission,
+    float Radius,
+    float Alpha,
+    float ZeroThreshold,
+    float Feather,
+    float TangentWeight,
+    float CurvatureWeight,
+    float NormalWeight,
+    float DerivativeWeight)
+{
+    public static AquariumSplineTubeAppearance Default { get; } = new(
+        new Vector4(1.0f, 0.84f, 0.32f, 1.0f),
+        0.018f,
+        1.0f,
+        0.78f,
+        0.22f,
+        1.0f,
+        0.35f,
+        0.25f,
+        0.50f);
+
+    public AquariumSplineTubeAppearance Normalized() => new(
+        Emission,
+        MathF.Max(0.0001f, Radius),
+        Math.Clamp(Alpha, 0.0f, 1.0f),
+        Math.Clamp(ZeroThreshold, 0.0f, 1.0f),
+        MathF.Max(0.0001f, Feather),
+        MathF.Max(0.0f, TangentWeight),
+        MathF.Max(0.0f, CurvatureWeight),
+        MathF.Max(0.0f, NormalWeight),
+        MathF.Max(0.0f, DerivativeWeight));
+}
+
+public readonly record struct AquariumSplineTubeProbePolicy(
+    int MaxProbeCount,
+    float BaseDensity,
+    float MinimumVisualContribution,
+    uint Seed)
+{
+    public static AquariumSplineTubeProbePolicy Default { get; } = new(64, 1.0f, 0.01f, 0xB11FF13Du);
+
+    public AquariumSplineTubeProbePolicy Normalized() => new(
+        Math.Clamp(MaxProbeCount, 1, 4096),
+        MathF.Max(0.0f, BaseDensity),
+        MathF.Max(0.0f, MinimumVisualContribution),
+        Seed);
+}
+
+public sealed class AquariumBufferFieldFrameBuilder
+{
+    private readonly List<AquariumSplineTubeField> splineTubeFields = [];
+
+    public AquariumBufferFieldFrameBuilder SplineTube(
+        string id,
+        string bufferId,
+        AquariumSpline3D spline,
+        AquariumFieldDomainBinding domain,
+        AquariumSplineTubeAppearance? appearance = null,
+        AquariumSplineTubeProbePolicy? probePolicy = null)
+    {
+        splineTubeFields.Add(new AquariumSplineTubeField(
+            id,
+            bufferId,
+            spline,
+            domain,
+            (appearance ?? AquariumSplineTubeAppearance.Default).Normalized(),
+            (probePolicy ?? AquariumSplineTubeProbePolicy.Default).Normalized()));
+        return this;
+    }
+
+    public AquariumBufferFieldFrame Build() => new() { SplineTubeFields = splineTubeFields };
 }
 
 public sealed class AquariumSplineFrame

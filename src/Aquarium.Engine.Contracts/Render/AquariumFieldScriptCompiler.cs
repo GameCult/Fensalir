@@ -14,6 +14,7 @@ public static class AquariumFieldScriptCompiler
         ArgumentNullException.ThrowIfNull(textureBindings);
 
         AquariumFractalReservoirField reservoir = AquariumFractalReservoirField.Empty;
+        var useReservoirLowering = false;
         var textures = new List<AquariumTextureFieldBinding>();
         var programs = new List<AquariumTextureSplineFieldProgram>();
         var nodes = new List<AquariumFieldGraphNode>();
@@ -48,6 +49,11 @@ public static class AquariumFieldScriptCompiler
                     break;
                 case "reservoir":
                     reservoir = ParseReservoir(args, reservoirRadius, lineIndex);
+                    useReservoirLowering = true;
+                    break;
+                case "direct":
+                    useReservoirLowering = false;
+                    reservoir = AquariumFractalReservoirField.Empty;
                     break;
                 default:
                     throw new FormatException($"Unknown field DSL command `{tokens[0]}` at line {lineIndex + 1}.");
@@ -64,7 +70,7 @@ public static class AquariumFieldScriptCompiler
             throw new FormatException("Field DSL must declare at least one `splinefield`.");
         }
 
-        if (!reservoir.HasInput)
+        if (useReservoirLowering && !reservoir.HasInput)
         {
             var splatCount = programs.Sum(program => Math.Max(1, program.ProbePolicy.MaxProbeCount));
             reservoir = DefaultReservoir(splatCount, reservoirRadius);
@@ -75,6 +81,7 @@ public static class AquariumFieldScriptCompiler
             Textures = textures,
             TextureSplineFields = programs,
             Reservoir = reservoir,
+            UseReservoirLowering = useReservoirLowering,
             SourceScript = source,
         };
     }

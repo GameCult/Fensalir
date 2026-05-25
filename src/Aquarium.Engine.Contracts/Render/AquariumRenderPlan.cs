@@ -527,6 +527,8 @@ public sealed class AquariumBufferFieldFrame
 
     public AquariumFractalReservoirField Reservoir { get; init; } = AquariumFractalReservoirField.Empty;
 
+    public bool UseReservoirLowering { get; init; }
+
     public string? SourceScript { get; init; }
 
     public bool HasInput => SplineTubeFields.Count > 0 || TextureSplineFields.Count > 0;
@@ -675,6 +677,7 @@ public sealed class AquariumBufferFieldFrameBuilder
     private readonly List<AquariumTextureFieldBinding> textures = [];
     private readonly List<AquariumTextureSplineFieldProgram> textureSplineFields = [];
     private AquariumFractalReservoirField reservoir = AquariumFractalReservoirField.Empty;
+    private bool useReservoirLowering;
     private string? sourceScript;
 
     public AquariumBufferFieldFrameBuilder SplineTube(
@@ -723,6 +726,14 @@ public sealed class AquariumBufferFieldFrameBuilder
     public AquariumBufferFieldFrameBuilder Reservoir(AquariumFractalReservoirField field)
     {
         reservoir = field;
+        useReservoirLowering = field.HasInput;
+        return this;
+    }
+
+    public AquariumBufferFieldFrameBuilder DirectSdfSurfaces()
+    {
+        reservoir = AquariumFractalReservoirField.Empty;
+        useReservoirLowering = false;
         return this;
     }
 
@@ -738,6 +749,7 @@ public sealed class AquariumBufferFieldFrameBuilder
         Textures = textures,
         TextureSplineFields = textureSplineFields,
         Reservoir = reservoir,
+        UseReservoirLowering = useReservoirLowering,
         SourceScript = sourceScript,
     };
 }

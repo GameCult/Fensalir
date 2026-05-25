@@ -2110,7 +2110,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         gpuFusionPointCount = 0;
         gpuFusionPointSource = default;
         temporalGaussiansGpuGenerated = false;
-        activeFractalReservoirField = scene.BufferFieldFrame.Reservoir.HasInput
+        activeFractalReservoirField = scene.BufferFieldFrame.UseReservoirLowering && scene.BufferFieldFrame.Reservoir.HasInput
             ? scene.BufferFieldFrame.Reservoir
             : scene.FractalReservoirField.HasInput
             ? scene.FractalReservoirField
@@ -2120,9 +2120,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
             : AquariumBufferFieldFrame.Empty;
         activeTextureSplinePrograms = PackTextureSplinePrograms(activeBufferFieldFrame);
         activeTextureFieldSamples = FlattenTextureSamples(activeBufferFieldFrame);
-        activeSplineFrame = scene.SplineFrame.HasInput
-            ? scene.SplineFrame
-            : AquariumSplineFrame.Empty;
+        activeSplineFrame = MergeSplineFrames(
+            scene.SplineFrame.HasInput ? scene.SplineFrame : AquariumSplineFrame.Empty,
+            BuildTextureSplineFrame(activeBufferFieldFrame));
         activeFractalProgramTransforms = activeFractalReservoirField.HasInput && scene.FractalReservoirField.ProgramTransforms.Count > 0
             ? scene.FractalReservoirField.ProgramTransforms as AquariumPackedFractalIfsTransform[] ?? scene.FractalReservoirField.ProgramTransforms.ToArray()
             : [];
@@ -2317,6 +2317,130 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         return programs;
+    }
+
+    private static AquariumSplineFrame BuildTextureSplineFrame(AquariumBufferFieldFrame frame)
+    {
+        if (!frame.HasInput || frame.TextureSplineFields.Count == 0 || frame.Textures.Count == 0)
+        {
+            return AquariumSplineFrame.Empty;
+        }
+
+        var textures = frame.Textures.ToDictionary(texture => texture.Id, StringComparer.Ordinal);
+        var splines = new List<AquariumSpline3D>();
+        foreach (var program in frame.TextureSplineFields)
+        {
+            if (!textures.TryGetValue(program.TextureId, out var texture))
+            {
+                continue;
+            }
+
+            AppendTextureSplineField(splines, texture, program);
+        }
+
+        return splines.Count == 0
+            ? AquariumSplineFrame.Empty
+            : new AquariumSplineFrame { Splines = splines };
+    }
+
+    private static void AppendTextureSplineField(
+        List<AquariumSpline3D> splines,
+        AquariumTextureFieldBinding texture,
+        AquariumTextureSplineFieldProgram program)
+    {
+        var axisSamples = program.FrequencyAxis == AquariumTextureAxis.X ? texture.Width : texture.Height;
+        if (axisSamples <= 1 || texture.Channels <= 0)
+        {
+            return;
+        }
+
+        var columnCount = Math.Clamp(program.ColumnCount, 1, program.FrequencyAxis == AquariumTextureAxis.X ? texture.Height : texture.Width);
+        var style = new AquariumSplineStyle(
+            program.Appearance.Radius,
+            MathF.Max(MathF.Max(program.Appearance.Emission.X, MathF.Max(program.Appearance.Emission.Y, program.Appearance.Emission.Z)) * program.Appearance.Emission.W, 1.0f),
+            program.Appearance.Alpha,
+            program.Appearance.ZeroThreshold,
+            program.Appearance.Feather);
+        for (var column = 0; column < columnCount; column++)
+        {
+            var vertices = new AquariumSplineVertex[axisSamples];
+            var hasContribution = false;
+            for (var frequencyIndex = 0; frequencyIndex < axisSamples; frequencyIndex++)
+            {
+                var textureColumn = program.FirstColumn + column * Math.Max(1, program.ColumnStride);
+                if (program.RollingWindowModulo > 0)
+                {
+                    textureColumn = PositiveModulo(textureColumn + texture.RollingOffset, program.RollingWindowModulo);
+                }
+
+                var x = program.FrequencyAxis == AquariumTextureAxis.X ? frequencyIndex : textureColumn;
+                var y = program.FrequencyAxis == AquariumTextureAxis.X ? textureColumn : frequencyIndex;
+                if (texture.RollingMode == AquariumRollingModuloMode.Columns)
+                {
+                    x = PositiveModulo(x + texture.RollingOffset, texture.Width);
+                }
+                else if (texture.RollingMode == AquariumRollingModuloMode.Rows)
+                {
+                    y = PositiveModulo(y + texture.RollingOffset, texture.Height);
+                }
+
+                x = Math.Clamp(x, 0, texture.Width - 1);
+                y = Math.Clamp(y, 0, texture.Height - 1);
+                var sample = Sample(texture, x, y);
+                hasContribution |= sample > program.ProbePolicy.MinimumVisualContribution;
+                var position = program.Origin +
+                    program.AxisStep * frequencyIndex +
+                    program.ColumnStep * column +
+                    new Vector3(0.0f, sample * program.AmplitudeScale, 0.0f);
+                var color = Vector4.Lerp(
+                    new Vector4(0.08f, 0.18f, 0.12f, 0.12f),
+                    program.Appearance.Emission,
+                    Math.Clamp(sample, 0.0f, 1.0f));
+                color.W = Math.Clamp(0.16f + sample * program.Appearance.Alpha, 0.0f, 1.0f);
+                vertices[frequencyIndex] = new AquariumSplineVertex(position, color);
+            }
+
+            if (hasContribution)
+            {
+                splines.Add(new AquariumSpline3D(
+                    $"{program.Id}/column/{column}",
+                    vertices,
+                    style,
+                    Math.Clamp(program.Subdivisions, 1, 16)));
+            }
+        }
+    }
+
+    private static AquariumSplineFrame MergeSplineFrames(AquariumSplineFrame first, AquariumSplineFrame second)
+    {
+        if (!first.HasInput)
+        {
+            return second;
+        }
+
+        if (!second.HasInput)
+        {
+            return first;
+        }
+
+        return new AquariumSplineFrame { Splines = first.Splines.Concat(second.Splines).ToArray() };
+    }
+
+    private static float Sample(AquariumTextureFieldBinding texture, int x, int y)
+    {
+        var index = (y * texture.Width + x) * texture.Channels;
+        return index >= 0 && index < texture.Samples.Count ? texture.Samples[index] : 0.0f;
+    }
+
+    private static int PositiveModulo(int value, int modulus)
+    {
+        if (modulus <= 0)
+        {
+            return value;
+        }
+
+        var result = value % modulus;
+        return result < 0 ? result + modulus : result;
     }
 
     private static float[] FlattenTextureSamples(AquariumBufferFieldFrame frame)
@@ -2982,7 +3106,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 Blend.Zero,
                 BlendOperation.Add,
                 LogicOp.Noop,
-                ColorWriteEnable.None);
+                index < 4 ? ColorWriteEnable.All : ColorWriteEnable.None);
         }
 
         var description = new GraphicsPipelineStateDescription
@@ -2994,7 +3118,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             RasterizerState = RasterizerDescription.CullNone,
             DepthStencilState = DepthStencilDescription.None,
             SampleMask = uint.MaxValue,
-            PrimitiveTopologyType = PrimitiveTopologyType.Line,
+            PrimitiveTopologyType = PrimitiveTopologyType.Triangle,
             InputLayout = new InputLayoutDescription(
             [
                 new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),

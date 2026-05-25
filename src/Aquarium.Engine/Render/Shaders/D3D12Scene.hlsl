@@ -434,9 +434,9 @@ SceneOut D3D12SplinePS(SplineVertexOut input)
     float alpha = saturate(input.color.a * coverage);
     SceneOut output;
     output.colorTravel = float4(input.color.rgb * input.material.y, alpha);
-    output.metadata = float4(0.0, 0.0, 0.0, 0.0);
-    output.control = float4(0.0, 0.0, 0.0, 0.0);
-    output.reservoirGuide = float4(1.0, 0.0, 1.0, 0.0);
+    output.metadata = float4(5000.0, 0.0, 0.0, 1.0);
+    output.control = float4(alpha, coverage, input.material.x, 0.0);
+    output.reservoirGuide = float4(saturate(alpha + coverage * 0.5), 0.0, coverage, 0.0);
     output.depth = input.position.z;
     return output;
 }

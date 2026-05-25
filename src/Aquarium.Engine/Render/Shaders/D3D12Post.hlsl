@@ -23,6 +23,8 @@ cbuffer AquariumFrame : register(b0)
     float bloomVeilIntensity;
     float4 cursorWorlds;
     float4 temporalGaussianInfo;
+    float4 cameraFrustumXy;
+    float4 cameraFrustumZ;
 };
 
 Texture2D<float4> sourceTexture : register(t0);
@@ -122,18 +124,21 @@ float3 debugFieldIdColor(float fieldId)
 void cameraBasis(float3 camera, float3 target, out float3 forward, out float3 right, out float3 up)
 {
     forward = normalize(target - camera);
-    right = normalize(cross(forward, float3(0.0, 0.0, 1.0)));
-    up = cross(right, forward);
+    float3 worldUp = abs(forward.y) > 0.96 ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
+    right = normalize(cross(worldUp, forward));
+    up = normalize(cross(forward, right));
 }
 
 float3 rayDirectionForPixel(float2 pixel, float2 jitter, float3 camera, float3 target)
 {
-    float2 ndc = ((pixel + jitter) * 2.0 - resolution) / resolution.y;
+    float2 uv = (pixel + jitter) / max(resolution, float2(1.0, 1.0));
+    float x = lerp(cameraFrustumXy.x, cameraFrustumXy.y, uv.x);
+    float y = lerp(cameraFrustumXy.z, cameraFrustumXy.w, uv.y);
     float3 forward;
     float3 right;
     float3 up;
     cameraBasis(camera, target, forward, right, up);
-    return normalize(forward * 1.6 + right * ndc.x + up * ndc.y);
+    return normalize(forward + right * x + up * y);
 }
 
 float3 temporalPreviousWorldPosition(float3 worldPosition, float fieldId)
@@ -157,8 +162,11 @@ float2 projectWorldToPreviousHistoryUv(float3 worldPosition)
     cameraBasis(previousCameraPosition, previousCameraTarget, forward, right, up);
     float3 delta = worldPosition - previousCameraPosition;
     float z = max(dot(delta, forward), 0.0001);
-    float2 ndc = float2(dot(delta, right), dot(delta, up)) / z * 1.6;
-    float2 pixel = (ndc * resolution.y + resolution) * 0.5 - previousJitterPixels;
+    float2 frustumMin = float2(cameraFrustumXy.x, cameraFrustumXy.z);
+    float2 frustumMax = float2(cameraFrustumXy.y, cameraFrustumXy.w);
+    float2 slope = float2(dot(delta, right), dot(delta, up)) / z;
+    float2 ndc = ((slope - frustumMin) / max(frustumMax - frustumMin, float2(0.0001, 0.0001))) * 2.0 - 1.0;
+    float2 pixel = (ndc * resolution + resolution) * 0.5 - previousJitterPixels;
     return float2(pixel.x / resolution.x, 1.0 - pixel.y / resolution.y);
 }
 

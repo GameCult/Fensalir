@@ -23,6 +23,8 @@ cbuffer AquariumFrame : register(b0)
     float bloomVeilIntensity;
     float4 cursorWorlds;
     float4 temporalGaussianInfo;
+    float4 cameraFrustumXy;
+    float4 cameraFrustumZ;
 };
 
 cbuffer HeightFieldBrushes : register(b1)
@@ -91,18 +93,21 @@ struct SdfSurface
 void cameraBasis(float3 camera, float3 target, out float3 forward, out float3 right, out float3 up)
 {
     forward = normalize(target - camera);
-    right = normalize(cross(forward, float3(0.0, 0.0, 1.0)));
-    up = cross(right, forward);
+    float3 worldUp = abs(forward.y) > 0.96 ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
+    right = normalize(cross(worldUp, forward));
+    up = normalize(cross(forward, right));
 }
 
 float3 rayDirectionForPixel(float2 pixel, float2 jitter, float3 camera, float3 target)
 {
-    float2 ndc = ((pixel + jitter) * 2.0 - resolution) / resolution.y;
+    float2 uv = (pixel + jitter) / max(resolution, float2(1.0, 1.0));
+    float x = lerp(cameraFrustumXy.x, cameraFrustumXy.y, uv.x);
+    float y = lerp(cameraFrustumXy.z, cameraFrustumXy.w, uv.y);
     float3 forward;
     float3 right;
     float3 up;
     cameraBasis(camera, target, forward, right, up);
-    return normalize(forward * 1.6 + right * ndc.x + up * ndc.y);
+    return normalize(forward + right * x + up * y);
 }
 
 float hash21(float2 p)
@@ -294,15 +299,17 @@ SdfObjectProxyVertexOut D3D12SdfObjectProxyVS(uint vertexId : SV_VertexID, uint 
     cameraBasis(cameraPosition, cameraTarget, forward, right, up);
     float3 delta = sdfObject.centerRadius.xyz - cameraPosition;
     float z = max(dot(delta, forward), 0.0001);
-    float2 projected = float2(dot(delta, right), dot(delta, up)) / z * 1.6;
-    float clipAspect = resolution.x / max(resolution.y, 1.0);
+    float2 frustumMin = float2(cameraFrustumXy.x, cameraFrustumXy.z);
+    float2 frustumMax = float2(cameraFrustumXy.y, cameraFrustumXy.w);
+    float2 frustumSize = max(frustumMax - frustumMin, float2(0.0001, 0.0001));
+    float2 slope = float2(dot(delta, right), dot(delta, up)) / z;
     float boundRadius = sdfObject.centerRadius.w * 1.58;
-    float projectedRadius = boundRadius / z * 1.6 + 0.035;
-    float2 clipCenter = float2(projected.x / clipAspect, projected.y);
-    float2 clipRadius = float2(projectedRadius / clipAspect, projectedRadius);
+    float projectedRadius = boundRadius / z + 0.035;
+    float2 clipCenter = ((slope - frustumMin) / frustumSize) * 2.0 - 1.0;
+    float2 clipRadius = projectedRadius * 2.0 / frustumSize;
 
     SdfObjectProxyVertexOut output;
-    output.position = float4(clipCenter + corners[vertexId] * clipRadius, 0.0, 1.0);
+    output.position = float4(clipCenter + corners[vertexId] * clipRadius, saturate(z / max(farDistance, 0.0001)), 1.0);
     output.sdfIndex = (float)SDF_INDEX;
     return output;
 }

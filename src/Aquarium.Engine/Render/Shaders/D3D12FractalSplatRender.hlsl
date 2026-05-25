@@ -23,6 +23,8 @@ cbuffer AquariumFrame : register(b0)
     float bloomVeilIntensity;
     float4 cursorWorlds;
     float4 temporalGaussianInfo;
+    float4 cameraFrustumXy;
+    float4 cameraFrustumZ;
     float4 gpuFusionInfo;
     float4 fractalReservoirInfo;
     float4 fractalReservoirFrame;
@@ -95,17 +97,20 @@ static const float FIELD_ENCODING_EXTINCTION = 3.0;
 void cameraBasis(float3 camera, float3 target, out float3 forward, out float3 right, out float3 up)
 {
     forward = normalize(target - camera);
-    right = normalize(cross(forward, float3(0.0, 0.0, 1.0)));
-    up = cross(right, forward);
+    float3 worldUp = abs(forward.y) > 0.96 ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
+    right = normalize(cross(worldUp, forward));
+    up = normalize(cross(forward, right));
 }
 
 float4 projectWorld(float3 world, float3 camera, float3 forward, float3 right, float3 up, out float travel)
 {
     float3 delta = world - camera;
     travel = max(dot(delta, forward), 0.0001);
-    float2 projected = float2(dot(delta, right), dot(delta, up)) / travel * 1.6;
-    float clipAspect = resolution.x / max(resolution.y, 1.0);
-    return float4(projected.x / clipAspect, projected.y, saturate(travel / max(farDistance, 0.0001)), 1.0);
+    float2 frustumMin = float2(cameraFrustumXy.x, cameraFrustumXy.z);
+    float2 frustumMax = float2(cameraFrustumXy.y, cameraFrustumXy.w);
+    float2 slope = float2(dot(delta, right), dot(delta, up)) / travel;
+    float2 ndc = ((slope - frustumMin) / max(frustumMax - frustumMin, float2(0.0001, 0.0001))) * 2.0 - 1.0;
+    return float4(ndc, saturate(travel / max(farDistance, 0.0001)), 1.0);
 }
 
 uint VisibleSplatIndex(uint instanceId)

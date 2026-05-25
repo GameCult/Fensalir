@@ -571,8 +571,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             return;
         }
 
-        var viewOrigin = frame.CameraTarget;
-        var farDistance = Vector3.Distance(frame.CameraPosition, viewOrigin) + MathF.Max(frame.View.Radius, 0.001f);
+        var cameraFrustum = frame.View.Frustum.Normalized();
+        var farDistance = cameraFrustum.Far;
         var jitterPixels = TemporalJitterPixels(temporalFrameIndex);
         if (temporalFrameIndex == 0)
         {
@@ -626,12 +626,19 @@ public sealed class D3D12Renderer : IAquariumRenderer
             settings.SceneExposure,
             settings.BloomIntensity,
             settings.BloomVeilIntensity,
+            Vector2.Zero,
             new Vector4(frame.CursorWorld.X, frame.CursorWorld.Y, previousCursorWorld.X, previousCursorWorld.Y),
             new Vector4(
                 temporalGaussianCount,
                 gpuSensorCameraCount,
                 gpuSensorTextureCount,
                 gpuFusionSeedCount),
+            new Vector4(
+                cameraFrustum.Left / cameraFrustum.Near,
+                cameraFrustum.Right / cameraFrustum.Near,
+                cameraFrustum.Bottom / cameraFrustum.Near,
+                cameraFrustum.Top / cameraFrustum.Near),
+            new Vector4(cameraFrustum.Near, cameraFrustum.Far, 0.0f, 0.0f),
             new Vector4(
                 acousticConstraintCount,
                 gpuFusionPointCount,
@@ -3562,8 +3569,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
         float Exposure,
         float BloomIntensity,
         float BloomVeilIntensity,
+        Vector2 Padding0,
         Vector4 CursorWorlds,
         Vector4 TemporalGaussianInfo,
+        Vector4 CameraFrustumXy,
+        Vector4 CameraFrustumZ,
         Vector4 GpuFusionInfo,
         Vector4 FractalReservoirInfo,
         Vector4 FractalReservoirFrame);

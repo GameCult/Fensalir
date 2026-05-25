@@ -23,6 +23,8 @@ cbuffer AquariumFrame : register(b0)
     float bloomVeilIntensity;
     float4 cursorWorlds;
     float4 temporalGaussianInfo;
+    float4 cameraFrustumXy;
+    float4 cameraFrustumZ;
 };
 
 Texture2D<float4> heightFieldTexture : register(t0);
@@ -75,18 +77,31 @@ VertexOut FullscreenTriangleVS(uint vertexId : SV_VertexID)
 void cameraBasis(float3 camera, float3 target, out float3 forward, out float3 right, out float3 up)
 {
     forward = normalize(target - camera);
-    right = normalize(cross(forward, float3(0.0, 0.0, 1.0)));
-    up = cross(right, forward);
+    float3 worldUp = abs(forward.y) > 0.96 ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
+    right = normalize(cross(worldUp, forward));
+    up = normalize(cross(forward, right));
 }
 
 float3 rayDirectionForPixel(float2 pixel, float2 jitter, float3 camera, float3 target)
 {
-    float2 ndc = ((pixel + jitter) * 2.0 - resolution) / resolution.y;
+    float2 uv = (pixel + jitter) / max(resolution, float2(1.0, 1.0));
+    float x = lerp(cameraFrustumXy.x, cameraFrustumXy.y, uv.x);
+    float y = lerp(cameraFrustumXy.z, cameraFrustumXy.w, uv.y);
     float3 forward;
     float3 right;
     float3 up;
     cameraBasis(camera, target, forward, right, up);
-    return normalize(forward * 1.6 + right * ndc.x + up * ndc.y);
+    return normalize(forward + right * x + up * y);
+}
+
+float4 projectCameraSpace(float3 view)
+{
+    float z = max(view.z, 0.0001);
+    float2 slope = view.xy / z;
+    float2 frustumMin = float2(cameraFrustumXy.x, cameraFrustumXy.z);
+    float2 frustumMax = float2(cameraFrustumXy.y, cameraFrustumXy.w);
+    float2 uv = (slope - frustumMin) / max(frustumMax - frustumMin, float2(0.0001, 0.0001));
+    return float4(uv * 2.0 - 1.0, saturate(z / max(farDistance, 0.0001)), 1.0);
 }
 
 float2 viewLocal(float2 p)
@@ -403,24 +418,17 @@ struct SplineVertexOut
 
 SplineVertexOut D3D12SplineVS(SplineVertexIn input)
 {
-    float3 forward = normalize(cameraTarget - cameraPosition);
-    float3 worldUp = float3(0.0, 1.0, 0.0);
-    float3 right = normalize(cross(worldUp, forward));
-    float3 up = normalize(cross(forward, right));
+    float3 forward;
+    float3 right;
+    float3 up;
+    cameraBasis(cameraPosition, cameraTarget, forward, right, up);
     float3 view = float3(
         dot(input.position - cameraPosition, right),
         dot(input.position - cameraPosition, up),
         dot(input.position - cameraPosition, forward));
 
-    float aspect = resolution.x / max(resolution.y, 1.0);
-    float tangentHalfFov = 0.54;
-    float z = max(view.z, 0.001);
-    float2 ndc = float2(
-        view.x / (z * tangentHalfFov * aspect),
-        view.y / (z * tangentHalfFov));
-
     SplineVertexOut output;
-    output.position = float4(ndc, saturate(z / max(farDistance, 1.0)), 1.0);
+    output.position = projectCameraSpace(view);
     output.segmentUv = input.segmentUv;
     output.color = input.color;
     output.material = input.material;

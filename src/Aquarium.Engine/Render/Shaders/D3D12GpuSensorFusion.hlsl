@@ -23,6 +23,8 @@ cbuffer AquariumFrame : register(b0)
     float bloomVeilIntensity;
     float4 cursorWorlds;
     float4 temporalGaussianInfo;
+    float4 cameraFrustumXy;
+    float4 cameraFrustumZ;
     float4 gpuFusionInfo;
 };
 

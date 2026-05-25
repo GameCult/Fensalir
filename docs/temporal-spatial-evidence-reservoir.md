@@ -103,6 +103,36 @@ TAA owns pixel history validation and temporal guide buffers. It may consume
 reservoir confidence, sample age, domain id, motion, and temporal-detail lanes,
 but it does not own producer identity or stable spatial evidence.
 
+## Contributor Paths
+
+The reservoir is a consumer of coherent field evidence, not the single factory
+that must manufacture every visible thing. Sensor fusion and adaptive IFS
+probing are important producers, but they do not own the surface contract.
+
+Supported contributor families:
+
+- adaptive IFS and fractal probe candidates, lowered through selected evidence
+  packets when stochastic refresh is the right cost model;
+- live sensor and simulation fusion, where observations become calibrated Form,
+  Appearance, or Transport evidence;
+- direct SDF envelope passes, including bounded object proxies and
+  texture-driven tube or curve fields, when the surface can be evaluated more
+  honestly as an analytic or sampled envelope than as a cloud of probes;
+- traditional mesh geometry, when triangles are the clearest resident summary
+  or authoring surface for the current domain.
+
+Every contributor that wants temporal reuse must emit the shared renderer
+packet shape: color/travel, metadata, control, reservoir-guide evidence, and
+depth where depth participates in validation. The exact producer can be a
+compute pass, a proxy draw, a mesh draw, or a future volume pass. The invariant
+is the evidence contract, not the producer's religion.
+
+Traditional meshes therefore do not bypass the machine. They are accepted when
+they can provide stable identity, motion or previous-frame mapping where needed,
+material/field encoding, conservative bounds, and guide data sufficient for TAA
+and reservoir validation. A mesh that only paints pixels is a fallback draw. A
+mesh that emits field evidence is a first-class contributor.
+
 ## Invariants
 
 - Reservoir math is a pure, testable core before it becomes HLSL.
@@ -116,6 +146,10 @@ but it does not own producer identity or stable spatial evidence.
 - CPU, GPU, RAM, and SSD budgets are inputs to candidate generation and
   residency. They are not hidden side effects of renderer convenience code.
 - Consumer repos do not grow parallel stable-key temporal caches.
+- Producer kind is not authority. SDF proxies, direct tube fields, mesh
+  geometry, sensor fusion, and adaptive probes are all legitimate only to the
+  extent that they satisfy the same evidence, bounds, and temporal-guide
+  contracts.
 
 ## Current State
 

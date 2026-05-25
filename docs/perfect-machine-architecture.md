@@ -13,6 +13,10 @@ Build one real-time spatial evidence machine that can render and resolve:
   station decks;
 - camera/microphone sensor evidence from Mimir-style capture;
 - cached structural probes emitted by IFS `.aquageo` grammars;
+- direct SDF proxy, tube, and curve fields that can write reservoir-guide
+  evidence without first becoming adaptive probe clouds;
+- traditional mesh geometry when triangles are the most coherent resident
+  summary for a surface;
 - stochastic updates that converge under CPU, GPU, RAM, and SSD budgets.
 
 The product requirement is not "infinite detail." It is a compact authored
@@ -58,7 +62,7 @@ This architecture is not invented from the floorboards:
 ## System Pipeline
 
 ```text
-Authored intent or live sensor input
+Authored intent, resident mesh, direct SDF field, or live sensor input
 -> Domain binding
 -> Evidence candidate generation
 -> Target evaluation
@@ -68,13 +72,14 @@ Authored intent or live sensor input
 -> Occupancy graph update
 -> Residency/page scheduling
 -> Backend packet lowering
--> 2D/3D/projected field splat passes
+-> direct SDF, mesh, volume, and/or field splat passes
 -> Temporal resolve guide buffers
 -> Debug/evidence telemetry
 ```
 
-The machine is allowed to have multiple candidate producers. The reservoir
-contract makes them comparable without pretending they are the same thing.
+The machine is allowed to have multiple candidate producers and multiple
+renderer contributors. The reservoir contract makes evidence comparable without
+pretending every surface must originate as an adaptive probe splat.
 
 ## Module Network
 
@@ -395,12 +400,22 @@ The same semantic field can lower to:
 - transparent emission/scattering splat packets;
 - 2D-projected-to-3D splat packets;
 - sensor confidence volumes;
+- direct SDF proxy draws;
+- texture-backed tube, curve, or ribbon fields;
+- resident mesh draws with stable ids, conservative bounds, motion, material
+  encoding, and reservoir-guide outputs;
 - debug overlays.
 
 The first renderer path should use compact-support anisotropic envelopes. They
 borrow Gaussian splatting's covariance discipline without inheriting infinite
 support as a default runtime tax. Surface and volume encodings may share the
 same envelope math; they do not share resolve rules.
+
+This is the explicit escape hatch from brush monoculture. IFS probes, sensor
+fusion, and stochastic splat reservoirs are not the only way to feed the
+spatiotemporal machine. If a mesh, analytic SDF, tube envelope, or volume pass
+can write the same evidence lanes and validation guides, it belongs in the same
+frame contract.
 
 ### 10. TAA Guide Integration
 
@@ -453,8 +468,8 @@ views. It must not walk the authored grammar tree.
 8. Update occupancy graph statistics.
 9. Select hierarchy cut under CPU/GPU/RAM/SSD budgets.
 10. Queue missing pages; keep parent summaries active.
-11. Lower selected evidence to 2D/3D/projected field splat packets.
-12. Render surface and/or transparent field passes.
+11. Lower selected evidence to direct SDF, mesh, volume, or field-splat packets.
+12. Render surface and/or transparent field passes into scene and guide targets.
 13. Resolve with TAA guide buffers.
 14. Emit debug telemetry and evidence logs.
 ```

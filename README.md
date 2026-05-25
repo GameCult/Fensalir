@@ -42,7 +42,7 @@ rendering, fusion, and residency under a budget.
 The working model is:
 
 ```text
-authored geometry, live sensors, IFS probes, simulation claims
+authored geometry, live sensors, IFS probes, simulation claims, direct meshes
   -> domain binding
   -> evidence candidates
   -> target evaluation
@@ -72,6 +72,14 @@ validity, and invalidation codes so temporal reuse can be explained instead of
 merely hoped for. CPU reservoirs, fractal probe samples, track state, and
 validator coverage exist now; full GPU reservoir storage and page residency are
 the next steel that still needs bolting down.
+
+The reservoir spine is not a vow of poverty against geometry. Adaptive IFS
+probing and sensor fusion are producer families, not the only lawful entrance
+into the frame. Direct SDF proxy passes, texture-driven tube fields, volumetric
+envelopes, and traditional mesh geometry may all contribute when they emit the
+shared scene packet: color/travel, metadata, control, depth where applicable,
+and reservoir-guide evidence for temporal validation. Meshes are not heresy;
+unaccountable geometry is.
 
 ## Fractal And Volumetric Field DSL
 

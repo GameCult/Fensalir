@@ -17,7 +17,8 @@ historical branch scar.
   input, domain binding, evidence candidates, reservoir reuse, residency, and
   renderer lowering.
 - `temporal-spatial-evidence-reservoir.md`: stable-key temporal evidence cache
-  for fractal rendering and Mimir-style sensor fusion.
+  for fractal rendering, Mimir-style sensor fusion, direct SDF contributors,
+  and mesh-backed field evidence.
 - `temporal-sdf-gaussian-field.md`: temporal Form-field evidence lane.
 - `tsr-inspired-taa-spec.md`: temporal resolve design and guide-buffer intent.
 - `stochastic-transparent-surface-pipeline.md`: density/extinction and

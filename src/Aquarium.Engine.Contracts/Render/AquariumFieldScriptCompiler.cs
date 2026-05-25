@@ -102,6 +102,8 @@ public static class AquariumFieldScriptCompiler
             Vec3(args, "origin", new Vector3(-0.78f, -0.52f, -0.10f), lineIndex),
             Vec3(args, "axisStep", new Vector3(0.016f, 0.0f, 0.0f), lineIndex),
             Vec3(args, "columnStep", new Vector3(0.0f, -0.055f, 0.030f), lineIndex),
+            Int(args, "columnGroupSize", 0, lineIndex),
+            Vec3(args, "columnGroupStep", Vector3.Zero, lineIndex),
             Float(args, "amplitudeScale", 0.42f, lineIndex),
             new AquariumSplineTubeAppearance(
                 Vec4(args, "emission", new Vector4(1.0f, 0.72f, 0.22f, 1.0f), lineIndex),

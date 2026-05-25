@@ -50,6 +50,7 @@ struct TextureSplineFieldProgram
     float4 originAmplitude;
     float4 axisStepRadius;
     float4 columnStepAlpha;
+    float4 columnGroup;
     float4 emission;
     float4 surfaceWeights0;
     float4 surfaceWeights1;
@@ -206,9 +207,20 @@ float3 FractalPoint(uint index, out float radius, out float fieldEncoding)
         float jitter = (Random01(h) - 0.5) / max((float)axisSamples, 1.0);
         float t = ((float)frequencyIndex + 0.5 + jitter) / max((float)axisSamples, 1.0);
         float c = ((float)column + 0.5) / max((float)columnCount, 1.0);
+        uint columnGroupSize = (uint)max(round(program.columnGroup.w), 0.0);
+        float3 columnOffset = program.columnStepAlpha.xyz * (float)column;
+        if (columnGroupSize > 0u)
+        {
+            uint columnInGroup = column % columnGroupSize;
+            uint groupIndex = column / columnGroupSize;
+            columnOffset =
+                program.columnStepAlpha.xyz * (float)columnInGroup +
+                program.columnGroup.xyz * (float)groupIndex;
+        }
+
         float3 p = program.originAmplitude.xyz +
             program.axisStepRadius.xyz * ((float)frequencyIndex + jitter) +
-            program.columnStepAlpha.xyz * (float)column +
+            columnOffset +
             float3(0.0, amplitude * program.originAmplitude.w, 0.0);
 
         float neighbor = TextureFieldSamples[sampleOffset + ((y * width + min(x + 1u, width - 1u)) * channels)];

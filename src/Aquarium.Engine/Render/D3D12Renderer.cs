@@ -2391,6 +2391,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 new Vector4(program.Origin, program.AmplitudeScale),
                 new Vector4(program.AxisStep, appearance.Radius),
                 new Vector4(program.ColumnStep, appearance.Alpha),
+                new Vector4(program.ColumnGroupStep, Math.Max(0, program.ColumnGroupSize)),
                 appearance.Emission,
                 new Vector4(appearance.ZeroThreshold, appearance.Feather, appearance.TangentWeight, appearance.CurvatureWeight),
                 new Vector4(appearance.NormalWeight, appearance.DerivativeWeight, policy.Seed, 0.0f));
@@ -2537,7 +2538,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 hasContribution |= sample > program.ProbePolicy.MinimumVisualContribution;
                 var position = program.Origin +
                     program.AxisStep * frequencyIndex +
-                    program.ColumnStep * column +
+                    TextureSplineColumnOffset(program, column) +
                     new Vector3(0.0f, sample * program.AmplitudeScale, 0.0f);
                 var color = Vector4.Lerp(
                     new Vector4(0.08f, 0.18f, 0.12f, 0.12f),
@@ -2556,6 +2557,18 @@ public sealed class D3D12Renderer : IAquariumRenderer
                     Math.Clamp(program.Subdivisions, 1, 16)));
             }
         }
+    }
+
+    private static Vector3 TextureSplineColumnOffset(AquariumTextureSplineFieldProgram program, int column)
+    {
+        if (program.ColumnGroupSize <= 0)
+        {
+            return program.ColumnStep * column;
+        }
+
+        var groupSize = Math.Max(1, program.ColumnGroupSize);
+        return program.ColumnStep * (column % groupSize) +
+            program.ColumnGroupStep * (column / groupSize);
     }
 
     private static AquariumSplineFrame MergeSplineFrames(AquariumSplineFrame first, AquariumSplineFrame second)

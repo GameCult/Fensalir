@@ -608,6 +608,8 @@ public sealed record AquariumTextureSplineFieldProgram(
     Vector3 Origin,
     Vector3 AxisStep,
     Vector3 ColumnStep,
+    int ColumnGroupSize,
+    Vector3 ColumnGroupStep,
     float AmplitudeScale,
     AquariumSplineTubeAppearance Appearance,
     AquariumSplineTubeProbePolicy ProbePolicy,
@@ -627,6 +629,7 @@ public readonly record struct AquariumPackedTextureSplineFieldProgram(
     Vector4 OriginAmplitude,
     Vector4 AxisStepRadius,
     Vector4 ColumnStepAlpha,
+    Vector4 ColumnGroup,
     Vector4 Emission,
     Vector4 SurfaceWeights0,
     Vector4 SurfaceWeights1);

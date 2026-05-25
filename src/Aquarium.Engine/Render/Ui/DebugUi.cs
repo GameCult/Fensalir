@@ -153,6 +153,9 @@ internal sealed class DebugUi
             case AquariumUiReadout readout:
                 controls.Add(new ReadoutControl(readout.Label, readout.Read, readout.Tooltip, () => readout.Visible));
                 break;
+            case AquariumUiMelSpectrumStack spectrum:
+                controls.Add(new MelSpectrumStackControl(spectrum.Label, spectrum.Read, spectrum.LaneBins, spectrum.LaneHeight, spectrum.Tooltip, () => spectrum.Visible));
+                break;
         }
     }
 
@@ -436,6 +439,7 @@ internal sealed class DebugUi
             control.Draw(
                 target,
                 directWriteFactory,
+                titleFormat,
                 control.UseMonospace ? monospaceFormat : smallFormat,
                 rowBrush,
                 hoverRowBrush,
@@ -767,6 +771,12 @@ internal sealed class DebugUi
             controls.Add(new ReadoutControl(label, read, tooltip, isVisible));
             return this;
         }
+
+        public DebugUiPanel MelSpectrumStack(string label, Func<IReadOnlyList<AquariumUiMelSpectrumLane>> read, int laneBins = 64, float laneHeight = 112.0f, string? tooltip = null, Func<bool>? isVisible = null)
+        {
+            controls.Add(new MelSpectrumStackControl(label, read, Math.Clamp(laneBins, 8, 256), Math.Clamp(laneHeight, 64.0f, 220.0f), tooltip, isVisible));
+            return this;
+        }
     }
 
     public readonly record struct DebugUiOption(int Value, string Label);
@@ -824,6 +834,7 @@ internal sealed class DebugUi
         public abstract void Draw(
             ID2D1RenderTarget target,
             IDWriteFactory6 directWriteFactory,
+            IDWriteTextFormat titleFormat,
             IDWriteTextFormat format,
             ID2D1SolidColorBrush rowBrush,
             ID2D1SolidColorBrush hoverRowBrush,
@@ -873,6 +884,7 @@ internal sealed class DebugUi
         public override void Draw(
             ID2D1RenderTarget target,
             IDWriteFactory6 directWriteFactory,
+            IDWriteTextFormat titleFormat,
             IDWriteTextFormat format,
             ID2D1SolidColorBrush rowBrush,
             ID2D1SolidColorBrush hoverRowBrush,
@@ -903,6 +915,7 @@ internal sealed class DebugUi
         public override void Draw(
             ID2D1RenderTarget target,
             IDWriteFactory6 directWriteFactory,
+            IDWriteTextFormat titleFormat,
             IDWriteTextFormat format,
             ID2D1SolidColorBrush rowBrush,
             ID2D1SolidColorBrush hoverRowBrush,
@@ -930,6 +943,7 @@ internal sealed class DebugUi
         public override void Draw(
             ID2D1RenderTarget target,
             IDWriteFactory6 directWriteFactory,
+            IDWriteTextFormat titleFormat,
             IDWriteTextFormat format,
             ID2D1SolidColorBrush rowBrush,
             ID2D1SolidColorBrush hoverRowBrush,
@@ -985,6 +999,7 @@ internal sealed class DebugUi
         public override void Draw(
             ID2D1RenderTarget target,
             IDWriteFactory6 directWriteFactory,
+            IDWriteTextFormat titleFormat,
             IDWriteTextFormat format,
             ID2D1SolidColorBrush rowBrush,
             ID2D1SolidColorBrush hoverRowBrush,
@@ -1135,6 +1150,7 @@ internal sealed class DebugUi
         public override void Draw(
             ID2D1RenderTarget target,
             IDWriteFactory6 directWriteFactory,
+            IDWriteTextFormat titleFormat,
             IDWriteTextFormat format,
             ID2D1SolidColorBrush rowBrush,
             ID2D1SolidColorBrush hoverRowBrush,
@@ -1331,6 +1347,7 @@ internal sealed class DebugUi
         public override void Draw(
             ID2D1RenderTarget target,
             IDWriteFactory6 directWriteFactory,
+            IDWriteTextFormat titleFormat,
             IDWriteTextFormat format,
             ID2D1SolidColorBrush rowBrush,
             ID2D1SolidColorBrush hoverRowBrush,
@@ -1495,6 +1512,7 @@ internal sealed class DebugUi
         public override void Draw(
             ID2D1RenderTarget target,
             IDWriteFactory6 directWriteFactory,
+            IDWriteTextFormat titleFormat,
             IDWriteTextFormat format,
             ID2D1SolidColorBrush rowBrush,
             ID2D1SolidColorBrush hoverRowBrush,
@@ -1954,6 +1972,181 @@ internal sealed class DebugUi
         private readonly record struct TextHit(float X, float Top, float Height);
     }
 
+    private sealed class MelSpectrumStackControl(
+        string label,
+        Func<IReadOnlyList<AquariumUiMelSpectrumLane>> read,
+        int laneBins,
+        float laneHeight,
+        string? tooltip,
+        Func<bool>? isVisible) : DebugUiControl(label, tooltip, isVisible)
+    {
+        private const float StackPadding = 8.0f;
+        private const float LaneGap = 10.0f;
+        private const float LaneHeaderHeight = 28.0f;
+        private const float LaneMetaHeight = 18.0f;
+        private const float AxisHeight = 16.0f;
+
+        public override bool IsInteractive => !string.IsNullOrWhiteSpace(Tooltip);
+
+        public override float LayoutHeight
+        {
+            get
+            {
+                var laneCount = Math.Max(1, read().Count);
+                return StackPadding * 2.0f + laneCount * laneHeight + Math.Max(0, laneCount - 1) * LaneGap;
+            }
+        }
+
+        public override void Draw(
+            ID2D1RenderTarget target,
+            IDWriteFactory6 directWriteFactory,
+            IDWriteTextFormat titleFormat,
+            IDWriteTextFormat format,
+            ID2D1SolidColorBrush rowBrush,
+            ID2D1SolidColorBrush hoverRowBrush,
+            ID2D1SolidColorBrush activeRowBrush,
+            ID2D1SolidColorBrush outlineBrush,
+            ID2D1SolidColorBrush primaryBrush,
+            ID2D1SolidColorBrush quietBrush,
+            ID2D1SolidColorBrush accentBrush,
+            ID2D1SolidColorBrush accentHoverBrush,
+            ID2D1SolidColorBrush accentActiveBrush,
+            ID2D1SolidColorBrush dimAccentBrush,
+            ID2D1SolidColorBrush trackHoverBrush,
+            ID2D1SolidColorBrush trackActiveBrush)
+        {
+            target.FillRectangle(Bounds, rowBrush);
+            target.DrawRectangle(Bounds, outlineBrush, 1.0f);
+
+            var lanes = read();
+            if (lanes.Count == 0)
+            {
+                target.DrawText(
+                    "waiting for audio buffers",
+                    titleFormat,
+                    RectFromEdges(Bounds.Left + 12.0f, Bounds.Top + 12.0f, Bounds.Right - 12.0f, Bounds.Bottom - 12.0f),
+                    quietBrush,
+                    DrawTextOptions.Clip);
+                return;
+            }
+
+            var top = Bounds.Top + StackPadding;
+            foreach (var lane in lanes)
+            {
+                DrawLane(
+                    target,
+                    titleFormat,
+                    format,
+                    rowBrush,
+                    outlineBrush,
+                    primaryBrush,
+                    quietBrush,
+                    accentBrush,
+                    dimAccentBrush,
+                    lane,
+                    RectFromEdges(Bounds.Left + StackPadding, top, Bounds.Right - StackPadding, top + laneHeight));
+                top += laneHeight + LaneGap;
+            }
+        }
+
+        private void DrawLane(
+            ID2D1RenderTarget target,
+            IDWriteTextFormat titleFormat,
+            IDWriteTextFormat format,
+            ID2D1SolidColorBrush rowBrush,
+            ID2D1SolidColorBrush outlineBrush,
+            ID2D1SolidColorBrush primaryBrush,
+            ID2D1SolidColorBrush quietBrush,
+            ID2D1SolidColorBrush accentBrush,
+            ID2D1SolidColorBrush dimAccentBrush,
+            AquariumUiMelSpectrumLane lane,
+            Rect bounds)
+        {
+            target.DrawLine(new Vector2(bounds.Left, bounds.Bottom), new Vector2(bounds.Right, bounds.Bottom), outlineBrush, 1.0f);
+            target.DrawText(
+                lane.Label,
+                titleFormat,
+                RectFromEdges(bounds.Left + 4.0f, bounds.Top, bounds.Right - 4.0f, bounds.Top + LaneHeaderHeight),
+                primaryBrush,
+                DrawTextOptions.Clip);
+
+            var meta = $"{lane.SourceId}  rms={lane.Rms:0.000000}  peak={lane.Peak:0.000000}  floor={lane.NoiseFloorDb:0.0}dB";
+            target.DrawText(
+                meta,
+                format,
+                RectFromEdges(bounds.Left + 4.0f, bounds.Top + LaneHeaderHeight, bounds.Right - 4.0f, bounds.Top + LaneHeaderHeight + LaneMetaHeight),
+                quietBrush,
+                DrawTextOptions.Clip);
+
+            var plot = RectFromEdges(
+                bounds.Left + 4.0f,
+                bounds.Top + LaneHeaderHeight + LaneMetaHeight + 4.0f,
+                bounds.Right - 4.0f,
+                bounds.Bottom - AxisHeight);
+            target.FillRectangle(plot, rowBrush);
+            target.DrawRectangle(plot, outlineBrush, 1.0f);
+            DrawSpectrumBars(target, accentBrush, dimAccentBrush, lane, plot);
+
+            var peaks = lane.Peaks.Count == 0 ? "no FFT peaks" : string.Join("  ", lane.Peaks);
+            target.DrawText(
+                peaks,
+                format,
+                RectFromEdges(bounds.Left + 4.0f, bounds.Bottom - AxisHeight + 1.0f, bounds.Right - 4.0f, bounds.Bottom),
+                quietBrush,
+                DrawTextOptions.Clip);
+        }
+
+        private void DrawSpectrumBars(
+            ID2D1RenderTarget target,
+            ID2D1SolidColorBrush accentBrush,
+            ID2D1SolidColorBrush dimAccentBrush,
+            AquariumUiMelSpectrumLane lane,
+            Rect plot)
+        {
+            var bands = lane.MelDecibels;
+            if (bands.Count == 0)
+            {
+                return;
+            }
+
+            var visibleBands = Math.Min(laneBins, bands.Count);
+            var stride = bands.Count / (double)visibleBands;
+            var floor = Math.Min(lane.NoiseFloorDb, bands.Min());
+            var ceiling = Math.Max(-24.0, bands.Max());
+            var span = Math.Max(18.0, ceiling - floor);
+            var originalAccentOpacity = accentBrush.Opacity;
+            var originalDimOpacity = dimAccentBrush.Opacity;
+            try
+            {
+                for (var index = 0; index < visibleBands; index++)
+                {
+                    var start = (int)Math.Floor(index * stride);
+                    var end = Math.Min(bands.Count, Math.Max(start + 1, (int)Math.Ceiling((index + 1) * stride)));
+                    var value = 0.0;
+                    for (var band = start; band < end; band++)
+                    {
+                        value += bands[band];
+                    }
+
+                    value /= Math.Max(1, end - start);
+                    var normalized = Math.Clamp((value - floor) / span, 0.0, 1.0);
+                    var left = plot.Left + index * plot.Width / visibleBands;
+                    var right = plot.Left + (index + 1) * plot.Width / visibleBands - 1.0f;
+                    var barTop = plot.Top + (float)((1.0 - normalized) * plot.Height);
+                    var rect = RectFromEdges(left, barTop, Math.Max(left + 1.0f, right), plot.Bottom);
+                    var brush = normalized < 0.35 ? dimAccentBrush : accentBrush;
+                    brush.Opacity = (float)(0.16 + normalized * 0.84);
+                    target.FillRectangle(rect, brush);
+                }
+            }
+            finally
+            {
+                accentBrush.Opacity = originalAccentOpacity;
+                dimAccentBrush.Opacity = originalDimOpacity;
+            }
+        }
+    }
+
     private sealed class ReadoutControl(string label, Func<string> read, string? tooltip, Func<bool>? isVisible)
         : DebugUiControl(label, tooltip, isVisible)
     {
@@ -1962,6 +2155,7 @@ internal sealed class DebugUi
         public override void Draw(
             ID2D1RenderTarget target,
             IDWriteFactory6 directWriteFactory,
+            IDWriteTextFormat titleFormat,
             IDWriteTextFormat format,
             ID2D1SolidColorBrush rowBrush,
             ID2D1SolidColorBrush hoverRowBrush,
@@ -2027,6 +2221,7 @@ internal sealed class DebugUi
         public override void Draw(
             ID2D1RenderTarget target,
             IDWriteFactory6 directWriteFactory,
+            IDWriteTextFormat titleFormat,
             IDWriteTextFormat format,
             ID2D1SolidColorBrush rowBrush,
             ID2D1SolidColorBrush hoverRowBrush,

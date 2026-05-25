@@ -105,6 +105,12 @@ public sealed class AquariumUiPanelBuilder(List<AquariumUiControl> controls)
         controls.Add(new AquariumUiReadout(label, read, tooltip, isVisible));
         return this;
     }
+
+    public AquariumUiPanelBuilder MelSpectrumStack(string label, Func<IReadOnlyList<AquariumUiMelSpectrumLane>> read, int laneBins = 64, float laneHeight = 112.0f, string? tooltip = null, Func<bool>? isVisible = null)
+    {
+        controls.Add(new AquariumUiMelSpectrumStack(label, read, Math.Clamp(laneBins, 8, 256), Math.Clamp(laneHeight, 64.0f, 220.0f), tooltip, isVisible));
+        return this;
+    }
 }
 
 public readonly record struct AquariumUiOption(int Value, string Label);
@@ -144,4 +150,16 @@ public sealed record AquariumUiTextBox(string Label, Func<string> Read, Action<s
     : AquariumUiControl(Label, Tooltip, IsVisible);
 
 public sealed record AquariumUiReadout(string Label, Func<string> Read, string? Tooltip = null, Func<bool>? IsVisible = null)
+    : AquariumUiControl(Label, Tooltip, IsVisible);
+
+public sealed record AquariumUiMelSpectrumLane(
+    string Label,
+    string SourceId,
+    double Rms,
+    double Peak,
+    double NoiseFloorDb,
+    IReadOnlyList<double> MelDecibels,
+    IReadOnlyList<string> Peaks);
+
+public sealed record AquariumUiMelSpectrumStack(string Label, Func<IReadOnlyList<AquariumUiMelSpectrumLane>> Read, int LaneBins = 64, float LaneHeight = 112.0f, string? Tooltip = null, Func<bool>? IsVisible = null)
     : AquariumUiControl(Label, Tooltip, IsVisible);

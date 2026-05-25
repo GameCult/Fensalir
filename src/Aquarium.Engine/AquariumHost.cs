@@ -14,6 +14,13 @@ public static class AquariumHost
         var runtimeOptions = new AquariumRuntimeOptions(ParseHeadless(args), ParseCachePath(args), ParseRenderDebugMode(args));
         using var runtimeLoader = new ClientRuntimeLoader(runtimeOptions, ParseClientAssemblyPath(args), ParseClientReloadPointerPath(args));
         var runtime = runtimeLoader.Load();
+        if (runtimeOptions.RenderDebugModeOverride is { } renderDebugModeOverride)
+        {
+            runtime.GraphicsSettings = (runtime.GraphicsSettings with
+            {
+                RenderDebugMode = renderDebugModeOverride,
+            }).Normalized();
+        }
         var input = new InputState();
         var headlessSize = ParseHeadlessSize(args);
         var width = runtime.Options.Headless ? headlessSize.Width : 1280;

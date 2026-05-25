@@ -824,16 +824,28 @@ public readonly record struct AquariumSplineStyle(
     float Radius,
     float Emission,
     float Alpha,
-    float ZeroThreshold,
+    float GlowNormalExponent,
+    float AlphaNormalExponent,
     float Feather)
 {
-    public static AquariumSplineStyle Default { get; } = new(0.018f, 1.0f, 1.0f, 1.0f, 0.12f);
+    public AquariumSplineStyle(
+        float radius,
+        float emission,
+        float alpha,
+        float normalExponent,
+        float feather)
+        : this(radius, emission, alpha, normalExponent, normalExponent, feather)
+    {
+    }
+
+    public static AquariumSplineStyle Default { get; } = new(0.018f, 1.0f, 1.0f, 1.0f, 1.0f, 0.12f);
 
     public AquariumSplineStyle Normalized() => new(
         MathF.Max(0.0001f, Radius),
         MathF.Max(0.0f, Emission),
         Math.Clamp(Alpha, 0.0f, 1.0f),
-        Math.Clamp(ZeroThreshold, 0.0f, 1.0f),
+        MathF.Max(0.0001f, GlowNormalExponent),
+        MathF.Max(0.0001f, AlphaNormalExponent),
         MathF.Max(0.0001f, Feather));
 }
 

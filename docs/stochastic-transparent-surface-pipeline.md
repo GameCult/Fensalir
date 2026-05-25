@@ -51,6 +51,18 @@ Events do not clip each other as opaque surfaces. They composite.
 5. Composite selected transparent events premultiplied front-to-back.
 6. Write transparent temporal descriptors separate from opaque metadata.
 
+Fensalir owns a renderer-native blue-noise threshold tile. Shaders that make
+stochastic coverage decisions should sample that tile with frame-varying offsets
+instead of substituting hash noise. Hashes are acceptable for deterministic ids
+and cheap decorrelation, but not as the visual sampling distribution for
+coverage that is meant to feed TAA or reservoirs.
+
+Spline tubes follow this contract directly: CPU geometry emits conservative
+segment envelopes, while the spline shader samples the renderer blue-noise tile,
+evaluates the tube SDF, and derives emission/alpha from
+`pow(saturate(-dot(ray, normal)), exponent)` before writing the scene and
+reservoir guide outputs.
+
 The Grid should not be a special scene surface. It should emit events from its
 heightfield/line-support intersection. Particles emit events from their sorted
 billboards or bins. Both land in the same transparent event pipe.

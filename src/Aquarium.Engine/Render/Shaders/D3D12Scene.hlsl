@@ -29,6 +29,7 @@ cbuffer AquariumFrame : register(b0)
 
 Texture2D<float4> heightFieldTexture : register(t0);
 TextureCube<float4> studioPmremTexture : register(t22);
+Texture2D<float> blueNoiseTexture : register(t28);
 SamplerState linearSampler : register(s0);
 
 static const float FIELD_ID_HEIGHT_FIELD = 4.0;
@@ -403,18 +404,51 @@ SceneOut D3D12ScenePS(VertexOut input)
 struct SplineVertexIn
 {
     float3 position : POSITION;
-    float2 segmentUv : TEXCOORD0;
+    float3 neighbor : TEXCOORD0;
+    float4 shapeData : TEXCOORD1;
     float4 color : COLOR;
-    float4 material : TEXCOORD1;
+    float4 material : TEXCOORD2;
 };
 
 struct SplineVertexOut
 {
     float4 position : SV_Position;
-    float2 segmentUv : TEXCOORD0;
+    nointerpolation float2 segmentStartPx : TEXCOORD0;
+    nointerpolation float2 segmentEndPx : TEXCOORD1;
+    nointerpolation float2 segmentRadiusPx : TEXCOORD2;
+    float2 segmentUv : TEXCOORD3;
     float4 color : COLOR;
-    float4 material : TEXCOORD1;
+    float4 material : TEXCOORD4;
+    nointerpolation float feather : TEXCOORD5;
 };
+
+float2 ndcToPixel(float2 ndc)
+{
+    return float2((ndc.x * 0.5 + 0.5) * resolution.x, (1.0 - (ndc.y * 0.5 + 0.5)) * resolution.y);
+}
+
+float2 pixelToNdc(float2 pixel)
+{
+    return float2(pixel.x / max(resolution.x, 1.0) * 2.0 - 1.0, 1.0 - pixel.y / max(resolution.y, 1.0) * 2.0);
+}
+
+float splineRadiusToPixels(float radiusWorld, float viewDepth)
+{
+    float frustumHeight = max(cameraFrustumXy.w - cameraFrustumXy.z, 0.0001);
+    return max(radiusWorld * resolution.y / max(frustumHeight * max(viewDepth, 0.0001), 0.0001), 0.5);
+}
+
+float blueNoiseAt(float2 pixel, uint salt)
+{
+    uint width;
+    uint height;
+    blueNoiseTexture.GetDimensions(width, height);
+    uint2 dimensions = max(uint2(width, height), uint2(1, 1));
+    uint frame = (uint)frameIndex;
+    uint2 offset = uint2(frame * 17u + salt * 43u, frame * 29u + salt * 71u);
+    uint2 coord = (uint2(max(pixel, float2(0.0, 0.0))) + offset) % dimensions;
+    return blueNoiseTexture.Load(int3(coord, 0));
+}
 
 SplineVertexOut D3D12SplineVS(SplineVertexIn input)
 {
@@ -422,28 +456,107 @@ SplineVertexOut D3D12SplineVS(SplineVertexIn input)
     float3 right;
     float3 up;
     cameraBasis(cameraPosition, cameraTarget, forward, right, up);
-    float3 view = float3(
-        dot(input.position - cameraPosition, right),
-        dot(input.position - cameraPosition, up),
-        dot(input.position - cameraPosition, forward));
+
+    bool isEndVertex = input.shapeData.y > 0.0;
+    float3 segmentStart = isEndVertex ? input.neighbor : input.position;
+    float3 segmentEnd = isEndVertex ? input.position : input.neighbor;
+    float3 endpoint = input.position;
+    float endpointT = isEndVertex ? 1.0 : 0.0;
+
+    float3 startView = float3(
+        dot(segmentStart - cameraPosition, right),
+        dot(segmentStart - cameraPosition, up),
+        dot(segmentStart - cameraPosition, forward));
+    float3 endView = float3(
+        dot(segmentEnd - cameraPosition, right),
+        dot(segmentEnd - cameraPosition, up),
+        dot(segmentEnd - cameraPosition, forward));
+    float3 endpointView = float3(
+        dot(endpoint - cameraPosition, right),
+        dot(endpoint - cameraPosition, up),
+        dot(endpoint - cameraPosition, forward));
+    float4 startClip = projectCameraSpace(startView);
+    float4 endClip = projectCameraSpace(endView);
+    float4 endpointClip = projectCameraSpace(endpointView);
+
+    float2 startPx = ndcToPixel(startClip.xy);
+    float2 endPx = ndcToPixel(endClip.xy);
+    float2 endpointPx = ndcToPixel(endpointClip.xy);
+    float2 segmentPx = endPx - startPx;
+    float segmentLength = length(segmentPx);
+    float2 tangent = segmentLength > 0.001 ? segmentPx / segmentLength : float2(1.0, 0.0);
+    float2 normal = float2(-tangent.y, tangent.x);
+
+    float startRadiusPx = splineRadiusToPixels(input.shapeData.z, startView.z);
+    float endRadiusPx = splineRadiusToPixels(input.shapeData.z, endView.z);
+    float endpointRadiusPx = lerp(startRadiusPx, endRadiusPx, endpointT);
+    float envelopePaddingPx = max(2.0, endpointRadiusPx * max(input.shapeData.w, 0.0) + 1.5);
+    float envelopeRadiusPx = endpointRadiusPx + envelopePaddingPx;
+    float capSign = isEndVertex ? 1.0 : -1.0;
+    float2 expandedPx = endpointPx + normal * input.shapeData.x * envelopeRadiusPx + tangent * capSign * envelopeRadiusPx;
 
     SplineVertexOut output;
-    output.position = projectCameraSpace(view);
-    output.segmentUv = input.segmentUv;
+    output.position = float4(pixelToNdc(expandedPx), endpointClip.z, 1.0);
+    output.segmentStartPx = startPx;
+    output.segmentEndPx = endPx;
+    output.segmentRadiusPx = float2(startRadiusPx, endRadiusPx);
+    output.segmentUv = float2(endpointT, input.shapeData.x);
     output.color = input.color;
     output.material = input.material;
+    output.feather = input.shapeData.w;
     return output;
 }
 
 SceneOut D3D12SplinePS(SplineVertexOut input)
 {
-    float sdf = abs(input.segmentUv.y) - input.material.z;
-    float coverage = 1.0 - smoothstep(0.0, max(input.material.w, 0.0001), sdf);
-    float alpha = saturate(input.color.a * coverage);
+    float2 segment = input.segmentEndPx - input.segmentStartPx;
+    float segmentLength2 = max(dot(segment, segment), 0.0001);
+    float2 jitter = float2(
+        blueNoiseAt(input.position.xy, 3u),
+        blueNoiseAt(input.position.yx + 19.0, 11u)) - 0.5;
+    float2 samplePx = input.position.xy + jitter * 0.85;
+    float closestT = saturate(dot(samplePx - input.segmentStartPx, segment) / segmentLength2);
+    float2 closest = input.segmentStartPx + segment * closestT;
+    float radiusPx = lerp(input.segmentRadiusPx.x, input.segmentRadiusPx.y, closestT);
+    float2 normalPxRaw = samplePx - closest;
+    float normalPxLength = length(normalPxRaw);
+    float2 normalPx = normalPxLength > 0.0001 ? normalPxRaw / normalPxLength : normalize(float2(-segment.y, segment.x));
+    float sdf = normalPxLength - radiusPx;
+    float aa = max(fwidth(sdf), max(0.75, radiusPx * max(input.feather, 0.0)));
+    float coverage = 1.0 - smoothstep(0.0, aa, sdf);
+    float3 forward;
+    float3 right;
+    float3 up;
+    cameraBasis(cameraPosition, cameraTarget, forward, right, up);
+    float3 ray = rayDirectionForPixel(samplePx, jitterPixels, cameraPosition, cameraTarget);
+    float rimBlend = saturate(normalPxLength / max(radiusPx, 0.0001));
+    float frontBlend = sqrt(saturate(1.0 - rimBlend * rimBlend));
+    float3 tubeNormal = normalize(((right * normalPx.x) - (up * normalPx.y)) * rimBlend - ray * frontBlend);
+    float normalFacing = saturate(-dot(ray, tubeNormal));
+    float glowFacing = pow(normalFacing, max(input.material.z, 0.0001));
+    float alphaFacing = pow(normalFacing, max(input.material.w, 0.0001));
+    float alpha = saturate(input.color.a * coverage * alphaFacing);
+    float3 color = input.color.rgb * input.material.x * glowFacing;
+    if (renderDebugMode >= 12.5 && renderDebugMode < 13.5)
+    {
+        color = float3(0.0, 0.7, 1.0);
+        alpha = max(alpha, 0.22);
+    }
+    else if (renderDebugMode >= 13.5 && renderDebugMode < 14.5)
+    {
+        color = lerp(float3(0.15, 0.45, 1.0), float3(1.0, 0.15, 0.0), saturate(sdf / max(radiusPx, 1.0) * 0.5 + 0.5));
+        alpha = 1.0;
+    }
+    else if (renderDebugMode >= 14.5 && renderDebugMode < 15.5)
+    {
+        color = float3(coverage, closestT, 1.0 - coverage);
+        alpha = 1.0;
+    }
+
     SceneOut output;
-    output.colorTravel = float4(input.color.rgb * input.material.y, alpha);
-    output.metadata = float4(5000.0, 0.0, 0.0, 1.0);
-    output.control = float4(alpha, coverage, input.material.x, 0.0);
+    output.colorTravel = float4(color, alpha);
+    output.metadata = float4(5000.0, closestT, sdf, radiusPx);
+    output.control = float4(alpha, coverage, saturate(radiusPx / 32.0), 0.0);
     output.reservoirGuide = float4(saturate(alpha + coverage * 0.5), 0.0, coverage, 0.0);
     output.depth = input.position.z;
     return output;

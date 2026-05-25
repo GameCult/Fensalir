@@ -8,6 +8,7 @@ internal sealed class D3D12ResourceRegistry
     private readonly Dictionary<string, D3D12RenderTarget> renderTargets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, D3D12StructuredBuffer> structuredBuffers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, D3D12CubeTexture> cubeTextures = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, D3D12BlueNoiseTexture> blueNoiseTextures = new(StringComparer.Ordinal);
 
     public void Add(string name, D3D12TrackedResource resource)
     {
@@ -38,6 +39,14 @@ internal sealed class D3D12ResourceRegistry
         if (!cubeTextures.TryAdd(name, cubeTexture))
         {
             throw new InvalidOperationException($"D3D12 cube texture already registered: {name}");
+        }
+    }
+
+    public void Add(string name, D3D12BlueNoiseTexture blueNoiseTexture)
+    {
+        if (!blueNoiseTextures.TryAdd(name, blueNoiseTexture))
+        {
+            throw new InvalidOperationException($"D3D12 blue-noise texture already registered: {name}");
         }
     }
 
@@ -72,6 +81,6 @@ internal sealed class D3D12ResourceRegistry
 
     public string Describe()
     {
-        return $"resources={trackedResources.Count}, renderTargets={renderTargets.Count}, structuredBuffers={structuredBuffers.Count}, cubeTextures={cubeTextures.Count}";
+        return $"resources={trackedResources.Count}, renderTargets={renderTargets.Count}, structuredBuffers={structuredBuffers.Count}, cubeTextures={cubeTextures.Count}, blueNoiseTextures={blueNoiseTextures.Count}";
     }
 }

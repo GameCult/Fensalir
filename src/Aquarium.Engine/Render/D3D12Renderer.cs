@@ -67,6 +67,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootFractalSdfReservoirSrv = 17;
     private const int RootFractalPbrReservoirSrv = 18;
     private const int RootFractalRadiosityReservoirSrv = 19;
+    private const int RootBlueNoise = 20;
     private const int RootFusionFrameConstants = 0;
     private const int RootFusionSeeds = 1;
     private const int RootFusionSensorCameras = 2;
@@ -98,6 +99,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         new(10, "SdfObject Steps"),
         new(11, "Client Fractal Domains"),
         new(12, "Reservoir/TAA Guide"),
+        new(13, "Spline Envelope"),
+        new(14, "Spline Distance"),
+        new(15, "Spline Coverage/T"),
     ];
     private static readonly DebugUi.DebugUiOption[] SynthPresetOptions = AquaSynth.Dsl.BuiltInScripts.ReferenceScripts()
         .Select((preset, index) => new DebugUi.DebugUiOption(index, $"{preset.Family}/{preset.Name}"))
@@ -120,6 +124,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly ID3D12RootSignature fullscreenRootSignature;
     private readonly ID3D12RootSignature gpuSensorFusionRootSignature;
     private readonly ID3D12RootSignature fractalReservoirRootSignature;
+    private readonly D3D12BlueNoiseTexture blueNoiseTexture;
     private ID3D12PipelineState? heightFieldBasePipelineState;
     private ID3D12PipelineState? heightFieldBrushPipelineState;
     private ID3D12PipelineState? scenePipelineState;
@@ -344,6 +349,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         resourceRegistry.Add("studio-pmrem-cubemap", studioPmremTexture);
         studioIrradianceTexture = LoadStudioIrradianceTexture();
         resourceRegistry.Add("studio-irradiance-cubemap", studioIrradianceTexture);
+        ReportStartupProgress(startupProgress, "Creating renderer blue-noise tile");
+        blueNoiseTexture = CreateBlueNoiseTexture();
+        resourceRegistry.Add("blue-noise-threshold-tile", blueNoiseTexture);
         ReportStartupProgress(startupProgress, "Creating D3D12 render pipelines");
         fullscreenRootSignature = CreateFullscreenRootSignature();
         fullscreenRootSignature.Name = "Aquarium D3D12 Fullscreen Root Signature";
@@ -678,6 +686,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         temporalGaussianBuffer.CreateShaderResourceView(device, frameResources.TemporalGaussianDescriptor);
         frameResources.TemporalGaussianUnorderedAccessDescriptor = frameResources.TransientShaderDescriptors.Allocate();
         temporalGaussianBuffer.CreateUnorderedAccessView(device, frameResources.TemporalGaussianUnorderedAccessDescriptor);
+        frameResources.BlueNoiseDescriptor = frameResources.TransientShaderDescriptors.Allocate();
+        blueNoiseTexture.CreateShaderResourceView(device, frameResources.BlueNoiseDescriptor);
         frameResources.StudioPmremDescriptor = frameResources.TransientShaderDescriptors.Allocate();
         studioPmremTexture.CreateShaderResourceView(device, frameResources.StudioPmremDescriptor);
         frameResources.StudioIrradianceDescriptor = frameResources.TransientShaderDescriptors.Allocate();
@@ -901,6 +911,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fullscreenRootSignature.Dispose();
         gpuSensorFusionRootSignature.Dispose();
         fractalReservoirRootSignature.Dispose();
+        blueNoiseTexture.Dispose();
         studioIrradianceTexture.Dispose();
         studioPmremTexture.Dispose();
         DisposeFractalReservoirBuffers();
@@ -1021,6 +1032,19 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private D3D12CubeTexture LoadStudioIrradianceTexture()
     {
         return LoadStudioCubeTexture(StudioIrradianceRelativePath, "Studio irradiance", "Aquarium D3D12 Studio Irradiance Cubemap");
+    }
+
+    private D3D12BlueNoiseTexture CreateBlueNoiseTexture()
+    {
+        var frameResources = frames[frameIndex];
+        frameResources.CommandAllocator.Reset();
+        commandList.Reset(frameResources.CommandAllocator, null);
+        var texture = D3D12BlueNoiseTexture.Create(device, commandList, "Aquarium D3D12 Blue Noise Threshold Tile", out var uploadResource);
+        commandList.Close();
+        commandQueue.ExecuteCommandList(commandList);
+        WaitForGpu();
+        uploadResource.Dispose();
+        return texture;
     }
 
     private D3D12CubeTexture LoadStudioCubeTexture(string relativePath, string label, string resourceName)
@@ -1638,6 +1662,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             context.CommandList.SetGraphicsRootDescriptorTable(RootStudioIrradiance, frameResources.StudioIrradianceDescriptor.Gpu);
             context.CommandList.SetGraphicsRootDescriptorTable(RootSdfObjects, frameResources.SdfObjectDescriptor.Gpu);
             context.CommandList.SetGraphicsRootDescriptorTable(RootTemporalGaussians, frameResources.TemporalGaussianDescriptor.Gpu);
+            context.CommandList.SetGraphicsRootDescriptorTable(RootBlueNoise, frameResources.BlueNoiseDescriptor.Gpu);
             context.CommandList.RSSetViewports(viewport);
             context.CommandList.RSSetScissorRects(scissorRect);
             context.CommandList.OMSetRenderTargets(
@@ -1700,22 +1725,6 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var vertices = new List<D3D12SplineVertex>(Math.Min(
             262144,
             activeSplineFrame.Splines.Sum(spline => Math.Max(0, spline.Vertices.Count - 1) * Math.Max(1, spline.CatmullRomSubdivisions) * 6)));
-        var forward = Vector3.Normalize(activeCameraTarget - activeCameraPosition);
-        if (!IsFinite(forward) || forward.LengthSquared() < 0.0001f)
-        {
-            forward = Vector3.UnitZ;
-        }
-
-        var worldUp = Vector3.UnitY;
-        var right = Vector3.Cross(worldUp, forward);
-        if (right.LengthSquared() < 0.0001f)
-        {
-            right = Vector3.UnitX;
-        }
-        else
-        {
-            right = Vector3.Normalize(right);
-        }
 
         foreach (var spline in activeSplineFrame.Splines)
         {
@@ -1724,7 +1733,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 continue;
             }
 
-            AppendSplineGeometry(vertices, spline, right);
+            AppendSplineGeometry(vertices, spline);
         }
 
         if (vertices.Count == 0)
@@ -1740,7 +1749,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCommandList.DrawInstanced((uint)vertices.Count, 1, 0, 0);
     }
 
-    private static void AppendSplineGeometry(List<D3D12SplineVertex> output, AquariumSpline3D spline, Vector3 right)
+    private static void AppendSplineGeometry(List<D3D12SplineVertex> output, AquariumSpline3D spline)
     {
         var style = spline.Style.Normalized();
         var controls = spline.Vertices;
@@ -1752,7 +1761,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             {
                 var t = step / (float)subdivisions;
                 var current = CatmullRom(controls, segment, t);
-                AppendSegmentGeometry(output, previous, current, style, right);
+                AppendSegmentGeometry(output, previous, current, style);
                 previous = current;
             }
         }
@@ -1781,8 +1790,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         List<D3D12SplineVertex> output,
         AquariumSplineVertex start,
         AquariumSplineVertex end,
-        AquariumSplineStyle style,
-        Vector3 right)
+        AquariumSplineStyle style)
     {
         var delta = end.Position - start.Position;
         if (delta.LengthSquared() < 0.000001f)
@@ -1791,14 +1799,17 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         var radius = style.Radius;
-        var offset = right * radius;
-        var material = new Vector4(radius, style.Emission, style.ZeroThreshold, style.Feather);
+        var material = new Vector4(style.Emission, style.Alpha, style.GlowNormalExponent, style.AlphaNormalExponent);
         var color0 = start.Color with { W = start.Color.W * style.Alpha };
         var color1 = end.Color with { W = end.Color.W * style.Alpha };
-        var v0 = new D3D12SplineVertex(start.Position - offset, new Vector2(0.0f, -1.0f), color0, material);
-        var v1 = new D3D12SplineVertex(start.Position + offset, new Vector2(0.0f, 1.0f), color0, material);
-        var v2 = new D3D12SplineVertex(end.Position - offset, new Vector2(1.0f, -1.0f), color1, material);
-        var v3 = new D3D12SplineVertex(end.Position + offset, new Vector2(1.0f, 1.0f), color1, material);
+        var shapeStartLeft = new Vector4(-1.0f, -1.0f, radius, style.Feather);
+        var shapeStartRight = new Vector4(1.0f, -1.0f, radius, style.Feather);
+        var shapeEndLeft = new Vector4(-1.0f, 1.0f, radius, style.Feather);
+        var shapeEndRight = new Vector4(1.0f, 1.0f, radius, style.Feather);
+        var v0 = new D3D12SplineVertex(start.Position, end.Position, shapeStartLeft, color0, material);
+        var v1 = new D3D12SplineVertex(start.Position, end.Position, shapeStartRight, color0, material);
+        var v2 = new D3D12SplineVertex(end.Position, start.Position, shapeEndLeft, color1, material);
+        var v3 = new D3D12SplineVertex(end.Position, start.Position, shapeEndRight, color1, material);
         output.Add(v0);
         output.Add(v1);
         output.Add(v2);
@@ -3096,6 +3107,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
             25,
             0,
             D3D12.DescriptorRangeOffsetAppend);
+        var blueNoiseRange = new DescriptorRange(
+            DescriptorRangeType.ShaderResourceView,
+            1,
+            28,
+            0,
+            D3D12.DescriptorRangeOffsetAppend);
         var rootParameters = new[]
         {
             new RootParameter(new RootDescriptorTable([constantBufferRange]), ShaderVisibility.All),
@@ -3118,6 +3135,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(39, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(40, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(41, 0), ShaderVisibility.All),
+            new RootParameter(new RootDescriptorTable([blueNoiseRange]), ShaderVisibility.Pixel),
         };
         var staticSamplers = new[]
         {
@@ -3289,9 +3307,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
             InputLayout = new InputLayoutDescription(
             [
                 new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
-                new InputElementDescription("TEXCOORD", 0, Format.R32G32_Float, 12, 0),
-                new InputElementDescription("COLOR", 0, Format.R32G32B32A32_Float, 20, 0),
-                new InputElementDescription("TEXCOORD", 1, Format.R32G32B32A32_Float, 36, 0),
+                new InputElementDescription("TEXCOORD", 0, Format.R32G32B32_Float, 12, 0),
+                new InputElementDescription("TEXCOORD", 1, Format.R32G32B32A32_Float, 24, 0),
+                new InputElementDescription("COLOR", 0, Format.R32G32B32A32_Float, 40, 0),
+                new InputElementDescription("TEXCOORD", 2, Format.R32G32B32A32_Float, 56, 0),
             ]),
             RenderTargetFormats = [SceneHdrFormat, SceneHdrFormat, SceneHdrFormat, SceneHdrFormat],
             SampleDescription = new SampleDescription(1, 0),
@@ -3581,7 +3600,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct D3D12SplineVertex(
         Vector3 Position,
-        Vector2 SegmentUv,
+        Vector3 Neighbor,
+        Vector4 ShapeData,
         Vector4 Color,
         Vector4 Material);
 
@@ -3702,6 +3722,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         public D3D12DescriptorSlot TemporalGaussianDescriptor { get; set; }
 
         public D3D12DescriptorSlot TemporalGaussianUnorderedAccessDescriptor { get; set; }
+
+        public D3D12DescriptorSlot BlueNoiseDescriptor { get; set; }
 
         public D3D12DescriptorSlot StudioPmremDescriptor { get; set; }
 

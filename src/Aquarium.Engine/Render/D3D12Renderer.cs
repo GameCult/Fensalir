@@ -1754,16 +1754,27 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var style = spline.Style.Normalized();
         var controls = spline.Vertices;
         var subdivisions = Math.Clamp(spline.CatmullRomSubdivisions, 1, 16);
-        var previous = controls[0];
+        var sampled = new List<AquariumSplineVertex>(Math.Max(2, (controls.Count - 1) * subdivisions + 1))
+        {
+            controls[0],
+        };
+
         for (var segment = 0; segment < controls.Count - 1; segment++)
         {
             for (var step = segment == 0 ? 1 : 0; step <= subdivisions; step++)
             {
                 var t = step / (float)subdivisions;
-                var current = CatmullRom(controls, segment, t);
-                AppendSegmentGeometry(output, previous, current, style);
-                previous = current;
+                sampled.Add(CatmullRom(controls, segment, t));
             }
+        }
+
+        for (var index = 0; index < sampled.Count - 1; index++)
+        {
+            var previous = index > 0 ? sampled[index - 1] : sampled[index];
+            var start = sampled[index];
+            var end = sampled[index + 1];
+            var next = index + 2 < sampled.Count ? sampled[index + 2] : end;
+            AppendSegmentGeometry(output, previous, start, end, next, style);
         }
     }
 
@@ -1788,8 +1799,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private static void AppendSegmentGeometry(
         List<D3D12SplineVertex> output,
+        AquariumSplineVertex previous,
         AquariumSplineVertex start,
         AquariumSplineVertex end,
+        AquariumSplineVertex next,
         AquariumSplineStyle style)
     {
         var delta = end.Position - start.Position;
@@ -1802,14 +1815,51 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var material = new Vector4(style.Emission, style.Alpha, style.GlowNormalExponent, style.AlphaNormalExponent);
         var color0 = start.Color with { W = start.Color.W * style.Alpha };
         var color1 = end.Color with { W = end.Color.W * style.Alpha };
-        var shapeStartLeft = new Vector4(-1.0f, -1.0f, radius, style.Feather);
-        var shapeStartRight = new Vector4(1.0f, -1.0f, radius, style.Feather);
-        var shapeEndLeft = new Vector4(-1.0f, 1.0f, radius, style.Feather);
-        var shapeEndRight = new Vector4(1.0f, 1.0f, radius, style.Feather);
-        var v0 = new D3D12SplineVertex(start.Position, end.Position, shapeStartLeft, color0, material);
-        var v1 = new D3D12SplineVertex(start.Position, end.Position, shapeStartRight, color0, material);
-        var v2 = new D3D12SplineVertex(end.Position, start.Position, shapeEndLeft, color1, material);
-        var v3 = new D3D12SplineVertex(end.Position, start.Position, shapeEndRight, color1, material);
+        var shapeStartLeft = new Vector4(-1.0f, 0.0f, -1.0f, 0.0f);
+        var shapeStartRight = new Vector4(1.0f, 0.0f, -1.0f, 0.0f);
+        var shapeEndLeft = new Vector4(-1.0f, 1.0f, 1.0f, 0.0f);
+        var shapeEndRight = new Vector4(1.0f, 1.0f, 1.0f, 0.0f);
+        var radiusData = new Vector4(radius, radius, style.Feather, 0.0f);
+        var v0 = new D3D12SplineVertex(
+            start.Position,
+            start.Position,
+            end.Position,
+            previous.Position,
+            next.Position,
+            shapeStartLeft,
+            radiusData,
+            color0,
+            material);
+        var v1 = new D3D12SplineVertex(
+            start.Position,
+            start.Position,
+            end.Position,
+            previous.Position,
+            next.Position,
+            shapeStartRight,
+            radiusData,
+            color0,
+            material);
+        var v2 = new D3D12SplineVertex(
+            end.Position,
+            start.Position,
+            end.Position,
+            previous.Position,
+            next.Position,
+            shapeEndLeft,
+            radiusData,
+            color1,
+            material);
+        var v3 = new D3D12SplineVertex(
+            end.Position,
+            start.Position,
+            end.Position,
+            previous.Position,
+            next.Position,
+            shapeEndRight,
+            radiusData,
+            color1,
+            material);
         output.Add(v0);
         output.Add(v1);
         output.Add(v2);
@@ -3308,9 +3358,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
             [
                 new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
                 new InputElementDescription("TEXCOORD", 0, Format.R32G32B32_Float, 12, 0),
-                new InputElementDescription("TEXCOORD", 1, Format.R32G32B32A32_Float, 24, 0),
-                new InputElementDescription("COLOR", 0, Format.R32G32B32A32_Float, 40, 0),
-                new InputElementDescription("TEXCOORD", 2, Format.R32G32B32A32_Float, 56, 0),
+                new InputElementDescription("TEXCOORD", 1, Format.R32G32B32_Float, 24, 0),
+                new InputElementDescription("TEXCOORD", 2, Format.R32G32B32_Float, 36, 0),
+                new InputElementDescription("TEXCOORD", 3, Format.R32G32B32_Float, 48, 0),
+                new InputElementDescription("TEXCOORD", 4, Format.R32G32B32A32_Float, 60, 0),
+                new InputElementDescription("TEXCOORD", 5, Format.R32G32B32A32_Float, 76, 0),
+                new InputElementDescription("COLOR", 0, Format.R32G32B32A32_Float, 92, 0),
+                new InputElementDescription("TEXCOORD", 6, Format.R32G32B32A32_Float, 108, 0),
             ]),
             RenderTargetFormats = [SceneHdrFormat, SceneHdrFormat, SceneHdrFormat, SceneHdrFormat],
             SampleDescription = new SampleDescription(1, 0),
@@ -3600,8 +3654,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct D3D12SplineVertex(
         Vector3 Position,
-        Vector3 Neighbor,
+        Vector3 SegmentStart,
+        Vector3 SegmentEnd,
+        Vector3 Previous,
+        Vector3 Next,
         Vector4 ShapeData,
+        Vector4 RadiusData,
         Vector4 Color,
         Vector4 Material);
 

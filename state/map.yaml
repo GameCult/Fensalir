@@ -38,6 +38,9 @@ invariants:
   - Epiphany Aquarium depends on Fensalir; Fensalir must not depend on Epiphany.
   - Demo projects inside this repo are allowed to exercise engine features but must not become hidden engine policy.
   - Public `Aquarium.*` assembly names remain for continuity until a deliberate namespace/package migration.
+  - Spline/tube visibility is owned by shader SDF evaluation. CPU geometry may
+    place conservative sampling envelopes and endpoint/neighbor packets, but
+    quad-local strip UVs must not decide visible line coverage.
 
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.

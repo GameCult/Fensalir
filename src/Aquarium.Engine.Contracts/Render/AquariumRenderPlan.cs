@@ -527,11 +527,43 @@ public sealed class AquariumBufferFieldFrame
 
     public AquariumFractalReservoirField Reservoir { get; init; } = AquariumFractalReservoirField.Empty;
 
-    public bool UseReservoirLowering { get; init; }
+    public AquariumFieldLoweringPolicy LoweringPolicy { get; init; } = AquariumFieldLoweringPolicy.Default;
+
+    public bool UseReservoirLowering => LoweringPolicy.Normalized().Mode == AquariumFieldLoweringMode.ReservoirSplats;
 
     public string? SourceScript { get; init; }
 
     public bool HasInput => SplineTubeFields.Count > 0 || TextureSplineFields.Count > 0;
+}
+
+public enum AquariumFieldLoweringMode
+{
+    Auto = 0,
+    DirectSdfTubes = 1,
+    ReservoirSplats = 2,
+    Mesh = 3,
+}
+
+public sealed record AquariumFieldLoweringPolicy(
+    AquariumFieldLoweringMode Mode,
+    int MaxDirectSplines,
+    int MaxDirectControlPoints,
+    int MaxReservoirSplats,
+    float LodBias)
+{
+    public static AquariumFieldLoweringPolicy Default { get; } = new(
+        AquariumFieldLoweringMode.Auto,
+        MaxDirectSplines: 512,
+        MaxDirectControlPoints: 65_536,
+        MaxReservoirSplats: 131_072,
+        LodBias: 1.0f);
+
+    public AquariumFieldLoweringPolicy Normalized() => new(
+        Mode,
+        Math.Clamp(MaxDirectSplines, 1, 65_536),
+        Math.Clamp(MaxDirectControlPoints, 2, 8_388_608),
+        Math.Clamp(MaxReservoirSplats, 1, 4_194_304),
+        Math.Clamp(LodBias, 0.05f, 16.0f));
 }
 
 public enum AquariumTextureAxis
@@ -677,7 +709,7 @@ public sealed class AquariumBufferFieldFrameBuilder
     private readonly List<AquariumTextureFieldBinding> textures = [];
     private readonly List<AquariumTextureSplineFieldProgram> textureSplineFields = [];
     private AquariumFractalReservoirField reservoir = AquariumFractalReservoirField.Empty;
-    private bool useReservoirLowering;
+    private AquariumFieldLoweringPolicy loweringPolicy = AquariumFieldLoweringPolicy.Default;
     private string? sourceScript;
 
     public AquariumBufferFieldFrameBuilder SplineTube(
@@ -726,14 +758,19 @@ public sealed class AquariumBufferFieldFrameBuilder
     public AquariumBufferFieldFrameBuilder Reservoir(AquariumFractalReservoirField field)
     {
         reservoir = field;
-        useReservoirLowering = field.HasInput;
+        loweringPolicy = loweringPolicy with { Mode = field.HasInput ? AquariumFieldLoweringMode.ReservoirSplats : AquariumFieldLoweringMode.Auto };
         return this;
     }
 
     public AquariumBufferFieldFrameBuilder DirectSdfSurfaces()
     {
-        reservoir = AquariumFractalReservoirField.Empty;
-        useReservoirLowering = false;
+        loweringPolicy = loweringPolicy with { Mode = AquariumFieldLoweringMode.DirectSdfTubes };
+        return this;
+    }
+
+    public AquariumBufferFieldFrameBuilder Lowering(AquariumFieldLoweringPolicy policy)
+    {
+        loweringPolicy = policy.Normalized();
         return this;
     }
 
@@ -749,7 +786,7 @@ public sealed class AquariumBufferFieldFrameBuilder
         Textures = textures,
         TextureSplineFields = textureSplineFields,
         Reservoir = reservoir,
-        UseReservoirLowering = useReservoirLowering,
+        LoweringPolicy = loweringPolicy,
         SourceScript = sourceScript,
     };
 }

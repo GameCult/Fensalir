@@ -13,8 +13,7 @@ public static class AquariumFieldScriptCompiler
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(textureBindings);
 
-        AquariumFractalReservoirField reservoir = AquariumFractalReservoirField.Empty;
-        var useReservoirLowering = false;
+        var loweringPolicy = AquariumFieldLoweringPolicy.Default;
         var textures = new List<AquariumTextureFieldBinding>();
         var programs = new List<AquariumTextureSplineFieldProgram>();
         var nodes = new List<AquariumFieldGraphNode>();
@@ -47,13 +46,8 @@ public static class AquariumFieldScriptCompiler
                 case "splinefield":
                     programs.Add(ParseSplineField(args, nodes, lineIndex));
                     break;
-                case "reservoir":
-                    reservoir = ParseReservoir(args, reservoirRadius, lineIndex);
-                    useReservoirLowering = true;
-                    break;
-                case "direct":
-                    useReservoirLowering = false;
-                    reservoir = AquariumFractalReservoirField.Empty;
+                case "lowering":
+                    loweringPolicy = ParseLoweringPolicy(args, lineIndex);
                     break;
                 default:
                     throw new FormatException($"Unknown field DSL command `{tokens[0]}` at line {lineIndex + 1}.");
@@ -70,18 +64,17 @@ public static class AquariumFieldScriptCompiler
             throw new FormatException("Field DSL must declare at least one `splinefield`.");
         }
 
-        if (useReservoirLowering && !reservoir.HasInput)
-        {
-            var splatCount = programs.Sum(program => Math.Max(1, program.ProbePolicy.MaxProbeCount));
-            reservoir = DefaultReservoir(splatCount, reservoirRadius);
-        }
+        loweringPolicy = loweringPolicy.Normalized();
+        var reservoir = DefaultReservoir(
+            loweringPolicy.MaxReservoirSplats,
+            reservoirRadius);
 
         return new AquariumBufferFieldFrame
         {
             Textures = textures,
             TextureSplineFields = programs,
             Reservoir = reservoir,
-            UseReservoirLowering = useReservoirLowering,
+            LoweringPolicy = loweringPolicy,
             SourceScript = source,
         };
     }
@@ -140,14 +133,14 @@ public static class AquariumFieldScriptCompiler
             Vec4(args, "value", Vector4.Zero, lineIndex));
     }
 
-    private static AquariumFractalReservoirField ParseReservoir(IReadOnlyDictionary<string, string> args, float reservoirRadius, int lineIndex)
+    private static AquariumFieldLoweringPolicy ParseLoweringPolicy(IReadOnlyDictionary<string, string> args, int lineIndex)
     {
-        return DefaultReservoir(
-            Int(args, "splats", 65536, lineIndex),
-            reservoirRadius,
-            Int(args, "updates", 65536, lineIndex),
-            Int(args, "candidates", 2, lineIndex),
-            UInt(args, "seed", 0xA17EA11u, lineIndex));
+        return new AquariumFieldLoweringPolicy(
+            Enum.Parse<AquariumFieldLoweringMode>(StringValue(args, "mode", "auto"), ignoreCase: true),
+            Int(args, "maxSplines", AquariumFieldLoweringPolicy.Default.MaxDirectSplines, lineIndex),
+            Int(args, "maxControlPoints", AquariumFieldLoweringPolicy.Default.MaxDirectControlPoints, lineIndex),
+            Int(args, "maxSplats", AquariumFieldLoweringPolicy.Default.MaxReservoirSplats, lineIndex),
+            Float(args, "lodBias", AquariumFieldLoweringPolicy.Default.LodBias, lineIndex));
     }
 
     private static AquariumFractalReservoirField DefaultReservoir(
@@ -203,6 +196,11 @@ public static class AquariumFieldScriptCompiler
 
         return value;
     }
+
+    private static string StringValue(IReadOnlyDictionary<string, string> args, string key, string fallback) =>
+        args.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : fallback;
 
     private static int Int(IReadOnlyDictionary<string, string> args, string key, int fallback, int lineIndex) =>
         args.TryGetValue(key, out var value) ? int.Parse(value, CultureInfo.InvariantCulture) : fallback;

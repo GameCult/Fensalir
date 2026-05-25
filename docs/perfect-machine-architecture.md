@@ -417,6 +417,14 @@ spatiotemporal machine. If a mesh, analytic SDF, tube envelope, or volume pass
 can write the same evidence lanes and validation guides, it belongs in the same
 frame contract.
 
+For buffer-driven spline fields, the DSL should express the rolling texture
+slice, axis, modulo window, surface graph, and quality budget. The interpreter
+then chooses the current best lowering. Today that means direct SDF tube
+geometry for moderate fields and reservoir splats when an automatic budget says
+the direct representation has become too expensive. Future mesh lowering fits
+the same contract; it is another backend for the same evidence, not another
+authoring language.
+
 ### 10. TAA Guide Integration
 
 TAA consumes guide signals:

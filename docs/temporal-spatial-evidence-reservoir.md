@@ -133,6 +133,14 @@ material/field encoding, conservative bounds, and guide data sufficient for TAA
 and reservoir validation. A mesh that only paints pixels is a fallback draw. A
 mesh that emits field evidence is a first-class contributor.
 
+The `.aquafield` script surface follows the same boundary. A script declares
+intent such as "read this rolling texture slice as a spline field over this
+axis, with this surface graph and quality budget." It does not need to choose
+direct SDF tubes, reservoir splats, or future mesh lowering. `lowering
+mode=auto` is the default contract: the renderer may emit direct SDF tube
+geometry when that is cheap and legible, decimate columns/control points under
+LOD pressure, or route oversized fields through the reservoir path.
+
 ## Invariants
 
 - Reservoir math is a pure, testable core before it becomes HLSL.

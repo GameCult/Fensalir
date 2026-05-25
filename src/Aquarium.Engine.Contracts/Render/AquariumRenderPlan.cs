@@ -508,6 +508,13 @@ public sealed class AquariumSplineFrame
 {
     public static AquariumSplineFrame Empty { get; } = new();
 
+    public static AquariumSplineFrame Compose(Action<AquariumSplineFrameBuilder> compose)
+    {
+        var builder = new AquariumSplineFrameBuilder();
+        compose(builder);
+        return builder.Build();
+    }
+
     public IReadOnlyList<AquariumSpline3D> Splines { get; init; } = [];
 
     public bool HasInput => Splines.Count > 0;
@@ -516,8 +523,43 @@ public sealed class AquariumSplineFrame
 public sealed record AquariumSpline3D(
     string Id,
     IReadOnlyList<AquariumSplineVertex> Vertices,
-    float Thickness = 1.0f);
+    AquariumSplineStyle Style,
+    int CatmullRomSubdivisions = 4);
 
 public readonly record struct AquariumSplineVertex(
     Vector3 Position,
     Vector4 Color);
+
+public readonly record struct AquariumSplineStyle(
+    float Radius,
+    float Emission,
+    float Alpha,
+    float ZeroThreshold,
+    float Feather)
+{
+    public static AquariumSplineStyle Default { get; } = new(0.018f, 1.0f, 1.0f, 1.0f, 0.12f);
+
+    public AquariumSplineStyle Normalized() => new(
+        MathF.Max(0.0001f, Radius),
+        MathF.Max(0.0f, Emission),
+        Math.Clamp(Alpha, 0.0f, 1.0f),
+        Math.Clamp(ZeroThreshold, 0.0f, 1.0f),
+        MathF.Max(0.0001f, Feather));
+}
+
+public sealed class AquariumSplineFrameBuilder
+{
+    private readonly List<AquariumSpline3D> splines = [];
+
+    public AquariumSplineFrameBuilder CatmullRom(
+        string id,
+        IReadOnlyList<AquariumSplineVertex> vertices,
+        AquariumSplineStyle? style = null,
+        int subdivisions = 4)
+    {
+        splines.Add(new AquariumSpline3D(id, vertices, (style ?? AquariumSplineStyle.Default).Normalized(), Math.Clamp(subdivisions, 1, 16)));
+        return this;
+    }
+
+    public AquariumSplineFrame Build() => new() { Splines = splines };
+}

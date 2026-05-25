@@ -388,13 +388,17 @@ SceneOut D3D12ScenePS(VertexOut input)
 struct SplineVertexIn
 {
     float3 position : POSITION;
+    float2 segmentUv : TEXCOORD0;
     float4 color : COLOR;
+    float4 material : TEXCOORD1;
 };
 
 struct SplineVertexOut
 {
     float4 position : SV_Position;
+    float2 segmentUv : TEXCOORD0;
     float4 color : COLOR;
+    float4 material : TEXCOORD1;
 };
 
 SplineVertexOut D3D12SplineVS(SplineVertexIn input)
@@ -417,14 +421,19 @@ SplineVertexOut D3D12SplineVS(SplineVertexIn input)
 
     SplineVertexOut output;
     output.position = float4(ndc, saturate(z / max(farDistance, 1.0)), 1.0);
+    output.segmentUv = input.segmentUv;
     output.color = input.color;
+    output.material = input.material;
     return output;
 }
 
 SceneOut D3D12SplinePS(SplineVertexOut input)
 {
+    float sdf = abs(input.segmentUv.y) - input.material.z;
+    float coverage = 1.0 - smoothstep(0.0, max(input.material.w, 0.0001), sdf);
+    float alpha = saturate(input.color.a * coverage);
     SceneOut output;
-    output.colorTravel = input.color;
+    output.colorTravel = float4(input.color.rgb * input.material.y, alpha);
     output.metadata = float4(0.0, 0.0, 0.0, 0.0);
     output.control = float4(0.0, 0.0, 0.0, 0.0);
     output.reservoirGuide = float4(1.0, 0.0, 1.0, 0.0);

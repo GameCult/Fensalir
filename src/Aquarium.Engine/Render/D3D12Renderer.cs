@@ -207,6 +207,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private int frameIndex;
     private Vector3 previousCameraPosition;
     private Vector3 previousCameraTarget;
+    private Vector3 activeCameraPosition;
+    private Vector3 activeCameraTarget;
     private Vector2 previousViewCenter;
     private Vector2 previousCursorWorld;
     private Vector2 previousJitterPixels;
@@ -562,6 +564,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         CopySceneState(frame.Scene);
+        activeCameraPosition = frame.CameraPosition;
+        activeCameraTarget = frame.CameraTarget;
         EnsureFractalReservoirBuffers(activeFractalReservoirField);
         EnsureFractalProgramTransformBuffer();
         var activeGpuSensorInput = frame.Scene.GpuSensorFrame.HasInput;
@@ -1557,8 +1561,25 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         var vertices = new List<D3D12SplineVertex>(Math.Min(
-            32768,
-            activeSplineFrame.Splines.Sum(spline => Math.Max(0, spline.Vertices.Count - 1) * 2)));
+            262144,
+            activeSplineFrame.Splines.Sum(spline => Math.Max(0, spline.Vertices.Count - 1) * Math.Max(1, spline.CatmullRomSubdivisions) * 6)));
+        var forward = Vector3.Normalize(activeCameraTarget - activeCameraPosition);
+        if (!IsFinite(forward) || forward.LengthSquared() < 0.0001f)
+        {
+            forward = Vector3.UnitZ;
+        }
+
+        var worldUp = Vector3.UnitY;
+        var right = Vector3.Cross(worldUp, forward);
+        if (right.LengthSquared() < 0.0001f)
+        {
+            right = Vector3.UnitX;
+        }
+        else
+        {
+            right = Vector3.Normalize(right);
+        }
+
         foreach (var spline in activeSplineFrame.Splines)
         {
             if (spline.Vertices.Count < 2)
@@ -1566,11 +1587,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 continue;
             }
 
-            for (var index = 1; index < spline.Vertices.Count; index++)
-            {
-                vertices.Add(ToSplineVertex(spline.Vertices[index - 1]));
-                vertices.Add(ToSplineVertex(spline.Vertices[index]));
-            }
+            AppendSplineGeometry(vertices, spline, right);
         }
 
         if (vertices.Count == 0)
@@ -1581,12 +1598,80 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var upload = frameResources.UploadRing.WriteArray(CollectionsMarshal.AsSpan(vertices));
         var view = new VertexBufferView(upload.GpuVirtualAddress, (uint)upload.DataBytes, (uint)Marshal.SizeOf<D3D12SplineVertex>());
         activeCommandList.SetPipelineState(splinePipelineState);
-        activeCommandList.IASetPrimitiveTopology(PrimitiveTopology.LineList);
+        activeCommandList.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         activeCommandList.IASetVertexBuffers(0, [view]);
         activeCommandList.DrawInstanced((uint)vertices.Count, 1, 0, 0);
     }
 
-    private static D3D12SplineVertex ToSplineVertex(AquariumSplineVertex vertex) => new(vertex.Position, vertex.Color);
+    private static void AppendSplineGeometry(List<D3D12SplineVertex> output, AquariumSpline3D spline, Vector3 right)
+    {
+        var style = spline.Style.Normalized();
+        var controls = spline.Vertices;
+        var subdivisions = Math.Clamp(spline.CatmullRomSubdivisions, 1, 16);
+        var previous = controls[0];
+        for (var segment = 0; segment < controls.Count - 1; segment++)
+        {
+            for (var step = segment == 0 ? 1 : 0; step <= subdivisions; step++)
+            {
+                var t = step / (float)subdivisions;
+                var current = CatmullRom(controls, segment, t);
+                AppendSegmentGeometry(output, previous, current, style, right);
+                previous = current;
+            }
+        }
+    }
+
+    private static AquariumSplineVertex CatmullRom(IReadOnlyList<AquariumSplineVertex> points, int segment, float t)
+    {
+        var p0 = points[Math.Max(0, segment - 1)];
+        var p1 = points[segment];
+        var p2 = points[Math.Min(points.Count - 1, segment + 1)];
+        var p3 = points[Math.Min(points.Count - 1, segment + 2)];
+        var t2 = t * t;
+        var t3 = t2 * t;
+        var position = 0.5f * ((2.0f * p1.Position) +
+            (-p0.Position + p2.Position) * t +
+            (2.0f * p0.Position - 5.0f * p1.Position + 4.0f * p2.Position - p3.Position) * t2 +
+            (-p0.Position + 3.0f * p1.Position - 3.0f * p2.Position + p3.Position) * t3);
+        var color = 0.5f * ((2.0f * p1.Color) +
+            (-p0.Color + p2.Color) * t +
+            (2.0f * p0.Color - 5.0f * p1.Color + 4.0f * p2.Color - p3.Color) * t2 +
+            (-p0.Color + 3.0f * p1.Color - 3.0f * p2.Color + p3.Color) * t3);
+        return new AquariumSplineVertex(position, Vector4.Clamp(color, Vector4.Zero, new Vector4(float.MaxValue, float.MaxValue, float.MaxValue, 1.0f)));
+    }
+
+    private static void AppendSegmentGeometry(
+        List<D3D12SplineVertex> output,
+        AquariumSplineVertex start,
+        AquariumSplineVertex end,
+        AquariumSplineStyle style,
+        Vector3 right)
+    {
+        var delta = end.Position - start.Position;
+        if (delta.LengthSquared() < 0.000001f)
+        {
+            return;
+        }
+
+        var radius = style.Radius;
+        var offset = right * radius;
+        var material = new Vector4(radius, style.Emission, style.ZeroThreshold, style.Feather);
+        var color0 = start.Color with { W = start.Color.W * style.Alpha };
+        var color1 = end.Color with { W = end.Color.W * style.Alpha };
+        var v0 = new D3D12SplineVertex(start.Position - offset, new Vector2(0.0f, -1.0f), color0, material);
+        var v1 = new D3D12SplineVertex(start.Position + offset, new Vector2(0.0f, 1.0f), color0, material);
+        var v2 = new D3D12SplineVertex(end.Position - offset, new Vector2(1.0f, -1.0f), color1, material);
+        var v3 = new D3D12SplineVertex(end.Position + offset, new Vector2(1.0f, 1.0f), color1, material);
+        output.Add(v0);
+        output.Add(v1);
+        output.Add(v2);
+        output.Add(v2);
+        output.Add(v1);
+        output.Add(v3);
+    }
+
+    private static bool IsFinite(Vector3 value) =>
+        float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 
     private void RenderBloom(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
     {
@@ -2774,7 +2859,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
             InputLayout = new InputLayoutDescription(
             [
                 new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
-                new InputElementDescription("COLOR", 0, Format.R32G32B32A32_Float, 12, 0),
+                new InputElementDescription("TEXCOORD", 0, Format.R32G32_Float, 12, 0),
+                new InputElementDescription("COLOR", 0, Format.R32G32B32A32_Float, 20, 0),
+                new InputElementDescription("TEXCOORD", 1, Format.R32G32B32A32_Float, 36, 0),
             ]),
             RenderTargetFormats = [SceneHdrFormat, SceneHdrFormat, SceneHdrFormat, SceneHdrFormat],
             SampleDescription = new SampleDescription(1, 0),
@@ -3061,7 +3148,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct D3D12SplineVertex(
         Vector3 Position,
-        Vector4 Color);
+        Vector2 SegmentUv,
+        Vector4 Color,
+        Vector4 Material);
 
     private sealed record D3D12ShaderPaths(
         string HeightField,

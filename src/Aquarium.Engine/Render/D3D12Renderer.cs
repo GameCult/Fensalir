@@ -44,6 +44,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const Format SceneHdrFormat = Format.R16G16B16A16_Float;
     private const string StudioPmremRelativePath = "Assets/Textures/studio3_pmrem.dds";
     private const string StudioIrradianceRelativePath = "Assets/Textures/studio3_irradiance.dds";
+    private const string ProgramOutputEnabledEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_D3D12";
+    private const string ProgramOutputSharedNameEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_NAME";
+    private const string DefaultProgramOutputSharedName = "Global\\MimirFensalirProgramTexture";
     private const int RootFrameConstants = 0;
     private const int RootSourceTexture = 1;
     private const int RootHeightFieldBrushes = 2;
@@ -182,6 +185,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private D3D12StructuredBuffer? bufferFieldTextureSplineProgramBuffer;
     private D3D12StructuredBuffer? bufferFieldTextureSampleBuffer;
     private readonly Dictionary<string, D3D12ExternalSensorTexture> externalSensorTextures = new(StringComparer.Ordinal);
+    private D3D12TrackedResource? programOutputTexture;
+    private IntPtr programOutputSharedHandle;
+    private readonly bool programOutputEnabled;
+    private readonly string programOutputSharedName;
     private readonly D3D12CubeTexture studioPmremTexture;
     private readonly D3D12CubeTexture studioIrradianceTexture;
     private readonly AquariumSdfLight[] sdfLights = new AquariumSdfLight[MaxSdfLightCount];
@@ -253,6 +260,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
         ApplyGraphicsSettings(graphicsSettings ?? GraphicsSettings.Default);
         this.width = width;
         this.height = height;
+        programOutputEnabled = string.Equals(
+            Environment.GetEnvironmentVariable(ProgramOutputEnabledEnvironmentVariable),
+            "1",
+            StringComparison.Ordinal);
+        programOutputSharedName = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ProgramOutputSharedNameEnvironmentVariable))
+            ? DefaultProgramOutputSharedName
+            : Environment.GetEnvironmentVariable(ProgramOutputSharedNameEnvironmentVariable)!.Trim();
         var activeRenderPlan = renderPlan ?? new AquariumRenderPlan();
         renderGraph = D3D12RenderGraphCompiler.Compile(activeRenderPlan);
         shaderSourceRoot = ResolveShaderSourceRoot(shaderPath, activeRenderPlan.Shaders);
@@ -291,6 +305,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         CreateRenderTargetViews();
+        CreateProgramOutputTexture();
         CreateBackBufferOverlays();
         debugUi = CreateDebugUi([]);
         heightFieldRenderTarget = CreateHeightFieldRenderTarget();
@@ -900,6 +915,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         DisposeBloomRenderTargets();
         DisposeHistoryRenderTargets();
         DisposeGraphRenderTargets();
+        DisposeProgramOutputTexture();
         sceneRenderTarget.Dispose();
         sceneMetadataRenderTarget.Dispose();
         sceneControlRenderTarget.Dispose();
@@ -930,6 +946,64 @@ public sealed class D3D12Renderer : IAquariumRenderer
             frames[index].BackBufferRenderTargetView = renderTargetViewArena.Allocate();
             device.CreateRenderTargetView(frames[index].BackBuffer.Resource, null, frames[index].BackBufferRenderTargetView.Cpu);
         }
+    }
+
+    private void CreateProgramOutputTexture()
+    {
+        if (!programOutputEnabled)
+        {
+            return;
+        }
+
+        DisposeProgramOutputTexture();
+        var resource = device.CreateCommittedResource(
+            HeapType.Default,
+            HeapFlags.Shared,
+            ResourceDescription.Texture2D(
+                Format.B8G8R8A8_UNorm,
+                (uint)width,
+                (uint)height,
+                1,
+                1,
+                1,
+                0,
+                Vortice.Direct3D12.ResourceFlags.None),
+            ResourceStates.CopyDest,
+            null);
+        programOutputTexture = new D3D12TrackedResource(
+            resource,
+            ResourceStates.CopyDest,
+            "Aquarium D3D12 Shared Program Output",
+            ownsResource: true);
+        programOutputSharedHandle = device.CreateSharedHandle(
+            resource,
+            null,
+            programOutputSharedName);
+        Console.WriteLine($"D3D12 program output shared texture: name={programOutputSharedName} size={width}x{height}");
+    }
+
+    private void CopyProgramOutputBackBuffer(ID3D12GraphicsCommandList activeCommandList, D3D12TrackedResource backBuffer)
+    {
+        if (programOutputTexture is null)
+        {
+            return;
+        }
+
+        backBuffer.Transition(activeCommandList, ResourceStates.CopySource);
+        programOutputTexture.Transition(activeCommandList, ResourceStates.CopyDest);
+        activeCommandList.CopyResource(programOutputTexture.Resource, backBuffer.Resource);
+    }
+
+    private void DisposeProgramOutputTexture()
+    {
+        if (programOutputSharedHandle != IntPtr.Zero)
+        {
+            CloseHandle(programOutputSharedHandle);
+            programOutputSharedHandle = IntPtr.Zero;
+        }
+
+        programOutputTexture?.Dispose();
+        programOutputTexture = null;
     }
 
     private D3D12CubeTexture LoadStudioPmremTexture()
@@ -1137,6 +1211,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         swapChain.ResizeBuffers(BackBufferCount, (uint)width, (uint)height, Format.B8G8R8A8_UNorm, SwapChainFlags.None).CheckError();
         frameIndex = (int)swapChain.CurrentBackBufferIndex;
         CreateRenderTargetViews();
+        CreateProgramOutputTexture();
         CreateBackBufferOverlays();
         heightFieldRenderTarget = CreateHeightFieldRenderTarget();
         sceneRenderTarget = CreateSceneRenderTarget();
@@ -1526,6 +1601,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
             || string.Equals(name, "scene-control", StringComparison.Ordinal);
     }
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr handle);
+
     private void RenderSceneAndPresent(D3D12PassContext context, FrameResources frameResources)
     {
             context.CommandList.BeginEvent("Scene Pass");
@@ -1846,6 +1924,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             null);
             context.CommandList.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
             context.CommandList.DrawInstanced(3, 1, 0, 0);
+            CopyProgramOutputBackBuffer(context.CommandList, context.BackBuffer);
         }
         finally
         {

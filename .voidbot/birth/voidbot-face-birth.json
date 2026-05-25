@@ -1,0 +1,11 @@
+{
+  "status": "failed",
+  "identityId": "fensalir",
+  "repoPath": "E:\\Projects\\Fensalir",
+  "artifactDir": "E:\\Projects\\Fensalir\\.voidbot\\birth",
+  "logPath": "E:\\Projects\\Fensalir\\.voidbot\\logs\\voidbot-face-birth.log",
+  "error": "cargo exited with 101",
+  "startedAt": "2026-05-25T05:10:24.569Z",
+  "failedAt": "2026-05-25T05:10:24.660Z",
+  "updatedAt": "2026-05-25T05:10:24.660Z"
+}

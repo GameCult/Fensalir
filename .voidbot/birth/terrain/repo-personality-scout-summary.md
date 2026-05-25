@@ -1,0 +1,14 @@
+# Repo Personality Scout
+
+- Reports: 1
+- Profiles: 1
+
+## Fensalir
+
+- Path: `\\?\E:\Projects\Fensalir`
+- Families: cult_protocol_storage, gamecult_web_lore_ops, unity_runtime_body
+- Confidence: 1.00
+- Dominant axes: burstiness:1.00, content_canon_bias:1.00, contract_strictness:1.00, evidence_appetite:1.00, runtime_proximity:0.89
+
+- Trajectory: Fensalir is currently steered by worldbuilding_depth recent 0.00, current 0.88, delta 0.00; material_grounding recent 0.00, current 0.59, delta 0.00; historical_dialectic recent 0.00, current 0.41, delta 0.00.
+

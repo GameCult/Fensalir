@@ -41,6 +41,7 @@ public static class AquariumHost
         var requiredReadyFrames = ParseHeadlessReadyFrames();
         var captureFramePath = ParseCaptureFramePath(args);
         var capturedFrame = false;
+        IAquariumRuntime? sceneReadyRuntime = null;
 
         while (true)
         {
@@ -88,6 +89,12 @@ public static class AquariumHost
             if (renderer.HasPresentedReadyFrame)
             {
                 readyFrames++;
+                var activeRuntime = runtimeLoader.Runtime;
+                if (!ReferenceEquals(sceneReadyRuntime, activeRuntime))
+                {
+                    activeRuntime.OnSceneReady();
+                    sceneReadyRuntime = activeRuntime;
+                }
             }
 
             if (runtime.Options.Headless

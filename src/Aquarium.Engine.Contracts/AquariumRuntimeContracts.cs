@@ -27,6 +27,10 @@ public interface IAquariumRuntime : IDisposable
 
     AquariumFrame ComposeFrame(AquariumFrame frame, AquariumFrameInput input);
 
+    void OnSceneReady()
+    {
+    }
+
     void FlushState();
 }
 

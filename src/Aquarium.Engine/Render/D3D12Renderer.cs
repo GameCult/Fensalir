@@ -134,6 +134,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly ID3D12RootSignature gpuSensorFusionRootSignature;
     private readonly ID3D12RootSignature fractalReservoirRootSignature;
     private readonly ID3D12RootSignature tubeFieldRootSignature;
+    private readonly ID3D12RootSignature tubeFieldRenderRootSignature;
     private readonly D3D12BlueNoiseTexture blueNoiseTexture;
     private ID3D12PipelineState? heightFieldBasePipelineState;
     private ID3D12PipelineState? heightFieldBrushPipelineState;
@@ -148,6 +149,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private ID3D12PipelineState? fractalPbrReservoirPipelineState;
     private ID3D12PipelineState? fractalRadiosityReservoirPipelineState;
     private ID3D12PipelineState? tubeFieldComputePipelineState;
+    private ID3D12PipelineState? tubeFieldRenderPipelineState;
     private ID3D12PipelineState?[] sdfProxyPipelineStates = [];
     private ID3D12PipelineState? bloomPrefilterPipelineState;
     private ID3D12PipelineState? bloomDownsamplePipelineState;
@@ -203,6 +205,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly D3D12StructuredBuffer tubeFieldVertexBuffer;
     private readonly D3D12StructuredBuffer tubeFieldIndexBuffer;
     private readonly D3D12StructuredBuffer tubeFieldStatsBuffer;
+    private readonly List<D3D12TubeFieldDrawBatch> tubeFieldDrawBatches = [];
     private readonly Dictionary<string, D3D12ExternalSensorTexture> externalSensorTextures = new(StringComparer.Ordinal);
     private D3D12TrackedResource? programOutputTexture;
     private IntPtr programOutputSharedHandle;
@@ -352,7 +355,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         gpuFusionSeedBuffer = new D3D12StructuredBuffer(device, MaxTemporalGaussianCount, Marshal.SizeOf<D3D12GpuFusionSeedPacket>(), "Aquarium D3D12 GPU Sensor Fusion Seed Buffer");
         gpuFusionPointBuffer = new D3D12StructuredBuffer(device, MaxTemporalGaussianCount, Marshal.SizeOf<D3D12GpuFusionPointPacket>(), "Aquarium D3D12 GPU Sensor Fusion Native Point Buffer");
         temporalGaussianBuffer = new D3D12StructuredBuffer(device, MaxTemporalGaussianCount, Marshal.SizeOf<D3D12TemporalGaussianPacket>(), "Aquarium D3D12 Temporal Gaussian Buffer", allowUnorderedAccess: true);
-        tubeFieldVertexBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldVertices, Marshal.SizeOf<D3D12SplineVertex>(), "Aquarium D3D12 TubeField Vertex Buffer", allowUnorderedAccess: true);
+        tubeFieldVertexBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldVertices, Marshal.SizeOf<D3D12TubeFieldVertex>(), "Aquarium D3D12 TubeField Vertex Buffer", allowUnorderedAccess: true);
         tubeFieldIndexBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldIndices, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Index Buffer", allowUnorderedAccess: true);
         tubeFieldStatsBuffer = new D3D12StructuredBuffer(device, 4, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Stats Buffer", allowUnorderedAccess: true);
         resourceRegistry.Add("sdf-light-buffer", sdfLightBuffer);
@@ -389,6 +392,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fractalReservoirRootSignature.Name = "Aquarium D3D12 Fractal Reservoir Root Signature";
         tubeFieldRootSignature = CreateTubeFieldRootSignature();
         tubeFieldRootSignature.Name = "Aquarium D3D12 TubeField Root Signature";
+        tubeFieldRenderRootSignature = CreateTubeFieldRenderRootSignature();
+        tubeFieldRenderRootSignature.Name = "Aquarium D3D12 TubeField Render Root Signature";
         CaptureShaderWriteTimes();
         StartPipelineBuild("initial");
         viewport = new Viewport(0.0f, 0.0f, width, height);
@@ -921,6 +926,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         && fractalPbrReservoirPipelineState is not null
         && fractalRadiosityReservoirPipelineState is not null
         && tubeFieldComputePipelineState is not null
+        && tubeFieldRenderPipelineState is not null
         && sdfProxyPipelineStates.All(pipeline => pipeline is not null)
         && bloomPrefilterPipelineState is not null
         && bloomDownsamplePipelineState is not null
@@ -961,6 +967,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         gpuSensorFusionRootSignature.Dispose();
         fractalReservoirRootSignature.Dispose();
         tubeFieldRootSignature.Dispose();
+        tubeFieldRenderRootSignature.Dispose();
         blueNoiseTexture.Dispose();
         studioIrradianceTexture.Dispose();
         studioPmremTexture.Dispose();
@@ -1212,6 +1219,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fractalRadiosityReservoir.Name = "Aquarium D3D12 Fractal Radiosity Reservoir Compute Pipeline";
         var tubeFieldCompute = CreateTubeFieldComputePipelineState(paths.TubeField);
         tubeFieldCompute.Name = "Aquarium D3D12 TubeField Compute Pipeline";
+        var tubeFieldRender = CreateTubeFieldRenderPipelineState(paths.TubeField);
+        tubeFieldRender.Name = "Aquarium D3D12 TubeField Render Pipeline";
         var sdfProxies = new ID3D12PipelineState[paths.SdfShaders.Count];
         for (var index = 0; index < paths.SdfShaders.Count; index++)
         {
@@ -1244,6 +1253,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             fractalPbrReservoir,
             fractalRadiosityReservoir,
             tubeFieldCompute,
+            tubeFieldRender,
             sdfProxies,
             bloomPrefilter,
             bloomDownsample,
@@ -1761,7 +1771,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 context.CommandList.DrawInstanced(6, (uint)visibleFractalSplatCount, 0, 0);
             }
 
-            RenderTubeFields(context.CommandList);
+            RenderTubeFields(context.CommandList, frameResources);
             RenderSplineSurfaceClaims(context.CommandList, frameResources);
         }
         finally
@@ -1807,9 +1817,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCommandList.DrawInstanced((uint)vertices.Count, 1, 0, 0);
     }
 
-    private void RenderTubeFields(ID3D12GraphicsCommandList activeCommandList)
+    private void RenderTubeFields(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
     {
-        if (activeTubeFieldDrawIndexCount <= 0 || splinePipelineState is null)
+        if (activeTubeFieldDrawIndexCount <= 0 || tubeFieldRenderPipelineState is null || tubeFieldDrawBatches.Count == 0)
         {
             return;
         }
@@ -1818,17 +1828,25 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldIndexBuffer.Transition(activeCommandList, ResourceStates.IndexBuffer);
         var vertexView = new VertexBufferView(
             tubeFieldVertexBuffer.Resource.GPUVirtualAddress,
-            (uint)(MaxTubeFieldVertices * Marshal.SizeOf<D3D12SplineVertex>()),
-            (uint)Marshal.SizeOf<D3D12SplineVertex>());
+            (uint)(MaxTubeFieldVertices * Marshal.SizeOf<D3D12TubeFieldVertex>()),
+            (uint)Marshal.SizeOf<D3D12TubeFieldVertex>());
         var indexView = new IndexBufferView(
             tubeFieldIndexBuffer.Resource.GPUVirtualAddress,
             (uint)(MaxTubeFieldIndices * Marshal.SizeOf<uint>()),
             Format.R32_UInt);
-        activeCommandList.SetPipelineState(splinePipelineState);
+        activeCommandList.SetPipelineState(tubeFieldRenderPipelineState);
+        activeCommandList.SetGraphicsRootSignature(tubeFieldRenderRootSignature);
+        activeCommandList.SetGraphicsRootDescriptorTable(0, frameResources.FrameConstantsDescriptor.Gpu);
         activeCommandList.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         activeCommandList.IASetVertexBuffers(0, [vertexView]);
         activeCommandList.IASetIndexBuffer(indexView);
-        activeCommandList.DrawIndexedInstanced((uint)activeTubeFieldDrawIndexCount, 1, 0, 0, 0);
+        foreach (var batch in tubeFieldDrawBatches)
+        {
+            batch.Source.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+            activeCommandList.SetGraphicsRootConstantBufferView(1, batch.ConstantsGpuVirtualAddress);
+            activeCommandList.SetGraphicsRootShaderResourceView(2, batch.Source.Resource.GPUVirtualAddress);
+            activeCommandList.DrawIndexedInstanced((uint)batch.IndexCount, 1, (uint)batch.StartIndex, 0, 0);
+        }
     }
 
     private static void AppendSplineSurfaceEnvelopeGeometry(List<D3D12SplineVertex> output, AquariumSpline3D spline)
@@ -2228,6 +2246,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeTubeFieldDispatchedSegments = 0;
         activeTubeFieldRequestedSegments = 0;
         activeTubeFieldTruncatedSegments = 0;
+        tubeFieldDrawBatches.Clear();
         if (tubeFieldComputePipelineState is null || activeFieldEvidenceFrame.TubeSplineLowerings.Count == 0)
         {
             return;
@@ -2272,6 +2291,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 normalized.ColumnStep,
                 0.0f);
             var constantsUpload = frameResources.UploadRing.WriteConstant(constants);
+            var startIndex = segmentBase * 6;
 
             sourceBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
             tubeFieldVertexBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
@@ -2291,6 +2311,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
             segmentBase += dispatchSegments;
             activeTubeFieldDispatchedSegments += dispatchSegments;
+            tubeFieldDrawBatches.Add(new D3D12TubeFieldDrawBatch(
+                sourceBuffer,
+                constantsUpload.GpuVirtualAddress,
+                startIndex,
+                dispatchSegments * 6));
         }
 
         activeTubeFieldDrawIndexCount = activeTubeFieldDispatchedSegments * 6;
@@ -3139,6 +3164,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 fractalPbrReservoirPipelineState!,
                 fractalRadiosityReservoirPipelineState!,
                 tubeFieldComputePipelineState!,
+                tubeFieldRenderPipelineState!,
                 sdfProxyPipelineStates.Select(pipeline => pipeline!).ToArray(),
                 bloomPrefilterPipelineState!,
                 bloomDownsamplePipelineState!,
@@ -3163,6 +3189,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fractalPbrReservoirPipelineState = pipelines.FractalPbrReservoir;
         fractalRadiosityReservoirPipelineState = pipelines.FractalRadiosityReservoir;
         tubeFieldComputePipelineState = pipelines.TubeFieldCompute;
+        tubeFieldRenderPipelineState = pipelines.TubeFieldRender;
         for (var index = 0; index < sdfProxyPipelineStates.Length; index++)
         {
             sdfProxyPipelineStates[index] = pipelines.SdfProxies[index];
@@ -3505,6 +3532,27 @@ public sealed class D3D12Renderer : IAquariumRenderer
         return device.CreateRootSignature(0, in description, RootSignatureVersion.Version1);
     }
 
+    private ID3D12RootSignature CreateTubeFieldRenderRootSignature()
+    {
+        var frameConstants = new DescriptorRange(
+            DescriptorRangeType.ConstantBufferView,
+            1,
+            0,
+            0,
+            D3D12.DescriptorRangeOffsetAppend);
+        var rootParameters = new[]
+        {
+            new RootParameter(new RootDescriptorTable([frameConstants]), ShaderVisibility.All),
+            new RootParameter(RootParameterType.ConstantBufferView, new RootDescriptor(3, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(42, 0), ShaderVisibility.Pixel),
+        };
+        var description = new RootSignatureDescription(
+            RootSignatureFlags.AllowInputAssemblerInputLayout,
+            rootParameters,
+            []);
+        return device.CreateRootSignature(0, in description, RootSignatureVersion.Version1);
+    }
+
     private FrameResources CreateFrameResources(int index)
     {
         var commandAllocator = device.CreateCommandAllocator(CommandListType.Direct);
@@ -3638,6 +3686,56 @@ public sealed class D3D12Renderer : IAquariumRenderer
             ComputeShader = computeShader,
         };
         return device.CreateComputePipelineState(description);
+    }
+
+    private ID3D12PipelineState CreateTubeFieldRenderPipelineState(string path)
+    {
+        var vertexShader = CompileShader(path, "D3D12TubeFieldVS", "vs_5_0");
+        var pixelShader = CompileShader(path, "D3D12TubeFieldPS", "ps_5_0");
+        var blend = BlendDescription.Opaque;
+        for (var index = 1; index < 8; index++)
+        {
+            blend.RenderTarget[index] = new RenderTargetBlendDescription(
+                false,
+                false,
+                Blend.One,
+                Blend.Zero,
+                BlendOperation.Add,
+                Blend.One,
+                Blend.Zero,
+                BlendOperation.Add,
+                LogicOp.Noop,
+                index < 4 ? ColorWriteEnable.All : ColorWriteEnable.None);
+        }
+
+        var description = new GraphicsPipelineStateDescription
+        {
+            RootSignature = tubeFieldRenderRootSignature,
+            VertexShader = vertexShader,
+            PixelShader = pixelShader,
+            BlendState = blend,
+            RasterizerState = RasterizerDescription.CullNone,
+            DepthStencilState = DepthStencilDescription.None,
+            SampleMask = uint.MaxValue,
+            PrimitiveTopologyType = PrimitiveTopologyType.Triangle,
+            InputLayout = new InputLayoutDescription(
+            [
+                new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
+                new InputElementDescription("TEXCOORD", 0, Format.R32G32B32_Float, 12, 0),
+                new InputElementDescription("TEXCOORD", 1, Format.R32G32B32_Float, 24, 0),
+                new InputElementDescription("TEXCOORD", 2, Format.R32G32B32_Float, 36, 0),
+                new InputElementDescription("TEXCOORD", 3, Format.R32G32B32_Float, 48, 0),
+                new InputElementDescription("TEXCOORD", 4, Format.R32G32B32A32_Float, 60, 0),
+                new InputElementDescription("TEXCOORD", 5, Format.R32G32B32A32_Float, 76, 0),
+                new InputElementDescription("COLOR", 0, Format.R32G32B32A32_Float, 92, 0),
+                new InputElementDescription("TEXCOORD", 6, Format.R32G32B32A32_Float, 108, 0),
+                new InputElementDescription("TEXCOORD", 7, Format.R32G32B32A32_Float, 124, 0),
+            ]),
+            RenderTargetFormats = [SceneHdrFormat, SceneHdrFormat, SceneHdrFormat, SceneHdrFormat],
+            SampleDescription = new SampleDescription(1, 0),
+        };
+
+        return device.CreateGraphicsPipelineState(description);
     }
 
     private ID3D12PipelineState CreateBloomPrefilterPipelineState(string path)
@@ -3792,7 +3890,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"Failed to compile shader path={path} entry={entryPoint} profile={profile}.", ex);
+            throw new InvalidOperationException($"Failed to compile shader path={path} entry={entryPoint} profile={profile}: {ex.Message}", ex);
         }
     }
 
@@ -3883,6 +3981,25 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Vector4 Material);
 
     [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct D3D12TubeFieldVertex(
+        Vector3 Position,
+        Vector3 SegmentStart,
+        Vector3 SegmentEnd,
+        Vector3 Previous,
+        Vector3 Next,
+        Vector4 ShapeData,
+        Vector4 RadiusData,
+        Vector4 Color,
+        Vector4 Material,
+        Vector4 TubeData);
+
+    private readonly record struct D3D12TubeFieldDrawBatch(
+        D3D12StructuredBuffer Source,
+        ulong ConstantsGpuVirtualAddress,
+        int StartIndex,
+        int IndexCount);
+
+    [StructLayout(LayoutKind.Sequential)]
     private readonly record struct D3D12TubeFieldConstants(
         Vector4 Shape,
         Vector4 Columns,
@@ -3952,6 +4069,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         ID3D12PipelineState FractalPbrReservoir,
         ID3D12PipelineState FractalRadiosityReservoir,
         ID3D12PipelineState TubeFieldCompute,
+        ID3D12PipelineState TubeFieldRender,
         IReadOnlyList<ID3D12PipelineState> SdfProxies,
         ID3D12PipelineState BloomPrefilter,
         ID3D12PipelineState BloomDownsample,
@@ -3967,6 +4085,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             BloomDownsample.Dispose();
             BloomPrefilter.Dispose();
             FractalRadiosityReservoir.Dispose();
+            TubeFieldRender.Dispose();
             TubeFieldCompute.Dispose();
             FractalPbrReservoir.Dispose();
             FractalSdfReservoir.Dispose();

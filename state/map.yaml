@@ -82,14 +82,17 @@ next_actions:
     slots only when Fensalir is the producer. The TubeField DSL can now express
     a 2D rolling float buffer as Catmull-Rom XY tubes with modulo column
     addressing, amplitude power/normalization, radius, ramp texture path, and
-    emission scale. D3D12 now has the first shader-side TubeField expansion:
-    a compute pass binds the rolling sample buffer as read-only GPU memory,
-    emits fixed-budget vertex/index buffers with endpoint-clamped Catmull-Rom
-    tube envelopes, honors declared sample stride with byte-address loads,
-    dispatches the existing spline SDF draw, and reports requested/dispatched/
-    truncated segment counts. The next cut is TubeField-specific material
-    shading that samples source rows per pixel, binds ramp textures with the
-    linear fallback, and eventually moves the draw to an indirect packet path.
+    emission scale. D3D12 now has a TubeField compute/render lowering:
+    compute binds the rolling sample buffer as read-only GPU memory, emits
+    fixed-budget vertex/index buffers with endpoint-clamped Catmull-Rom tube
+    envelopes, honors declared sample stride with byte-address loads, and
+    records one draw batch per lowering so the TubeField pixel shader can bind
+    the right source row/column and resample material per pixel with the cheap
+    5-tap approximation. The first material is opaque field geometry with a
+    black-to-warm fallback ramp, squared normalized emission, fake Fresnel
+    center-bright/edge-dark shaping, and requested/dispatched/truncated segment
+    reporting. Remaining cuts are real ramp texture binding, indirect draw
+    packets, and texture/mesh/surface-page/volume resolvers.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

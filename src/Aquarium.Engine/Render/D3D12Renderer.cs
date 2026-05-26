@@ -255,6 +255,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private int activeTubeFieldTruncatedSegments;
     private int activeTubeFieldIndirectDrawCount;
     private int activeTubeFieldSkippedDrawBatches;
+    private int activeTubeFieldUnplannedLowerings;
     private Viewport viewport;
     private RawRect scissorRect;
     private int width;
@@ -2337,15 +2338,29 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeTubeFieldTruncatedSegments = 0;
         activeTubeFieldIndirectDrawCount = 0;
         activeTubeFieldSkippedDrawBatches = 0;
+        activeTubeFieldUnplannedLowerings = 0;
         tubeFieldDrawBatches.Clear();
         if (tubeFieldComputePipelineState is null || activeFieldEvidenceFrame.TubeSplineLowerings.Count == 0)
         {
             return;
         }
 
+        var plannedTubeFieldClaims = PlannedTubeFieldClaimKeys();
+        if (plannedTubeFieldClaims.Count == 0)
+        {
+            activeTubeFieldUnplannedLowerings = activeFieldEvidenceFrame.TubeSplineLowerings.Count;
+            return;
+        }
+
         var segmentBase = 0;
         foreach (var lowering in activeFieldEvidenceFrame.TubeSplineLowerings)
         {
+            if (!plannedTubeFieldClaims.Contains(lowering.ClaimKey))
+            {
+                activeTubeFieldUnplannedLowerings++;
+                continue;
+            }
+
             if (!lowering.IsValid ||
                 !fieldResourceRegistry.TryGetStructuredBuffer(lowering.ResourceKey, out var sourceBuffer))
             {
@@ -2421,6 +2436,21 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         activeTubeFieldDrawIndexCount = activeTubeFieldDispatchedSegments * 6;
+    }
+
+    private HashSet<string> PlannedTubeFieldClaimKeys()
+    {
+        var planned = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var packet in activeFieldLoweringPlan.Packets)
+        {
+            if (packet.Backend == AquariumFieldBackendKind.TubeField &&
+                packet.Encoding == AquariumFieldEncoding.Tube)
+            {
+                planned.Add(packet.ClaimKey);
+            }
+        }
+
+        return planned;
     }
 
     private void BindFractalReservoirConstants(ID3D12GraphicsCommandList activeCommandList, int splatDispatchCount)
@@ -3071,6 +3101,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 $"truncated {activeTubeFieldTruncatedSegments:N0}; " +
                 $"indirect draws {activeTubeFieldIndirectDrawCount:N0}; " +
                 $"skipped draw batches {activeTubeFieldSkippedDrawBatches:N0}; " +
+                $"unplanned lowerings {activeTubeFieldUnplannedLowerings:N0}; " +
                 $"index draw count {activeTubeFieldDrawIndexCount:N0}; " +
                 $"budget {MaxTubeFieldSegments:N0}");
         }

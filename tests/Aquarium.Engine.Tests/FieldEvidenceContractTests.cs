@@ -106,4 +106,142 @@ public sealed class FieldEvidenceContractTests
 
         Assert.False(packet.IsEvidenceWriter);
     }
+
+    [Fact]
+    public void ValidatorAcceptsCoherentFieldEvidenceFrame()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.False(report.HasErrors);
+        Assert.Empty(report.Issues);
+    }
+
+    [Fact]
+    public void ValidatorRejectsSplitAuthorityPackets()
+    {
+        var frame = new AquariumFieldEvidenceFrame
+        {
+            Domains =
+            [
+                new AquariumFieldDomain(
+                    "debug",
+                    "",
+                    AquariumFieldDomainKind.Surface2D,
+                    Matrix4x4.Identity,
+                    Matrix4x4.Identity,
+                    Vector3.Zero,
+                    Vector3.One,
+                    Vector3.Zero,
+                    "test")
+            ],
+            Claims =
+            [
+                new AquariumFieldClaim(
+                    "claim:debug",
+                    "debug",
+                    "test",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Tube,
+                    default,
+                    default,
+                    "",
+                    0,
+                    0.0f)
+            ],
+            BackendPackets =
+            [
+                new AquariumFieldBackendPacket(
+                    "packet:debug",
+                    "claim:missing",
+                    "debug",
+                    AquariumFieldLayer.Unknown,
+                    AquariumFieldEncoding.Unknown,
+                    AquariumFieldBackendKind.Unknown,
+                    default,
+                    default,
+                    "")
+            ],
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.True(report.HasErrors);
+        Assert.Contains(report.Issues, issue => issue.Key == "claim:debug");
+        Assert.Contains(report.Issues, issue => issue.Key == "packet:debug");
+    }
+
+    private static AquariumFieldEvidenceFrame BuildValidTubeEvidenceFrame()
+    {
+        var support = new AquariumFieldSupport(
+            Center: new Vector3(0.0f, 1.0f, 2.0f),
+            Radius: new Vector3(4.0f, 0.25f, 0.25f),
+            LocalFrame: Matrix4x4.Identity,
+            ConservativeRadius: 4.0f,
+            ProjectedError: 0.5f,
+            Curvature: 0.1f,
+            TemporalUncertainty: 0.02f);
+
+        var proposal = new AquariumFieldProposalPolicy(
+            AquariumFieldProposalKind.SensorObservation,
+            SourcePdf: 0.25f,
+            TargetContribution: 12.0f,
+            RepresentedCandidateCount: 4,
+            Seed: 123u);
+
+        return new AquariumFieldEvidenceFrame
+        {
+            Domains =
+            [
+                new AquariumFieldDomain(
+                    "mimir:spectrum:asio-ch0",
+                    "mimir:room",
+                    AquariumFieldDomainKind.RollingBuffer,
+                    Matrix4x4.Identity,
+                    Matrix4x4.Identity,
+                    new Vector3(-1.0f, 0.0f, -5.0f),
+                    new Vector3(1.0f, 2.0f, 0.0f),
+                    Vector3.Zero,
+                    "Mimir.Runtime")
+            ],
+            Claims =
+            [
+                new AquariumFieldClaim(
+                    "claim:mimir:spectrum:asio-ch0:42",
+                    "mimir:spectrum:asio-ch0",
+                    "mimir:asio",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Tube,
+                    support,
+                    proposal,
+                    "rolling-window:asio-ch0:spectrum",
+                    ObservedTimeNs: 10_000_000,
+                    Confidence: 0.91f)
+            ],
+            Candidates =
+            [
+                new AquariumFieldCandidate(
+                    "candidate:mimir:spectrum:asio-ch0:42",
+                    "claim:mimir:spectrum:asio-ch0:42",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Tube,
+                    proposal,
+                    AquariumFieldGuide.Valid(0.91f, sampleAgeSeconds: 0.016f))
+            ],
+            BackendPackets =
+            [
+                new AquariumFieldBackendPacket(
+                    "packet:mimir:spectrum:asio-ch0:42:tube",
+                    "claim:mimir:spectrum:asio-ch0:42",
+                    "mimir:spectrum:asio-ch0",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Tube,
+                    AquariumFieldBackendKind.TubeField,
+                    support,
+                    AquariumFieldGuide.Valid(0.91f, sampleAgeSeconds: 0.016f),
+                    "rolling-window:asio-ch0:spectrum")
+            ],
+        };
+    }
 }

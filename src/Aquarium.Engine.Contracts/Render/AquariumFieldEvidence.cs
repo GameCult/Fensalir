@@ -76,6 +76,12 @@ public enum AquariumFieldInvalidationCode
     Expired = 7,
 }
 
+public enum AquariumFieldEvidenceIssueSeverity
+{
+    Warning = 0,
+    Error = 1,
+}
+
 public readonly record struct AquariumFieldDomain(
     string DomainKey,
     string ParentKey,
@@ -221,4 +227,137 @@ public sealed class AquariumFieldEvidenceFrame
         Claims.Count > 0 ||
         Candidates.Count > 0 ||
         BackendPackets.Count > 0;
+}
+
+public readonly record struct AquariumFieldEvidenceIssue(
+    AquariumFieldEvidenceIssueSeverity Severity,
+    string Key,
+    string Message);
+
+public sealed class AquariumFieldEvidenceValidationReport
+{
+    public static AquariumFieldEvidenceValidationReport Empty { get; } = new([]);
+
+    public AquariumFieldEvidenceValidationReport(IReadOnlyList<AquariumFieldEvidenceIssue> issues)
+    {
+        Issues = issues;
+    }
+
+    public IReadOnlyList<AquariumFieldEvidenceIssue> Issues { get; }
+
+    public bool HasErrors => Issues.Any(static issue => issue.Severity == AquariumFieldEvidenceIssueSeverity.Error);
+}
+
+public static class AquariumFieldEvidenceValidator
+{
+    public static AquariumFieldEvidenceValidationReport Validate(AquariumFieldEvidenceFrame frame)
+    {
+        if (!frame.HasInput)
+        {
+            return AquariumFieldEvidenceValidationReport.Empty;
+        }
+
+        var issues = new List<AquariumFieldEvidenceIssue>();
+        var domainKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var domain in frame.Domains)
+        {
+            if (!domain.HasIdentity)
+            {
+                issues.Add(Error("domain", "Field domain is missing a stable key."));
+                continue;
+            }
+
+            if (!domain.HasBounds)
+            {
+                issues.Add(Error(domain.DomainKey, "Field domain bounds are inverted."));
+            }
+
+            domainKeys.Add(domain.DomainKey);
+        }
+
+        var claimKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var claim in frame.Claims)
+        {
+            if (!claim.HasIdentity)
+            {
+                issues.Add(Error("claim", "Field claim is missing a stable claim/domain key."));
+                continue;
+            }
+
+            if (!domainKeys.Contains(claim.DomainKey))
+            {
+                issues.Add(Error(claim.ClaimKey, $"Field claim references unknown domain '{claim.DomainKey}'."));
+            }
+
+            if (!claim.HasEvidence)
+            {
+                issues.Add(Error(claim.ClaimKey, "Field claim is missing layer, encoding, support, or confidence."));
+            }
+
+            if (!claim.Proposal.IsValid)
+            {
+                issues.Add(Error(claim.ClaimKey, "Field claim has an invalid proposal policy."));
+            }
+
+            claimKeys.Add(claim.ClaimKey);
+        }
+
+        foreach (var candidate in frame.Candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate.CandidateKey))
+            {
+                issues.Add(Error("candidate", "Field candidate is missing a stable key."));
+                continue;
+            }
+
+            if (!claimKeys.Contains(candidate.ClaimKey))
+            {
+                issues.Add(Error(candidate.CandidateKey, $"Field candidate references unknown claim '{candidate.ClaimKey}'."));
+            }
+
+            if (!candidate.IsSelectable)
+            {
+                issues.Add(Error(candidate.CandidateKey, "Field candidate is not selectable by proposal and guide."));
+            }
+        }
+
+        foreach (var packet in frame.BackendPackets)
+        {
+            if (string.IsNullOrWhiteSpace(packet.PacketKey))
+            {
+                issues.Add(Error("packet", "Field backend packet is missing a stable key."));
+                continue;
+            }
+
+            if (!claimKeys.Contains(packet.ClaimKey))
+            {
+                issues.Add(Error(packet.PacketKey, $"Field backend packet references unknown claim '{packet.ClaimKey}'."));
+            }
+
+            if (!domainKeys.Contains(packet.DomainKey))
+            {
+                issues.Add(Error(packet.PacketKey, $"Field backend packet references unknown domain '{packet.DomainKey}'."));
+            }
+
+            if (!packet.IsEvidenceWriter)
+            {
+                issues.Add(Error(packet.PacketKey, "Field backend packet cannot write reusable evidence."));
+            }
+
+            if (!packet.Guide.IsReusable)
+            {
+                issues.Add(Warning(packet.PacketKey, "Field backend packet guide marks the packet as non-reusable."));
+            }
+        }
+
+        return issues.Count == 0
+            ? AquariumFieldEvidenceValidationReport.Empty
+            : new AquariumFieldEvidenceValidationReport(issues);
+    }
+
+    private static AquariumFieldEvidenceIssue Error(string key, string message) =>
+        new(AquariumFieldEvidenceIssueSeverity.Error, key, message);
+
+    private static AquariumFieldEvidenceIssue Warning(string key, string message) =>
+        new(AquariumFieldEvidenceIssueSeverity.Warning, key, message);
 }

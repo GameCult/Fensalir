@@ -217,6 +217,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private AquariumPackedTextureSplineFieldProgram[] activeTextureSplinePrograms = [];
     private float[] activeTextureFieldSamples = [];
     private AquariumSplineFrame activeSplineFrame = AquariumSplineFrame.Empty;
+    private AquariumFieldEvidenceFrame activeFieldEvidenceFrame = AquariumFieldEvidenceFrame.Empty;
+    private AquariumFieldEvidenceValidationReport activeFieldEvidenceValidation = AquariumFieldEvidenceValidationReport.Empty;
+    private AquariumFieldLoweringPlan activeFieldLoweringPlan = AquariumFieldLoweringPlan.Empty;
     private Viewport viewport;
     private RawRect scissorRect;
     private int width;
@@ -446,6 +449,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 .Slider("Exposure", () => settings.SceneExposure, value => settings = (settings with { SceneExposure = Math.Clamp(value, GraphicsSettings.MinSceneExposure, GraphicsSettings.MaxSceneExposure) }).Normalized(), GraphicsSettings.MinSceneExposure, GraphicsSettings.MaxSceneExposure, "0.###", "Manual scene exposure before display transform.", () => activeDebugTab == 0)
                 .Slider("Bloom Intensity", () => settings.BloomIntensity, value => settings = (settings with { BloomIntensity = Math.Clamp(value, GraphicsSettings.MinBloomIntensity, GraphicsSettings.MaxBloomIntensity) }).Normalized(), GraphicsSettings.MinBloomIntensity, GraphicsSettings.MaxBloomIntensity, "0.###", "Strength of pre-tonemap bloom energy.", () => activeDebugTab == 0)
                 .Slider("Bloom Veil", () => settings.BloomVeilIntensity, value => settings = (settings with { BloomVeilIntensity = Math.Clamp(value, GraphicsSettings.MinBloomVeilIntensity, GraphicsSettings.MaxBloomVeilIntensity) }).Normalized(), GraphicsSettings.MinBloomVeilIntensity, GraphicsSettings.MaxBloomVeilIntensity, "0.###", "Low-frequency veil from bright HDR energy.", () => activeDebugTab == 0)
+                .Section("Field Evidence", () => activeDebugTab == 0)
+                .Readout("Field Evidence", FieldEvidenceDebugSummary, "Current field-evidence contract counts.", () => activeDebugTab == 0)
                 .Section("Terminal", () => activeDebugTab == 1)
                 .TextBox("", TerminalDisplay, UpdateTerminalInputFromDisplay, lines: 8, acceptsReturn: false, submit: ExecuteTerminalInput, monospace: true, alignBottom: true, tooltip: "Terminal log with live command prompt.", isVisible: () => activeDebugTab == 1)
                 .Section("Synth Playground", () => activeDebugTab == 2)
@@ -480,6 +485,20 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private string TerminalDisplay()
     {
         return string.Join('\n', terminalLines.TakeLast(10).Append($"> {terminalInput}"));
+    }
+
+    private string FieldEvidenceDebugSummary()
+    {
+        if (!activeFieldEvidenceFrame.HasInput)
+        {
+            return "none";
+        }
+
+        var errorCount = activeFieldEvidenceValidation.Issues.Count(issue => issue.Severity == AquariumFieldEvidenceIssueSeverity.Error);
+        return
+            $"domains {activeFieldEvidenceFrame.Domains.Count} / claims {activeFieldEvidenceFrame.Claims.Count} / " +
+            $"candidates {activeFieldEvidenceFrame.Candidates.Count} / packets {activeFieldEvidenceFrame.BackendPackets.Count} / " +
+            $"planned {activeFieldLoweringPlan.Packets.Count} / deferred {activeFieldLoweringPlan.DeferredRequests.Count} / errors {errorCount}";
     }
 
     private void UpdateTerminalInputFromDisplay(string value)
@@ -2271,6 +2290,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeSplineFrame = MergeSplineFrames(
             scene.SplineFrame.HasInput ? scene.SplineFrame : AquariumSplineFrame.Empty,
             BuildTextureSplineFrame(activeBufferFieldFrame, bufferFieldUsesReservoir));
+        activeFieldEvidenceFrame = scene.FieldEvidenceFrame.HasInput
+            ? scene.FieldEvidenceFrame
+            : AquariumFieldEvidenceFrame.Empty;
+        activeFieldEvidenceValidation = AquariumFieldEvidenceValidator.Validate(activeFieldEvidenceFrame);
+        activeFieldLoweringPlan = activeFieldEvidenceValidation.HasErrors
+            ? AquariumFieldLoweringPlan.Empty
+            : AquariumFieldLoweringPlanner.Plan(activeFieldEvidenceFrame);
         activeFractalProgramTransforms = activeFractalReservoirField.HasInput && scene.FractalReservoirField.ProgramTransforms.Count > 0
             ? scene.FractalReservoirField.ProgramTransforms as AquariumPackedFractalIfsTransform[] ?? scene.FractalReservoirField.ProgramTransforms.ToArray()
             : [];
@@ -2747,6 +2773,18 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 $"updates/pass {activeFractalReservoirField.ReservoirUpdatesPerPass:N0}; " +
                 $"candidates/update {activeFractalReservoirField.CandidatesPerReservoirUpdate}; " +
                 $"resident {residentBytes / (1024.0 * 1024.0):0.0} MiB");
+        }
+
+        if (activeFieldEvidenceFrame.HasInput)
+        {
+            Console.WriteLine(
+                $"D3D12 field evidence: domains {activeFieldEvidenceFrame.Domains.Count:N0}; " +
+                $"claims {activeFieldEvidenceFrame.Claims.Count:N0}; " +
+                $"candidates {activeFieldEvidenceFrame.Candidates.Count:N0}; " +
+                $"producer packets {activeFieldEvidenceFrame.BackendPackets.Count:N0}; " +
+                $"planned packets {activeFieldLoweringPlan.Packets.Count:N0}; " +
+                $"deferred {activeFieldLoweringPlan.DeferredRequests.Count:N0}; " +
+                $"issues {activeFieldEvidenceValidation.Issues.Count:N0}");
         }
 
         if (accumulatedTimingFrames > 0)

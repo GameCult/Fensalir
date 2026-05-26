@@ -113,6 +113,13 @@ public enum AquariumFieldMeshIndexFormat
     UInt32 = 2,
 }
 
+public enum AquariumFieldMeshLayout
+{
+    Unknown = 0,
+    PositionNormalUvColor = 1,
+    PipelinePrivate = 2,
+}
+
 public enum AquariumFieldInvalidationCode
 {
     None = 0,
@@ -270,19 +277,29 @@ public readonly record struct AquariumFieldMeshResource(
     AquariumFieldMeshBuffer Indices,
     AquariumFieldMeshTopology Topology,
     AquariumFieldMeshIndexFormat IndexFormat,
+    AquariumFieldMeshLayout Layout,
     Vector3 BoundsMin,
     Vector3 BoundsMax,
     int SubmeshCount)
 {
+    public const int PositionNormalUvColorStrideBytes = 48;
+
     public bool IsValid =>
         Vertices.HasShape &&
         Indices.HasShape &&
         Topology != AquariumFieldMeshTopology.Unknown &&
         IndexFormat != AquariumFieldMeshIndexFormat.Unknown &&
+        Layout != AquariumFieldMeshLayout.Unknown &&
         SubmeshCount > 0 &&
         BoundsMax.X >= BoundsMin.X &&
         BoundsMax.Y >= BoundsMin.Y &&
         BoundsMax.Z >= BoundsMin.Z;
+
+    public bool IsStandardImportedLayout =>
+        Layout == AquariumFieldMeshLayout.PositionNormalUvColor &&
+        Vertices.StrideBytes == PositionNormalUvColorStrideBytes;
+
+    public bool IsPipelinePrivate => Layout == AquariumFieldMeshLayout.PipelinePrivate;
 }
 
 public readonly record struct AquariumFieldTubeSplineLowering(

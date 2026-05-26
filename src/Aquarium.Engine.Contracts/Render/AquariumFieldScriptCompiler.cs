@@ -170,7 +170,11 @@ public static class AquariumFieldScriptCompiler
         var id = Required(args, "id", lineIndex);
         var key = StringValue(args, "key", $"aquarium:resource:mesh:{id}");
         var vertexCount = Int(args, "vertices", 1, lineIndex);
-        var vertexStride = Int(args, "vertexStride", 32, lineIndex);
+        var layout = Enum.Parse<AquariumFieldMeshLayout>(StringValue(args, "layout", nameof(AquariumFieldMeshLayout.PositionNormalUvColor)), ignoreCase: true);
+        var defaultVertexStride = layout == AquariumFieldMeshLayout.PositionNormalUvColor
+            ? AquariumFieldMeshResource.PositionNormalUvColorStrideBytes
+            : 32;
+        var vertexStride = Int(args, "vertexStride", defaultVertexStride, lineIndex);
         var indexCount = Int(args, "indices", 3, lineIndex);
         var indexFormat = Enum.Parse<AquariumFieldMeshIndexFormat>(StringValue(args, "indexFormat", nameof(AquariumFieldMeshIndexFormat.UInt32)), ignoreCase: true);
         var indexStride = indexFormat == AquariumFieldMeshIndexFormat.UInt16 ? 2 : 4;
@@ -179,6 +183,7 @@ public static class AquariumFieldScriptCompiler
             Indices: new AquariumFieldMeshBuffer($"{key}:indices", indexCount, indexStride, IntPtr.Zero, "fensalir-mesh-indices"),
             Topology: Enum.Parse<AquariumFieldMeshTopology>(StringValue(args, "topology", nameof(AquariumFieldMeshTopology.TriangleList)), ignoreCase: true),
             IndexFormat: indexFormat,
+            Layout: layout,
             BoundsMin: Vec3(args, "min", -Vector3.One, lineIndex),
             BoundsMax: Vec3(args, "max", Vector3.One, lineIndex),
             SubmeshCount: Int(args, "submeshes", 1, lineIndex));

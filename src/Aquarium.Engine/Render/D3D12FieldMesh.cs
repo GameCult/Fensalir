@@ -11,6 +11,7 @@ internal sealed class D3D12FieldMesh : IDisposable
         D3D12StructuredBuffer indices,
         AquariumFieldMeshTopology topology,
         AquariumFieldMeshIndexFormat indexFormat,
+        AquariumFieldMeshLayout layout,
         int submeshCount,
         ulong version)
     {
@@ -18,6 +19,7 @@ internal sealed class D3D12FieldMesh : IDisposable
         Indices = indices;
         Topology = topology;
         IndexFormat = indexFormat;
+        Layout = layout;
         SubmeshCount = submeshCount;
         Version = version;
     }
@@ -29,6 +31,14 @@ internal sealed class D3D12FieldMesh : IDisposable
     public AquariumFieldMeshTopology Topology { get; }
 
     public AquariumFieldMeshIndexFormat IndexFormat { get; }
+
+    public AquariumFieldMeshLayout Layout { get; }
+
+    public bool HasStandardImportedLayout =>
+        Layout == AquariumFieldMeshLayout.PositionNormalUvColor &&
+        Vertices.StrideBytes == AquariumFieldMeshResource.PositionNormalUvColorStrideBytes;
+
+    public bool IsPipelinePrivate => Layout == AquariumFieldMeshLayout.PipelinePrivate;
 
     public int SubmeshCount { get; }
 

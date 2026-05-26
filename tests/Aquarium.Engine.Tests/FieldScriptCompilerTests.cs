@@ -174,7 +174,7 @@ public sealed class FieldScriptCompilerTests
     {
         var frame = AquariumFieldScriptCompiler.CompileEvidence(
             """
-            mesh id=quad key=aquarium:resource:mesh:quad vertices=4 vertexStride=32 indices=6 indexFormat=UInt32 topology=TriangleList min=-1,-1,0 max=1,1,0 submeshes=1 version=9
+            mesh id=quad key=aquarium:resource:mesh:quad vertices=4 indices=6 indexFormat=UInt32 topology=TriangleList min=-1,-1,0 max=1,1,0 submeshes=1 version=9
             """,
             new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal));
 
@@ -185,12 +185,31 @@ public sealed class FieldScriptCompilerTests
         Assert.Equal(AquariumFieldShaderAccess.ShaderResource, resource.Access);
         Assert.Equal("fensalir-mesh-package", resource.NativeHandleKind);
         Assert.True(resource.Mesh.IsValid);
+        Assert.True(resource.Mesh.IsStandardImportedLayout);
         Assert.Equal(4, resource.Mesh.Vertices.Count);
-        Assert.Equal(32, resource.Mesh.Vertices.StrideBytes);
+        Assert.Equal(AquariumFieldMeshResource.PositionNormalUvColorStrideBytes, resource.Mesh.Vertices.StrideBytes);
         Assert.Equal(6, resource.Mesh.Indices.Count);
         Assert.Equal(4, resource.Mesh.Indices.StrideBytes);
         Assert.Equal(AquariumFieldMeshTopology.TriangleList, resource.Mesh.Topology);
         Assert.Equal(AquariumFieldMeshIndexFormat.UInt32, resource.Mesh.IndexFormat);
+        Assert.Equal(AquariumFieldMeshLayout.PositionNormalUvColor, resource.Mesh.Layout);
+    }
+
+    [Fact]
+    public void CompileEvidenceCanDeclarePipelinePrivateMeshes()
+    {
+        var frame = AquariumFieldScriptCompiler.CompileEvidence(
+            """
+            mesh id=generated key=aquarium:resource:mesh:generated layout=PipelinePrivate vertices=8 vertexStride=20 indices=12 indexFormat=UInt16 topology=TriangleList min=-1,-1,0 max=1,1,0 submeshes=1
+            """,
+            new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal));
+
+        var resource = Assert.Single(frame.Resources);
+        Assert.True(resource.Mesh.IsValid);
+        Assert.True(resource.Mesh.IsPipelinePrivate);
+        Assert.False(resource.Mesh.IsStandardImportedLayout);
+        Assert.Equal(20, resource.Mesh.Vertices.StrideBytes);
+        Assert.Equal(2, resource.Mesh.Indices.StrideBytes);
     }
 
     [Fact]
@@ -198,7 +217,7 @@ public sealed class FieldScriptCompilerTests
     {
         var frame = AquariumFieldScriptCompiler.CompileEvidence(
             """
-            mesh id=quad key=aquarium:resource:mesh:quad vertices=4 vertexStride=32 indices=6 indexFormat=UInt32 topology=TriangleList min=-1,-1,0 max=1,1,0 submeshes=1 version=9
+            mesh id=quad key=aquarium:resource:mesh:quad vertices=4 indices=6 indexFormat=UInt32 topology=TriangleList min=-1,-1,0 max=1,1,0 submeshes=1 version=9
             surfacepage id=height key=aquarium:resource:surface-page:height width=64 height=64 format=R16Float
             volumetexture id=fog key=aquarium:resource:volume-texture:fog width=16 height=16 depth=16 format=R16Float
             claim id=quad resource=quad encoding=Mesh layer=Form radius=1

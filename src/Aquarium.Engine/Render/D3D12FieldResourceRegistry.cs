@@ -517,7 +517,8 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             existing.Indices.ElementCount == mesh.Indices.Count &&
             existing.Indices.StrideBytes == mesh.Indices.StrideBytes &&
             existing.Topology == mesh.Topology &&
-            existing.IndexFormat == mesh.IndexFormat)
+            existing.IndexFormat == mesh.IndexFormat &&
+            existing.Layout == mesh.Layout)
         {
             return true;
         }
@@ -543,6 +544,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             indices,
             mesh.Topology,
             mesh.IndexFormat,
+            mesh.Layout,
             mesh.SubmeshCount,
             declaration.Version);
         return true;

@@ -111,9 +111,12 @@ next_actions:
     evidence DSL also has a generic resource-backed `claim` command, so Mesh,
     Height/SurfacePage, and Density/VolumeTexture resources can be planned into
     backend packets without pretending a render path exists. Remaining cuts are
-    render lowerings that consume those packets. Mesh rendering is blocked on a
-    vertex attribute/material contract; stride/count/index format is resource
-    shape, not enough authority to decide position/normal/uv/color semantics.
+    render lowerings that consume those packets. Mesh layout authority is now
+    split intentionally: imported/user-facing meshes use the standard
+    `PositionNormalUvColor` layout, while generated meshes may declare
+    `PipelinePrivate` so the selected lowering owns the minimal bytes it emits
+    and consumes. Mesh rendering is now blocked on choosing the first selected
+    render lowering/material path, not on a generic imported-mesh ABI.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

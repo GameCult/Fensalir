@@ -45,4 +45,44 @@ public sealed class FieldScriptCompilerTests
         Assert.Equal(0.5f, frame.LoweringPolicy.LodBias);
         Assert.True(frame.UseReservoirLowering);
     }
+
+    [Fact]
+    public void CompileEvidenceParsesTubeSplineLoweringForRollingFloatBuffers()
+    {
+        var resource = new AquariumFieldResourceDeclaration(
+            "mimir:resource:log-mel",
+            AquariumFieldResourceKind.StructuredBuffer,
+            AquariumFieldResourceResidency.SharedGpu,
+            AquariumFieldShaderAccess.ShaderResource,
+            "Float32",
+            Width: 64,
+            Height: 32,
+            DepthOrCount: 2048,
+            StrideBytes: 4,
+            ValidFromNs: 0,
+            ValidUntilNs: 10_000,
+            Version: 7,
+            NativeHandle: IntPtr.Zero,
+            NativeHandleKind: "fensalir-buffer");
+
+        var frame = AquariumFieldScriptCompiler.CompileEvidence(
+            """
+            resource id=mel key=mimir:resource:log-mel
+            tubespline id=mel-field resource=mel domain=mimir:log-mel width=64 height=32 stride=4 firstColumn=3 columns=8 columnStride=1 rollingModulo=32 rollingOffset=12 amplitudePower=2 normalizeMin=0 normalizeMax=1 radius=0.01 radiusScale=0.03 ramp=D:\WIP4\Projects\Aetheria\Assets\Resources\Ramps\blackbody.png emissionScale=10 subdivisions=4
+            """,
+            new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal)
+            {
+                [resource.ResourceKey] = resource,
+            });
+
+        var lowering = Assert.Single(frame.TubeSplineLowerings);
+        Assert.Equal("dsl:tube:mel-field", lowering.ClaimKey);
+        Assert.Equal(resource.ResourceKey, lowering.ResourceKey);
+        Assert.Equal(64, lowering.Width);
+        Assert.Equal(32, lowering.Height);
+        Assert.Equal(12, lowering.RollingOffset);
+        Assert.Equal(2.0f, lowering.AmplitudePower);
+        Assert.Equal(10.0f, lowering.EmissionScale);
+        Assert.Equal(@"D:\WIP4\Projects\Aetheria\Assets\Resources\Ramps\blackbody.png", lowering.RampTexturePath);
+    }
 }

@@ -65,6 +65,10 @@ invariants:
     kind, GPU residency, shader access, format, shape, validity, version, and
     native handle metadata. Missing, CPU-only, or backend-incompatible resources
     defer lowering instead of becoming visible evidence.
+  - Rendering-relevant field buffers move to GPU residency as early as possible
+    and stay there. Fensalir must pass GPU resource handles/SRVs/UAVs between
+    compute and render lowerings; CPU readback or CPU tessellation is a
+    diagnostic-only escape hatch, not the live TubeField path.
 
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.
@@ -72,12 +76,14 @@ next_actions:
   - Cut the rendering rebuild through explicit field-domain/field-claim
     contracts before adding another backend-specific visual path.
   - Extend the D3D12 field packet/resource resolver beyond its first
-    Fensalir-owned structured-buffer slot cut. Current contracts, DSL, and
-    renderer registry can validate, plan, allocate, reuse, and retire
-    GPU-visible structured/curve buffer resources for resource-backed
-    TubeField packets. Visible rendering is now blocked on binding those
-    resolved slots into a concrete shader lowering, then adding honest
-    texture, mesh, surface-page, and volume resource resolvers.
+    structured/curve-buffer cut. Current contracts, DSL, and renderer registry
+    can validate and plan resource-backed TubeField packets, import shared GPU
+    structured buffers by handle, and allocate Fensalir-owned GPU-resident
+    slots only when Fensalir is the producer. The TubeField DSL can now express
+    a 2D rolling float buffer as Catmull-Rom XY tubes with modulo column
+    addressing, amplitude power/normalization, radius, ramp texture path, and
+    emission scale. Visible rendering is blocked on shader-side expansion and
+    binding of those GPU-resident slots, not CPU conversion to spline vertices.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

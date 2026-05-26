@@ -24,6 +24,16 @@ internal sealed class D3D12StructuredBuffer : IDisposable
         Resource.Name = name;
     }
 
+    public D3D12StructuredBuffer(ID3D12Resource resource, int elementCount, int strideBytes, ResourceStates initialState)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        this.elementCount = elementCount;
+        this.strideBytes = strideBytes;
+        SizeBytes = elementCount * strideBytes;
+        Resource = resource;
+        State = initialState;
+    }
+
     public ID3D12Resource Resource { get; }
 
     public int ElementCount => elementCount;

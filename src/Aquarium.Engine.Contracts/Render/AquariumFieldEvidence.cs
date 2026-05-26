@@ -238,6 +238,68 @@ public readonly record struct AquariumFieldBackendPacket(
         Support.HasSupport;
 }
 
+public readonly record struct AquariumFieldTubeSplineLowering(
+    string LoweringKey,
+    string ClaimKey,
+    string ResourceKey,
+    int Width,
+    int Height,
+    int StrideBytes,
+    int FirstColumn,
+    int ColumnCount,
+    int ColumnStride,
+    int RollingModulo,
+    int RollingOffset,
+    Vector3 Origin,
+    Vector3 AxisStep,
+    Vector3 ColumnStep,
+    float AmplitudePower,
+    float AmplitudeScale,
+    float NormalizeMin,
+    float NormalizeMax,
+    float BaseRadius,
+    float RadiusScale,
+    float Alpha,
+    float Feather,
+    string RampTexturePath,
+    float EmissionScale,
+    int CatmullRomSubdivisions)
+{
+    public bool IsValid =>
+        !string.IsNullOrWhiteSpace(LoweringKey) &&
+        !string.IsNullOrWhiteSpace(ClaimKey) &&
+        !string.IsNullOrWhiteSpace(ResourceKey) &&
+        Width > 1 &&
+        Height > 0 &&
+        StrideBytes > 0 &&
+        ColumnCount > 0 &&
+        ColumnStride > 0 &&
+        NormalizeMax > NormalizeMin &&
+        BaseRadius > 0.0f &&
+        RadiusScale >= 0.0f &&
+        EmissionScale >= 0.0f &&
+        CatmullRomSubdivisions > 0;
+
+    public AquariumFieldTubeSplineLowering Normalized() => this with
+    {
+        Width = Math.Max(2, Width),
+        Height = Math.Max(1, Height),
+        StrideBytes = Math.Max(4, StrideBytes),
+        FirstColumn = Math.Max(0, FirstColumn),
+        ColumnCount = Math.Max(1, ColumnCount),
+        ColumnStride = Math.Max(1, ColumnStride),
+        RollingModulo = Math.Max(0, RollingModulo),
+        AmplitudePower = MathF.Max(0.0001f, AmplitudePower),
+        NormalizeMax = NormalizeMax <= NormalizeMin ? NormalizeMin + 1.0f : NormalizeMax,
+        BaseRadius = MathF.Max(0.0001f, BaseRadius),
+        RadiusScale = MathF.Max(0.0f, RadiusScale),
+        Alpha = Math.Clamp(Alpha, 0.0f, 1.0f),
+        Feather = MathF.Max(0.0001f, Feather),
+        EmissionScale = MathF.Max(0.0f, EmissionScale),
+        CatmullRomSubdivisions = Math.Clamp(CatmullRomSubdivisions, 1, 16),
+    };
+}
+
 public readonly record struct AquariumFieldResourceDeclaration(
     string ResourceKey,
     AquariumFieldResourceKind Kind,
@@ -285,6 +347,8 @@ public sealed class AquariumFieldEvidenceFrame
 
     public IReadOnlyList<AquariumFieldResourceDeclaration> Resources { get; init; } = [];
 
+    public IReadOnlyList<AquariumFieldTubeSplineLowering> TubeSplineLowerings { get; init; } = [];
+
     public float AccumulationWindowSeconds { get; init; }
 
     public float PresentationDelaySeconds { get; init; }
@@ -294,7 +358,8 @@ public sealed class AquariumFieldEvidenceFrame
         Claims.Count > 0 ||
         Candidates.Count > 0 ||
         BackendPackets.Count > 0 ||
-        Resources.Count > 0;
+        Resources.Count > 0 ||
+        TubeSplineLowerings.Count > 0;
 }
 
 public readonly record struct AquariumFieldEvidenceIssue(
@@ -489,6 +554,25 @@ public static class AquariumFieldEvidenceValidator
             if (LooksLikeResourceKey(packet.PayloadHandle) && !resourceKeys.Contains(packet.PayloadHandle))
             {
                 issues.Add(Error(packet.PacketKey, $"Field backend packet references unknown resource '{packet.PayloadHandle}'."));
+            }
+        }
+
+        foreach (var lowering in frame.TubeSplineLowerings)
+        {
+            if (!lowering.IsValid)
+            {
+                issues.Add(Error(string.IsNullOrWhiteSpace(lowering.LoweringKey) ? "tube-spline-lowering" : lowering.LoweringKey, "Tube spline lowering is missing identity, shape, normalization, or style."));
+                continue;
+            }
+
+            if (!claimKeys.Contains(lowering.ClaimKey))
+            {
+                issues.Add(Error(lowering.LoweringKey, $"Tube spline lowering references unknown claim '{lowering.ClaimKey}'."));
+            }
+
+            if (!resourceKeys.Contains(lowering.ResourceKey))
+            {
+                issues.Add(Error(lowering.LoweringKey, $"Tube spline lowering references unknown resource '{lowering.ResourceKey}'."));
             }
         }
 

@@ -16,6 +16,7 @@ public static class AquariumFieldScriptCompiler
         var domains = new List<AquariumFieldDomain>();
         var claims = new List<AquariumFieldClaim>();
         var candidates = new List<AquariumFieldCandidate>();
+        var tubeSplineLowerings = new List<AquariumFieldTubeSplineLowering>();
         var resourceAliases = new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal);
         var domainKeys = new HashSet<string>(StringComparer.Ordinal);
 
@@ -46,6 +47,9 @@ public static class AquariumFieldScriptCompiler
                 case "tubeclaim":
                     AddTubeClaim(args, resourceAliases, domainKeys, domains, claims, candidates, lineIndex);
                     break;
+                case "tubespline":
+                    AddTubeSpline(args, resourceAliases, domainKeys, domains, claims, candidates, tubeSplineLowerings, lineIndex);
+                    break;
                 default:
                     throw new FormatException($"Unknown field evidence DSL command `{tokens[0]}` at line {lineIndex + 1}.");
             }
@@ -57,6 +61,7 @@ public static class AquariumFieldScriptCompiler
             Domains = domains,
             Claims = claims,
             Candidates = candidates,
+            TubeSplineLowerings = tubeSplineLowerings,
         };
         var validation = AquariumFieldEvidenceValidator.Validate(frame);
         if (validation.HasErrors)
@@ -240,6 +245,50 @@ public static class AquariumFieldScriptCompiler
             Encoding: claim.Encoding,
             Proposal: claim.Proposal,
             Guide: AquariumFieldGuide.Valid(confidence, Float(args, "age", 0.0f, lineIndex))));
+    }
+
+    private static void AddTubeSpline(
+        IReadOnlyDictionary<string, string> args,
+        IReadOnlyDictionary<string, AquariumFieldResourceDeclaration> resourceAliases,
+        ISet<string> domainKeys,
+        ICollection<AquariumFieldDomain> domains,
+        ICollection<AquariumFieldClaim> claims,
+        ICollection<AquariumFieldCandidate> candidates,
+        ICollection<AquariumFieldTubeSplineLowering> lowerings,
+        int lineIndex)
+    {
+        var id = Required(args, "id", lineIndex);
+        AddTubeClaim(args, resourceAliases, domainKeys, domains, claims, candidates, lineIndex);
+        var claimKey = $"dsl:tube:{id}";
+        var resourceId = Required(args, "resource", lineIndex);
+        var resource = resourceAliases[resourceId];
+        var lowering = new AquariumFieldTubeSplineLowering(
+            LoweringKey: $"dsl:tube-spline:{id}",
+            ClaimKey: claimKey,
+            ResourceKey: resource.ResourceKey,
+            Width: Int(args, "width", Math.Max(2, resource.Width), lineIndex),
+            Height: Int(args, "height", Math.Max(1, resource.Height), lineIndex),
+            StrideBytes: Int(args, "stride", Math.Max(4, resource.StrideBytes), lineIndex),
+            FirstColumn: Int(args, "firstColumn", 0, lineIndex),
+            ColumnCount: Int(args, "columns", Math.Max(1, resource.Height), lineIndex),
+            ColumnStride: Int(args, "columnStride", 1, lineIndex),
+            RollingModulo: Int(args, "rollingModulo", Math.Max(0, resource.Height), lineIndex),
+            RollingOffset: Int(args, "rollingOffset", 0, lineIndex),
+            Origin: Vec3(args, "origin", new Vector3(-0.78f, -0.52f, -0.10f), lineIndex),
+            AxisStep: Vec3(args, "axisStep", new Vector3(0.016f, 0.0f, 0.0f), lineIndex),
+            ColumnStep: Vec3(args, "columnStep", new Vector3(0.0f, 0.0f, 0.030f), lineIndex),
+            AmplitudePower: Float(args, "amplitudePower", 2.0f, lineIndex),
+            AmplitudeScale: Float(args, "amplitudeScale", 0.42f, lineIndex),
+            NormalizeMin: Float(args, "normalizeMin", 0.0f, lineIndex),
+            NormalizeMax: Float(args, "normalizeMax", 1.0f, lineIndex),
+            BaseRadius: Float(args, "radius", 0.012f, lineIndex),
+            RadiusScale: Float(args, "radiusScale", 0.030f, lineIndex),
+            Alpha: Float(args, "alpha", 0.92f, lineIndex),
+            Feather: Float(args, "feather", 0.20f, lineIndex),
+            RampTexturePath: StringValue(args, "ramp", ""),
+            EmissionScale: Float(args, "emissionScale", 10.0f, lineIndex),
+            CatmullRomSubdivisions: Int(args, "subdivisions", 4, lineIndex)).Normalized();
+        lowerings.Add(lowering);
     }
 
     private static AquariumTextureSplineFieldProgram ParseSplineField(

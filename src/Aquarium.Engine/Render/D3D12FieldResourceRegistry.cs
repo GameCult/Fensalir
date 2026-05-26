@@ -1,3 +1,4 @@
+using SharpGen.Runtime;
 using Vortice.Direct3D12;
 
 namespace Aquarium.Engine.Render;
@@ -49,9 +50,16 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
 
             if (declaration.Kind is AquariumFieldResourceKind.StructuredBuffer or AquariumFieldResourceKind.CurvePointBuffer)
             {
-                ResolveStructuredBuffer(device, resourceRegistry, declaration);
-                resolved++;
-                structuredBufferCount++;
+                if (ResolveStructuredBuffer(device, resourceRegistry, declaration))
+                {
+                    resolved++;
+                    structuredBufferCount++;
+                }
+                else
+                {
+                    unsupported++;
+                }
+
                 continue;
             }
 
@@ -78,7 +86,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         liveKeys.Clear();
     }
 
-    private void ResolveStructuredBuffer(
+    private bool ResolveStructuredBuffer(
         ID3D12Device device,
         D3D12ResourceRegistry resourceRegistry,
         AquariumFieldResourceDeclaration declaration)
@@ -94,7 +102,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             existing.AllowUnorderedAccess == allowUnorderedAccess &&
             existing.Version == declaration.Version)
         {
-            return;
+            return true;
         }
 
         var registryKey = RegistryKey(declaration.ResourceKey);
@@ -104,12 +112,19 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             existing.Buffer.Dispose();
         }
 
-        var buffer = new D3D12StructuredBuffer(
-            device,
-            elementCount,
-            strideBytes,
-            $"Aquarium D3D12 Field Resource {declaration.ResourceKey}",
-            allowUnorderedAccess);
+        var buffer = declaration.Residency == AquariumFieldResourceResidency.SharedGpu
+            ? OpenSharedStructuredBuffer(device, declaration, elementCount, strideBytes)
+            : new D3D12StructuredBuffer(
+                device,
+                elementCount,
+                strideBytes,
+                $"Aquarium D3D12 Field Resource {declaration.ResourceKey}",
+                allowUnorderedAccess);
+
+        if (buffer is null)
+        {
+            return false;
+        }
 
         resourceRegistry.Add(registryKey, buffer);
         structuredBuffers[declaration.ResourceKey] = new StructuredBufferSlot(
@@ -118,6 +133,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             strideBytes,
             allowUnorderedAccess,
             declaration.Version);
+        return true;
     }
 
     private int RemoveStaleStructuredBuffers(D3D12ResourceRegistry resourceRegistry, HashSet<string> currentKeys)
@@ -140,6 +156,37 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
     }
 
     private static string RegistryKey(string resourceKey) => RegistryPrefix + resourceKey;
+
+    private static D3D12StructuredBuffer? OpenSharedStructuredBuffer(
+        ID3D12Device device,
+        AquariumFieldResourceDeclaration declaration,
+        int elementCount,
+        int strideBytes)
+    {
+        if (declaration.NativeHandle == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            var resource = device.OpenSharedHandle<ID3D12Resource>(declaration.NativeHandle);
+            resource.Name = $"Aquarium D3D12 Shared Field Resource {declaration.ResourceKey}";
+            return new D3D12StructuredBuffer(
+                resource,
+                elementCount,
+                strideBytes,
+                ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+        }
+        catch (SharpGenException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
 
     private sealed record StructuredBufferSlot(
         D3D12StructuredBuffer Buffer,

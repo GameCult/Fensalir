@@ -437,6 +437,35 @@ tubeclaim id=spectrum-trail resource=spectrum domain=mimir:spectrum:asio-ch0 con
                     AquariumFieldGuide.Valid(0.91f, sampleAgeSeconds: 0.016f),
                     "mimir:resource:native-ring:asio-ch0")
             ],
+            TubeSplineLowerings =
+            [
+                new AquariumFieldTubeSplineLowering(
+                    "tube-spline:mimir:spectrum:asio-ch0:42",
+                    "claim:mimir:spectrum:asio-ch0:42",
+                    "mimir:resource:native-ring:asio-ch0",
+                    Width: 64,
+                    Height: 8,
+                    StrideBytes: 4,
+                    FirstColumn: 0,
+                    ColumnCount: 4,
+                    ColumnStride: 1,
+                    RollingModulo: 8,
+                    RollingOffset: 0,
+                    Origin: Vector3.Zero,
+                    AxisStep: new Vector3(0.01f, 0.0f, 0.0f),
+                    ColumnStep: new Vector3(0.0f, 0.0f, 0.02f),
+                    AmplitudePower: 2.0f,
+                    AmplitudeScale: 0.25f,
+                    NormalizeMin: 0.0f,
+                    NormalizeMax: 1.0f,
+                    BaseRadius: 0.01f,
+                    RadiusScale: 0.02f,
+                    Alpha: 1.0f,
+                    Feather: 0.2f,
+                    RampTexturePath: @"D:\WIP4\Projects\Aetheria\Assets\Resources\Ramps\blackbody.png",
+                    EmissionScale: 10.0f,
+                    CatmullRomSubdivisions: 4)
+            ],
         };
     }
 }

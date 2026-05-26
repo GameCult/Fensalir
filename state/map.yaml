@@ -71,11 +71,13 @@ next_actions:
   - Keep `dotnet build Fensalir.sln` green after the split.
   - Cut the rendering rebuild through explicit field-domain/field-claim
     contracts before adding another backend-specific visual path.
-  - Add the D3D12 field packet/resource resolver: import or alias declared
-    GPU-resident structured buffers, textures, meshes, surface pages, and
-    volumes, then bind them to selected shader lowerings. Current contracts and
-    DSL can plan resource-backed TubeField packets, but visible rendering is
-    blocked until this engine-owned resolver exists.
+  - Extend the D3D12 field packet/resource resolver beyond its first
+    Fensalir-owned structured-buffer slot cut. Current contracts, DSL, and
+    renderer registry can validate, plan, allocate, reuse, and retire
+    GPU-visible structured/curve buffer resources for resource-backed
+    TubeField packets. Visible rendering is now blocked on binding those
+    resolved slots into a concrete shader lowering, then adding honest
+    texture, mesh, surface-page, and volume resource resolvers.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

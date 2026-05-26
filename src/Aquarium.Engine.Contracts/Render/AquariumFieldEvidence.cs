@@ -402,7 +402,10 @@ public static class AquariumFieldEvidenceValidator
                 issues.Add(Warning(resource.ResourceKey, "Field resource is not GPU-visible; shader lowering must import or upload before use."));
             }
 
-            resourceKeys.Add(resource.ResourceKey);
+            if (!resourceKeys.Add(resource.ResourceKey))
+            {
+                issues.Add(Error(resource.ResourceKey, "Field resource declarations must have unique keys."));
+            }
         }
 
         foreach (var claim in frame.Claims)

@@ -116,6 +116,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly ID3D11On12Device overlayOn12Device;
     private readonly IDXGISwapChain3 swapChain;
     private readonly D3D12ResourceRegistry resourceRegistry = new();
+    private readonly D3D12FieldResourceRegistry fieldResourceRegistry = new();
     private D3D12DescriptorArena renderTargetViewArena;
     private D3D12DescriptorArena depthStencilViewArena;
     private D3D12DescriptorArena staticShaderDescriptorArena;
@@ -220,6 +221,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private AquariumFieldEvidenceFrame activeFieldEvidenceFrame = AquariumFieldEvidenceFrame.Empty;
     private AquariumFieldEvidenceValidationReport activeFieldEvidenceValidation = AquariumFieldEvidenceValidationReport.Empty;
     private AquariumFieldLoweringPlan activeFieldLoweringPlan = AquariumFieldLoweringPlan.Empty;
+    private D3D12FieldResourceStats activeFieldResourceStats = D3D12FieldResourceStats.Empty;
     private Viewport viewport;
     private RawRect scissorRect;
     private int width;
@@ -497,7 +499,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var errorCount = activeFieldEvidenceValidation.Issues.Count(issue => issue.Severity == AquariumFieldEvidenceIssueSeverity.Error);
         return
             $"domains {activeFieldEvidenceFrame.Domains.Count} / claims {activeFieldEvidenceFrame.Claims.Count} / " +
-            $"resources {activeFieldEvidenceFrame.Resources.Count} / " +
+            $"resources {activeFieldEvidenceFrame.Resources.Count} resolved {activeFieldResourceStats.Resolved} unsupported {activeFieldResourceStats.Unsupported} / " +
             $"candidates {activeFieldEvidenceFrame.Candidates.Count} / packets {activeFieldEvidenceFrame.BackendPackets.Count} / " +
             $"planned {activeFieldLoweringPlan.Packets.Count} / deferred {activeFieldLoweringPlan.DeferredRequests.Count} / errors {errorCount}";
     }
@@ -934,6 +936,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         blueNoiseTexture.Dispose();
         studioIrradianceTexture.Dispose();
         studioPmremTexture.Dispose();
+        fieldResourceRegistry.Dispose();
         DisposeFractalReservoirBuffers();
         bufferFieldTextureSplineProgramBuffer?.Dispose();
         bufferFieldTextureSampleBuffer?.Dispose();
@@ -2295,6 +2298,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
             ? scene.FieldEvidenceFrame
             : AquariumFieldEvidenceFrame.Empty;
         activeFieldEvidenceValidation = AquariumFieldEvidenceValidator.Validate(activeFieldEvidenceFrame);
+        activeFieldResourceStats = activeFieldEvidenceValidation.HasErrors
+            ? fieldResourceRegistry.Resolve(device, resourceRegistry, [])
+            : fieldResourceRegistry.Resolve(device, resourceRegistry, activeFieldEvidenceFrame.Resources);
         activeFieldLoweringPlan = activeFieldEvidenceValidation.HasErrors
             ? AquariumFieldLoweringPlan.Empty
             : AquariumFieldLoweringPlanner.Plan(activeFieldEvidenceFrame);
@@ -2781,6 +2787,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
             Console.WriteLine(
                 $"D3D12 field evidence: domains {activeFieldEvidenceFrame.Domains.Count:N0}; " +
                 $"resources {activeFieldEvidenceFrame.Resources.Count:N0}; " +
+                $"resolved resources {activeFieldResourceStats.Resolved:N0}; " +
+                $"structured buffers {activeFieldResourceStats.StructuredBuffers:N0}; " +
+                $"unsupported resources {activeFieldResourceStats.Unsupported:N0}; " +
                 $"claims {activeFieldEvidenceFrame.Claims.Count:N0}; " +
                 $"candidates {activeFieldEvidenceFrame.Candidates.Count:N0}; " +
                 $"producer packets {activeFieldEvidenceFrame.BackendPackets.Count:N0}; " +

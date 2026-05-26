@@ -173,6 +173,28 @@ public sealed class FieldEvidenceContractTests
     }
 
     [Fact]
+    public void ValidatorRejectsDuplicateFieldResourceKeys()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+        var duplicate = frame.Resources[0] with { Version = 43 };
+        frame = new AquariumFieldEvidenceFrame
+        {
+            Resources = [frame.Resources[0], duplicate],
+            Domains = frame.Domains,
+            Claims = frame.Claims,
+            Candidates = frame.Candidates,
+            BackendPackets = frame.BackendPackets,
+            AccumulationWindowSeconds = frame.AccumulationWindowSeconds,
+            PresentationDelaySeconds = frame.PresentationDelaySeconds,
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.True(report.HasErrors);
+        Assert.Contains(report.Issues, issue => issue.Key == "mimir:resource:native-ring:asio-ch0");
+    }
+
+    [Fact]
     public void NormalizerBuildsPendingLoweringRequestsWithoutChoosingBackend()
     {
         var frame = BuildValidTubeEvidenceFrame();

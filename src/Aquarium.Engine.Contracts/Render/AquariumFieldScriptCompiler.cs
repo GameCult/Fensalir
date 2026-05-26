@@ -56,6 +56,9 @@ public static class AquariumFieldScriptCompiler
                     }
 
                     break;
+                case "claim":
+                    AddResourceClaim(args, resourceAliases, domainKeys, domains, claims, candidates, lineIndex);
+                    break;
                 case "tubeclaim":
                     AddTubeClaim(args, resourceAliases, domainKeys, domains, claims, candidates, lineIndex);
                     break;
@@ -300,6 +303,62 @@ public static class AquariumFieldScriptCompiler
             Vec3(args, "period", Vector3.Zero, lineIndex),
             StringValue(args, "owner", "AquariumFieldScriptCompiler"));
 
+    private static void AddResourceClaim(
+        IReadOnlyDictionary<string, string> args,
+        IReadOnlyDictionary<string, AquariumFieldResourceDeclaration> resourceAliases,
+        ISet<string> domainKeys,
+        ICollection<AquariumFieldDomain> domains,
+        ICollection<AquariumFieldClaim> claims,
+        ICollection<AquariumFieldCandidate> candidates,
+        int lineIndex)
+    {
+        var id = Required(args, "id", lineIndex);
+        var resourceId = Required(args, "resource", lineIndex);
+        if (!resourceAliases.TryGetValue(resourceId, out var resource))
+        {
+            throw new FormatException($"Field claim `{id}` references unbound resource `{resourceId}` at line {lineIndex + 1}.");
+        }
+
+        var encoding = Enum.Parse<AquariumFieldEncoding>(Required(args, "encoding", lineIndex), ignoreCase: true);
+        var layer = Enum.Parse<AquariumFieldLayer>(StringValue(args, "layer", nameof(AquariumFieldLayer.Form)), ignoreCase: true);
+        var domainKey = StringValue(args, "domain", $"dsl:domain:{id}");
+        EnsureDefaultDomain(domainKey, domainKeys, domains);
+
+        var confidence = Math.Clamp(Float(args, "confidence", 1.0f, lineIndex), 0.0f, 1.0f);
+        var supportRadius = MathF.Max(0.0001f, Float(args, "radius", 0.01f, lineIndex));
+        var claim = new AquariumFieldClaim(
+            ClaimKey: $"dsl:claim:{id}",
+            DomainKey: domainKey,
+            ProducerKey: StringValue(args, "producer", resource.ResourceKey),
+            Layer: layer,
+            Encoding: encoding,
+            Support: new AquariumFieldSupport(
+                Vec3(args, "center", Vector3.Zero, lineIndex),
+                Vec3(args, "support", new Vector3(supportRadius), lineIndex),
+                Matrix4x4.Identity,
+                supportRadius,
+                ProjectedError: Float(args, "projectedError", 0.0f, lineIndex),
+                Curvature: Float(args, "curvature", 0.0f, lineIndex),
+                TemporalUncertainty: Float(args, "temporal", 0.0f, lineIndex)),
+            Proposal: new AquariumFieldProposalPolicy(
+                Enum.Parse<AquariumFieldProposalKind>(StringValue(args, "proposal", nameof(AquariumFieldProposalKind.DeterministicStructural)), ignoreCase: true),
+                SourcePdf: Float(args, "sourcePdf", 1.0f, lineIndex),
+                TargetContribution: confidence,
+                RepresentedCandidateCount: Int(args, "represented", Math.Max(1, resource.DepthOrCount), lineIndex),
+                Seed: UInt(args, "seed", StableSeed(id), lineIndex)),
+            PayloadHandle: resource.ResourceKey,
+            ObservedTimeNs: resource.ValidUntilNs,
+            Confidence: confidence);
+        claims.Add(claim);
+        candidates.Add(new AquariumFieldCandidate(
+            CandidateKey: $"dsl:claim:{id}:candidate",
+            ClaimKey: claim.ClaimKey,
+            Layer: claim.Layer,
+            Encoding: claim.Encoding,
+            Proposal: claim.Proposal,
+            Guide: AquariumFieldGuide.Valid(confidence, Float(args, "age", 0.0f, lineIndex))));
+    }
+
     private static void AddTubeClaim(
         IReadOnlyDictionary<string, string> args,
         IReadOnlyDictionary<string, AquariumFieldResourceDeclaration> resourceAliases,
@@ -317,19 +376,7 @@ public static class AquariumFieldScriptCompiler
         }
 
         var domainKey = StringValue(args, "domain", $"dsl:domain:{id}");
-        if (domainKeys.Add(domainKey))
-        {
-            domains.Add(new AquariumFieldDomain(
-                domainKey,
-                "",
-                AquariumFieldDomainKind.RollingBuffer,
-                Matrix4x4.Identity,
-                Matrix4x4.Identity,
-                Vector3.Zero,
-                Vector3.One,
-                Vector3.Zero,
-                "AquariumFieldScriptCompiler"));
-        }
+        EnsureDefaultDomain(domainKey, domainKeys, domains);
 
         var confidence = Math.Clamp(Float(args, "confidence", 1.0f, lineIndex), 0.0f, 1.0f);
         var supportRadius = MathF.Max(0.0001f, Float(args, "radius", 0.01f, lineIndex));
@@ -364,6 +411,28 @@ public static class AquariumFieldScriptCompiler
             Encoding: claim.Encoding,
             Proposal: claim.Proposal,
             Guide: AquariumFieldGuide.Valid(confidence, Float(args, "age", 0.0f, lineIndex))));
+    }
+
+    private static void EnsureDefaultDomain(
+        string domainKey,
+        ISet<string> domainKeys,
+        ICollection<AquariumFieldDomain> domains)
+    {
+        if (!domainKeys.Add(domainKey))
+        {
+            return;
+        }
+
+        domains.Add(new AquariumFieldDomain(
+            domainKey,
+            "",
+            AquariumFieldDomainKind.RollingBuffer,
+            Matrix4x4.Identity,
+            Matrix4x4.Identity,
+            Vector3.Zero,
+            Vector3.One,
+            Vector3.Zero,
+            "AquariumFieldScriptCompiler"));
     }
 
     private static void AddTubeSpline(

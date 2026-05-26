@@ -107,9 +107,13 @@ next_actions:
     first-class packages with `Mesh.Vertices` and `Mesh.Indices` buffer members,
     topology, index format, bounds, submesh count, and version. The DSL can
     declare a GPU-resident mesh package, and the D3D12 registry allocates and
-    reuses matching vertex/index GPU buffers under the mesh resource key.
-    Remaining cuts are render lowerings that consume meshes, surface pages, and
-    volumes as selected geometry/height/SDF/material/density domains.
+    reuses matching vertex/index GPU buffers under the mesh resource key. The
+    evidence DSL also has a generic resource-backed `claim` command, so Mesh,
+    Height/SurfacePage, and Density/VolumeTexture resources can be planned into
+    backend packets without pretending a render path exists. Remaining cuts are
+    render lowerings that consume those packets. Mesh rendering is blocked on a
+    vertex attribute/material contract; stride/count/index format is resource
+    shape, not enough authority to decide position/normal/uv/color semantics.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

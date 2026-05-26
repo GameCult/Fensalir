@@ -192,4 +192,43 @@ public sealed class FieldScriptCompilerTests
         Assert.Equal(AquariumFieldMeshTopology.TriangleList, resource.Mesh.Topology);
         Assert.Equal(AquariumFieldMeshIndexFormat.UInt32, resource.Mesh.IndexFormat);
     }
+
+    [Fact]
+    public void CompileEvidencePlansGenericResourceClaims()
+    {
+        var frame = AquariumFieldScriptCompiler.CompileEvidence(
+            """
+            mesh id=quad key=aquarium:resource:mesh:quad vertices=4 vertexStride=32 indices=6 indexFormat=UInt32 topology=TriangleList min=-1,-1,0 max=1,1,0 submeshes=1 version=9
+            surfacepage id=height key=aquarium:resource:surface-page:height width=64 height=64 format=R16Float
+            volumetexture id=fog key=aquarium:resource:volume-texture:fog width=16 height=16 depth=16 format=R16Float
+            claim id=quad resource=quad encoding=Mesh layer=Form radius=1
+            claim id=height resource=height encoding=Height layer=Form radius=1
+            claim id=fog resource=fog encoding=Density layer=Appearance radius=1
+            """,
+            new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal));
+
+        var plan = AquariumFieldLoweringPlanner.Plan(frame);
+
+        Assert.Empty(plan.DeferredRequests);
+        Assert.Collection(
+            plan.Packets,
+            packet =>
+            {
+                Assert.Equal(AquariumFieldEncoding.Mesh, packet.Encoding);
+                Assert.Equal(AquariumFieldBackendKind.Mesh, packet.Backend);
+                Assert.Equal("aquarium:resource:mesh:quad", packet.PayloadHandle);
+            },
+            packet =>
+            {
+                Assert.Equal(AquariumFieldEncoding.Height, packet.Encoding);
+                Assert.Equal(AquariumFieldBackendKind.SurfacePage, packet.Backend);
+                Assert.Equal("aquarium:resource:surface-page:height", packet.PayloadHandle);
+            },
+            packet =>
+            {
+                Assert.Equal(AquariumFieldEncoding.Density, packet.Encoding);
+                Assert.Equal(AquariumFieldBackendKind.VolumeSplat, packet.Backend);
+                Assert.Equal("aquarium:resource:volume-texture:fog", packet.PayloadHandle);
+            });
+    }
 }

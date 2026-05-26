@@ -13,6 +13,24 @@ The old stable-key accumulator was useful, but it was not ReSTIR. The live
 architecture now splits the problem into a small resampled-importance core, a
 spatial evidence track layer, typed lowerings, renderer passes, and TAA history.
 
+## Engine Identity
+
+Fensalir is not a traditional rendering pipeline. A pass is not correct because
+it produces pixels. A pass is correct only when it preserves the field evidence
+contract for the surface or volume it claims to represent.
+
+The renderer is allowed to use rasterization, compute, ray marching, splats,
+meshlets, direct SDF proxies, or old-fashioned triangles, but those are lowering
+strategies. They do not own truth. The live truth is the claim packet: stable
+domain identity where available, bounded support, color/travel, metadata,
+control/coverage, reservoir-guide evidence, and depth when temporal validation
+needs it.
+
+Any implementation that treats Fensalir as "draw some geometry, blend some
+color, let post handle the rest" is violating the engine body. That path may
+exist only as an explicitly named fallback/debug draw with no authority over
+field evidence.
+
 ## Research Spine
 
 - NVIDIA ReSTIR DI repeatedly resamples candidate light samples, then applies

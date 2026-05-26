@@ -1139,7 +1139,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var scene = CreateScenePipelineState(paths.Scene);
         scene.Name = "Aquarium D3D12 Scene Pipeline";
         var spline = CreateSplinePipelineState(paths.Scene);
-        spline.Name = "Aquarium D3D12 Spline Pipeline";
+        spline.Name = "Aquarium D3D12 Spline Surface Claim Pipeline";
         var temporalGaussian = CreateTemporalGaussianPipelineState(paths.TemporalGaussian);
         temporalGaussian.Name = "Aquarium D3D12 Temporal Gaussian Pipeline";
         var gpuSensorFusion = CreateGpuSensorFusionPipelineState(paths.GpuSensorFusion);
@@ -1704,7 +1704,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 context.CommandList.DrawInstanced(6, (uint)visibleFractalSplatCount, 0, 0);
             }
 
-            RenderSplines(context.CommandList, frameResources);
+            RenderSplineSurfaceClaims(context.CommandList, frameResources);
         }
         finally
         {
@@ -1715,7 +1715,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         PresentBackBuffer(context, frameResources);
     }
 
-    private void RenderSplines(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
+    private void RenderSplineSurfaceClaims(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
     {
         if (!activeSplineFrame.HasInput || splinePipelineState is null)
         {
@@ -1733,7 +1733,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 continue;
             }
 
-            AppendSplineGeometry(vertices, spline);
+            AppendSplineSurfaceEnvelopeGeometry(vertices, spline);
         }
 
         if (vertices.Count == 0)
@@ -1749,7 +1749,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCommandList.DrawInstanced((uint)vertices.Count, 1, 0, 0);
     }
 
-    private static void AppendSplineGeometry(List<D3D12SplineVertex> output, AquariumSpline3D spline)
+    private static void AppendSplineSurfaceEnvelopeGeometry(List<D3D12SplineVertex> output, AquariumSpline3D spline)
     {
         var style = spline.Style.Normalized();
         var controls = spline.Vertices;

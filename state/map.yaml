@@ -34,6 +34,11 @@ current_model:
 
 invariants:
   - Fensalir owns reusable host, renderer, audio, reload, contracts, and engine mechanisms.
+  - Fensalir is not a traditional rendering pipeline. It is a field/evidence
+    machine: contributors emit bounded Form, Appearance, and Transport claims
+    with identity, travel/depth, metadata, control, and reservoir-guide lanes.
+    Treating a pass as "just drawing pixels" violates the engine invariant
+    unless it is explicitly marked as a fallback/debug draw with no authority.
   - Client repos own policy, role names, narrative semantics, app state, and client shaders.
   - Epiphany Aquarium depends on Fensalir; Fensalir must not depend on Epiphany.
   - Demo projects inside this repo are allowed to exercise engine features but must not become hidden engine policy.

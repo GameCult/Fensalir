@@ -49,6 +49,8 @@ struct VertexOut
 
 struct SceneOut
 {
+    // alpha does not live in colorTravel.a. That lane is camera travel for temporal
+    // reprojection; coverage/confidence belong in control and reservoirGuide.
     float4 colorTravel : SV_Target0;
     float4 metadata : SV_Target1;
     float4 control : SV_Target2;

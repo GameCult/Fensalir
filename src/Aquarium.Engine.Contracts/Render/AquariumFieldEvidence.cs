@@ -647,6 +647,7 @@ public static class AquariumFieldEvidenceValidator
         var claimKeys = new HashSet<string>(StringComparer.Ordinal);
         var claimsByKey = new Dictionary<string, AquariumFieldClaim>(StringComparer.Ordinal);
         var resourceKeys = new HashSet<string>(StringComparer.Ordinal);
+        var resourcesByKey = new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal);
         foreach (var resource in frame.Resources)
         {
             if (!resource.HasIdentity)
@@ -674,6 +675,10 @@ public static class AquariumFieldEvidenceValidator
             {
                 issues.Add(Error(resource.ResourceKey, "Field resource declarations must have unique keys."));
             }
+            else
+            {
+                resourcesByKey[resource.ResourceKey] = resource;
+            }
         }
 
         foreach (var upload in frame.ResourceUploads)
@@ -684,9 +689,24 @@ public static class AquariumFieldEvidenceValidator
                 continue;
             }
 
-            if (!resourceKeys.Contains(upload.ResourceKey))
+            if (!resourcesByKey.TryGetValue(upload.ResourceKey, out var resource))
             {
                 issues.Add(Error(upload.ResourceKey, $"Field resource upload references unknown resource '{upload.ResourceKey}'."));
+            }
+            else
+            {
+                if (resource.Kind is not (AquariumFieldResourceKind.StructuredBuffer or AquariumFieldResourceKind.CurvePointBuffer) ||
+                    resource.StrideBytes != sizeof(float) ||
+                    !string.Equals(resource.Format, "Float32", StringComparison.OrdinalIgnoreCase))
+                {
+                    issues.Add(Error(upload.ResourceKey, "Float32 field resource uploads require a Float32 structured/curve buffer resource."));
+                }
+
+                var capacity = Math.Max(1, resource.DepthOrCount > 0 ? resource.DepthOrCount : resource.Width);
+                if (upload.Float32Data.Count > capacity)
+                {
+                    issues.Add(Error(upload.ResourceKey, $"Field resource upload has {upload.Float32Data.Count} Float32 values but resource capacity is {capacity}."));
+                }
             }
         }
 

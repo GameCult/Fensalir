@@ -255,6 +255,66 @@ public sealed class FieldEvidenceContractTests
     }
 
     [Fact]
+    public void ValidatorRejectsOversizedFieldResourceUploads()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+        frame = new AquariumFieldEvidenceFrame
+        {
+            Resources = [frame.Resources[0] with { DepthOrCount = 2, Width = 2, Format = "Float32", StrideBytes = 4 }],
+            ResourceUploads =
+            [
+                new AquariumFieldResourceUpload
+                {
+                    ResourceKey = frame.Resources[0].ResourceKey,
+                    Float32Data = [0.0f, 0.5f, 1.0f],
+                },
+            ],
+            Domains = frame.Domains,
+            Claims = frame.Claims,
+            Candidates = frame.Candidates,
+            BackendPackets = frame.BackendPackets,
+            TubeSplineLowerings = frame.TubeSplineLowerings,
+            AccumulationWindowSeconds = frame.AccumulationWindowSeconds,
+            PresentationDelaySeconds = frame.PresentationDelaySeconds,
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.True(report.HasErrors);
+        Assert.Contains(report.Issues, issue => issue.Key == "mimir:resource:native-ring:asio-ch0");
+    }
+
+    [Fact]
+    public void ValidatorRejectsNonFloatFieldResourceUploads()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+        frame = new AquariumFieldEvidenceFrame
+        {
+            Resources = [frame.Resources[0] with { Format = "Int16", StrideBytes = 2 }],
+            ResourceUploads =
+            [
+                new AquariumFieldResourceUpload
+                {
+                    ResourceKey = frame.Resources[0].ResourceKey,
+                    Float32Data = [1.0f],
+                },
+            ],
+            Domains = frame.Domains,
+            Claims = frame.Claims,
+            Candidates = frame.Candidates,
+            BackendPackets = frame.BackendPackets,
+            TubeSplineLowerings = frame.TubeSplineLowerings,
+            AccumulationWindowSeconds = frame.AccumulationWindowSeconds,
+            PresentationDelaySeconds = frame.PresentationDelaySeconds,
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.True(report.HasErrors);
+        Assert.Contains(report.Issues, issue => issue.Key == "mimir:resource:native-ring:asio-ch0");
+    }
+
+    [Fact]
     public void ValidatorRejectsTubeSplineLoweringClaimEncodingMismatch()
     {
         var frame = BuildValidTubeEvidenceFrame();

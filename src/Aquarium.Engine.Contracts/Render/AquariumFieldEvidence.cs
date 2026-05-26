@@ -254,6 +254,25 @@ public readonly record struct AquariumFieldLoweringRequest(
         Guide.IsReusable;
 }
 
+public sealed class AquariumFieldLoweringPlan
+{
+    public static AquariumFieldLoweringPlan Empty { get; } = new([], []);
+
+    public AquariumFieldLoweringPlan(
+        IReadOnlyList<AquariumFieldBackendPacket> packets,
+        IReadOnlyList<AquariumFieldLoweringRequest> deferredRequests)
+    {
+        Packets = packets;
+        DeferredRequests = deferredRequests;
+    }
+
+    public IReadOnlyList<AquariumFieldBackendPacket> Packets { get; }
+
+    public IReadOnlyList<AquariumFieldLoweringRequest> DeferredRequests { get; }
+
+    public bool HasPackets => Packets.Count > 0;
+}
+
 public sealed class AquariumFieldEvidenceValidationReport
 {
     public static AquariumFieldEvidenceValidationReport Empty { get; } = new([]);
@@ -418,5 +437,56 @@ public static class AquariumFieldEvidenceNormalizer
         }
 
         return requests;
+    }
+}
+
+public static class AquariumFieldLoweringPlanner
+{
+    public static AquariumFieldLoweringPlan Plan(AquariumFieldEvidenceFrame frame)
+    {
+        var requests = AquariumFieldEvidenceNormalizer.BuildLoweringRequests(frame);
+        if (requests.Count == 0)
+        {
+            return AquariumFieldLoweringPlan.Empty;
+        }
+
+        var packets = new List<AquariumFieldBackendPacket>(requests.Count);
+        var deferred = new List<AquariumFieldLoweringRequest>();
+        foreach (var request in requests)
+        {
+            if (!TrySelectBackend(request, out var backend))
+            {
+                deferred.Add(request);
+                continue;
+            }
+
+            packets.Add(new AquariumFieldBackendPacket(
+                PacketKey: $"packet:{request.RequestKey}",
+                ClaimKey: request.ClaimKey,
+                DomainKey: request.DomainKey,
+                Layer: request.Layer,
+                Encoding: request.Encoding,
+                Backend: backend,
+                Support: request.Support,
+                Guide: request.Guide,
+                PayloadHandle: request.PayloadHandle));
+        }
+
+        return new AquariumFieldLoweringPlan(packets, deferred);
+    }
+
+    public static bool TrySelectBackend(AquariumFieldLoweringRequest request, out AquariumFieldBackendKind backend)
+    {
+        backend = request.Encoding switch
+        {
+            AquariumFieldEncoding.Height or AquariumFieldEncoding.Sdf2D => AquariumFieldBackendKind.SurfacePage,
+            AquariumFieldEncoding.Sdf3D => AquariumFieldBackendKind.DirectSdf,
+            AquariumFieldEncoding.Density or AquariumFieldEncoding.Extinction => AquariumFieldBackendKind.VolumeSplat,
+            AquariumFieldEncoding.Tube => AquariumFieldBackendKind.TubeField,
+            AquariumFieldEncoding.Mesh => AquariumFieldBackendKind.Mesh,
+            _ => AquariumFieldBackendKind.Unknown,
+        };
+
+        return backend != AquariumFieldBackendKind.Unknown;
     }
 }

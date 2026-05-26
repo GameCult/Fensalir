@@ -207,6 +207,86 @@ public sealed class FieldEvidenceContractTests
         Assert.Empty(requests);
     }
 
+    [Fact]
+    public void LoweringPlannerSelectsOnlyObviousBackends()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+
+        var plan = AquariumFieldLoweringPlanner.Plan(frame);
+
+        Assert.True(plan.HasPackets);
+        Assert.Empty(plan.DeferredRequests);
+        Assert.Single(plan.Packets);
+        Assert.Equal(AquariumFieldBackendKind.TubeField, plan.Packets[0].Backend);
+        Assert.True(plan.Packets[0].IsEvidenceWriter);
+    }
+
+    [Fact]
+    public void LoweringPlannerDefersAmbiguousFeatureEvidence()
+    {
+        var support = new AquariumFieldSupport(
+            Vector3.Zero,
+            Vector3.One,
+            Matrix4x4.Identity,
+            1.0f,
+            0.0f,
+            0.0f,
+            0.0f);
+        var proposal = new AquariumFieldProposalPolicy(
+            AquariumFieldProposalKind.SensorObservation,
+            1.0f,
+            1.0f,
+            1,
+            1u);
+        var frame = new AquariumFieldEvidenceFrame
+        {
+            Domains =
+            [
+                new AquariumFieldDomain(
+                    "mimir:observation:feature",
+                    "",
+                    AquariumFieldDomainKind.CameraSensor,
+                    Matrix4x4.Identity,
+                    Matrix4x4.Identity,
+                    Vector3.Zero,
+                    Vector3.One,
+                    Vector3.Zero,
+                    "Mimir.Runtime")
+            ],
+            Claims =
+            [
+                new AquariumFieldClaim(
+                    "claim:feature",
+                    "mimir:observation:feature",
+                    "mimir",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Feature,
+                    support,
+                    proposal,
+                    "",
+                    0,
+                    1.0f)
+            ],
+            Candidates =
+            [
+                new AquariumFieldCandidate(
+                    "candidate:feature",
+                    "claim:feature",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Feature,
+                    proposal,
+                    AquariumFieldGuide.Valid(1.0f))
+            ],
+        };
+
+        var plan = AquariumFieldLoweringPlanner.Plan(frame);
+
+        Assert.False(plan.HasPackets);
+        Assert.Empty(plan.Packets);
+        Assert.Single(plan.DeferredRequests);
+        Assert.Equal("claim:feature", plan.DeferredRequests[0].ClaimKey);
+    }
+
     private static AquariumFieldEvidenceFrame BuildValidTubeEvidenceFrame()
     {
         var support = new AquariumFieldSupport(

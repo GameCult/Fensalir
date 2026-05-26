@@ -428,6 +428,7 @@ struct SplineVertexOut
     float4 color : COLOR;
     float4 material : TEXCOORD8;
     nointerpolation float feather : TEXCOORD9;
+    nointerpolation float2 segmentTravel : TEXCOORD10;
 };
 
 float2 ndcToPixel(float2 ndc)
@@ -567,15 +568,14 @@ SplineVertexOut D3D12SplineVS(SplineVertexIn input)
     output.color = input.color;
     output.material = input.material;
     output.feather = input.radiusData.z;
+    output.segmentTravel = float2(startView.z, endView.z);
     return output;
 }
 
 SceneOut D3D12SplinePS(SplineVertexOut input)
 {
-    float2 jitter = float2(
-        blueNoiseAt(input.position.xy, 3u),
-        blueNoiseAt(input.position.yx + 19.0, 11u)) - 0.5;
-    float2 samplePx = input.position.xy + jitter * 0.85;
+    float2 jitter = 0.0;
+    float2 samplePx = input.position.xy;
 
     float sdf;
     float closestT;
@@ -622,29 +622,35 @@ SceneOut D3D12SplinePS(SplineVertexOut input)
     float normalFacing = saturate(-dot(ray, tubeNormal));
     float glowFacing = pow(normalFacing, max(input.material.z, 0.0001));
     float alphaFacing = pow(normalFacing, max(input.material.w, 0.0001));
-    float alpha = saturate(input.color.a * coverage * alphaFacing);
-    float3 color = input.color.rgb * input.material.x * glowFacing;
+    float claimCoverage = saturate(input.color.a * coverage * alphaFacing);
+    if (claimCoverage <= 0.004)
+    {
+        discard;
+    }
+
+    float3 color = input.color.rgb * input.material.x * glowFacing * claimCoverage;
+    float travel = lerp(input.segmentTravel.x, input.segmentTravel.y, closestT);
     if (renderDebugMode >= 12.5 && renderDebugMode < 13.5)
     {
         color = lerp(float3(0.0, 0.25, 0.45), float3(0.0, 0.85, 1.0), saturate(abs(input.segmentValidity.w)));
-        alpha = max(alpha, 0.24);
+        claimCoverage = max(claimCoverage, 0.24);
     }
     else if (renderDebugMode >= 13.5 && renderDebugMode < 14.5)
     {
         color = lerp(float3(0.15, 0.45, 1.0), float3(1.0, 0.15, 0.0), saturate(sdf / max(radiusPx, 1.0) * 0.5 + 0.5));
-        alpha = 1.0;
+        claimCoverage = 1.0;
     }
     else if (renderDebugMode >= 14.5 && renderDebugMode < 15.5)
     {
         color = float3(coverage, closestT, 1.0 - coverage);
-        alpha = 1.0;
+        claimCoverage = 1.0;
     }
 
     SceneOut output;
-    output.colorTravel = float4(color, alpha);
+    output.colorTravel = float4(color, min(travel, farDistance + 1.0));
     output.metadata = float4(5000.0, closestT, sdf, radiusPx);
-    output.control = float4(alpha, coverage, saturate(radiusPx / 32.0), 0.0);
-    output.reservoirGuide = float4(saturate(alpha + coverage * 0.5), 0.0, coverage, 0.0);
-    output.depth = input.position.z;
+    output.control = float4(claimCoverage, coverage, saturate(radiusPx / 32.0), 0.0);
+    output.reservoirGuide = float4(claimCoverage, 0.0, coverage, 0.0);
+    output.depth = saturate(travel / max(farDistance, 0.0001));
     return output;
 }

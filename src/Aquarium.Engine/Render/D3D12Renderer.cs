@@ -3318,17 +3318,6 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var vertexShader = CompileShader(path, "D3D12SplineVS", "vs_5_0");
         var pixelShader = CompileShader(path, "D3D12SplinePS", "ps_5_0");
         var blend = BlendDescription.Opaque;
-        blend.RenderTarget[0] = new RenderTargetBlendDescription(
-            true,
-            false,
-            Blend.SourceAlpha,
-            Blend.InverseSourceAlpha,
-            BlendOperation.Add,
-            Blend.One,
-            Blend.InverseSourceAlpha,
-            BlendOperation.Add,
-            LogicOp.Noop,
-            ColorWriteEnable.All);
         for (var index = 1; index < 8; index++)
         {
             blend.RenderTarget[index] = new RenderTargetBlendDescription(

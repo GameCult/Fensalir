@@ -120,7 +120,10 @@ next_actions:
     first generated-mesh render cut is TubeField itself: compute emits
     pipeline-private vertex/index/indirect buffers, render binds them through a
     named `D3D12PipelinePrivateGeneratedMesh`, and TubeField material state
-    supplies the shader-specific source/ramp/constants.
+    supplies the shader-specific source/ramp/constants. The DrawIndexed indirect
+    command signature is now owned by the generated-mesh lane rather than
+    TubeField, so future generated page/volume/surface lowerings can share that
+    draw ABI while owning their own producer buffers and materials.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

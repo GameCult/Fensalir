@@ -42,8 +42,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int MaxTubeFieldVertices = MaxTubeFieldSegments * 4;
     private const int MaxTubeFieldIndices = MaxTubeFieldSegments * 6;
     private const int MaxTubeFieldDrawBatches = 4_096;
-    private const int TubeFieldDrawArgumentUIntCount = 5;
-    private const int TubeFieldDrawArgumentBytes = TubeFieldDrawArgumentUIntCount * sizeof(uint);
+    private const int GeneratedMeshDrawArgumentUIntCount = 5;
+    private const int GeneratedMeshDrawArgumentBytes = GeneratedMeshDrawArgumentUIntCount * sizeof(uint);
     private const float SurfaceTransparentMinZ = -1.85f;
     private const float SurfaceTransparentMaxZ = 0.45f;
     private const int BloomLevelCount = 3;
@@ -143,7 +143,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly ID3D12RootSignature fractalReservoirRootSignature;
     private readonly ID3D12RootSignature tubeFieldRootSignature;
     private readonly ID3D12RootSignature tubeFieldRenderRootSignature;
-    private readonly ID3D12CommandSignature tubeFieldDrawCommandSignature;
+    private readonly ID3D12CommandSignature generatedMeshDrawCommandSignature;
     private readonly D3D12BlueNoiseTexture blueNoiseTexture;
     private D3D12FieldTexture2D? tubeFieldFallbackRampTexture;
     private ID3D12PipelineState? heightFieldBasePipelineState;
@@ -371,7 +371,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldVertexBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldVertices, Marshal.SizeOf<D3D12TubeFieldVertex>(), "Aquarium D3D12 TubeField Vertex Buffer", allowUnorderedAccess: true);
         tubeFieldIndexBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldIndices, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Index Buffer", allowUnorderedAccess: true);
         tubeFieldStatsBuffer = new D3D12StructuredBuffer(device, 4, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Stats Buffer", allowUnorderedAccess: true);
-        tubeFieldDrawArgumentBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldDrawBatches * TubeFieldDrawArgumentUIntCount, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Indirect Draw Arguments", allowUnorderedAccess: true);
+        tubeFieldDrawArgumentBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldDrawBatches * GeneratedMeshDrawArgumentUIntCount, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Indirect Draw Arguments", allowUnorderedAccess: true);
         resourceRegistry.Add("sdf-light-buffer", sdfLightBuffer);
         resourceRegistry.Add("sdf-object-buffer", sdfObjectBuffer);
         resourceRegistry.Add("gpu-sensor-camera-buffer", gpuSensorCameraBuffer);
@@ -409,8 +409,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldRootSignature.Name = "Aquarium D3D12 TubeField Root Signature";
         tubeFieldRenderRootSignature = CreateTubeFieldRenderRootSignature();
         tubeFieldRenderRootSignature.Name = "Aquarium D3D12 TubeField Render Root Signature";
-        tubeFieldDrawCommandSignature = CreateTubeFieldDrawCommandSignature();
-        tubeFieldDrawCommandSignature.Name = "Aquarium D3D12 TubeField Draw Command Signature";
+        generatedMeshDrawCommandSignature = CreateGeneratedMeshDrawCommandSignature();
+        generatedMeshDrawCommandSignature.Name = "Aquarium D3D12 Generated Mesh Draw Command Signature";
         CaptureShaderWriteTimes();
         StartPipelineBuild("initial");
         viewport = new Viewport(0.0f, 0.0f, width, height);
@@ -985,7 +985,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fractalReservoirRootSignature.Dispose();
         tubeFieldRootSignature.Dispose();
         tubeFieldRenderRootSignature.Dispose();
-        tubeFieldDrawCommandSignature.Dispose();
+        generatedMeshDrawCommandSignature.Dispose();
         blueNoiseTexture.Dispose();
         tubeFieldFallbackRampTexture?.Dispose();
         studioIrradianceTexture.Dispose();
@@ -1893,7 +1893,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         int drawArgumentOffsetBytes)
     {
         activeCommandList.ExecuteIndirect(
-            tubeFieldDrawCommandSignature,
+            generatedMeshDrawCommandSignature,
             1,
             generatedMesh.DrawArguments.Resource,
             (ulong)drawArgumentOffsetBytes,
@@ -2382,7 +2382,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 new Vector4(normalized.AmplitudePower, normalized.AmplitudeScale, normalized.NormalizeMin, normalized.NormalizeMax),
                 new Vector4(normalized.BaseRadius, normalized.RadiusScale, normalized.Alpha, normalized.Feather),
                 new Vector4(normalized.EmissionScale, normalized.CatmullRomSubdivisions, segmentBase, dispatchSegments),
-                new Vector4(tubeFieldDrawBatches.Count * TubeFieldDrawArgumentUIntCount, startIndex, 0.0f, 0.0f),
+                new Vector4(tubeFieldDrawBatches.Count * GeneratedMeshDrawArgumentUIntCount, startIndex, 0.0f, 0.0f),
                 normalized.Origin,
                 0.0f,
                 normalized.AxisStep,
@@ -2417,7 +2417,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 sourceBuffer,
                 constantsUpload.GpuVirtualAddress,
                 normalized.RampResourceKey,
-                tubeFieldDrawBatches.Count * TubeFieldDrawArgumentBytes));
+                tubeFieldDrawBatches.Count * GeneratedMeshDrawArgumentBytes));
         }
 
         activeTubeFieldDrawIndexCount = activeTubeFieldDispatchedSegments * 6;
@@ -3641,7 +3641,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         return device.CreateRootSignature(0, in description, RootSignatureVersion.Version1);
     }
 
-    private ID3D12CommandSignature CreateTubeFieldDrawCommandSignature()
+    private ID3D12CommandSignature CreateGeneratedMeshDrawCommandSignature()
     {
         var arguments = new[]
         {
@@ -3652,7 +3652,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         };
         var description = new CommandSignatureDescription
         {
-            ByteStride = TubeFieldDrawArgumentBytes,
+            ByteStride = GeneratedMeshDrawArgumentBytes,
             IndirectArguments = arguments,
         };
         return device.CreateCommandSignature<ID3D12CommandSignature>(description, null);

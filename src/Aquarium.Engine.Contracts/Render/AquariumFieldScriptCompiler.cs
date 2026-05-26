@@ -36,6 +36,9 @@ public static class AquariumFieldScriptCompiler
                 case "resource":
                     BindResource(args, resourceBindings, resourceAliases, resources, lineIndex);
                     break;
+                case "texture2d":
+                    BindTexture2D(args, resourceAliases, resources, lineIndex);
+                    break;
                 case "domain":
                     var domain = ParseFieldDomain(args, lineIndex);
                     if (domainKeys.Add(domain.DomainKey))
@@ -71,6 +74,31 @@ public static class AquariumFieldScriptCompiler
         }
 
         return frame;
+    }
+
+    private static void BindTexture2D(
+        IReadOnlyDictionary<string, string> args,
+        IDictionary<string, AquariumFieldResourceDeclaration> resourceAliases,
+        ICollection<AquariumFieldResourceDeclaration> resources,
+        int lineIndex)
+    {
+        var id = Required(args, "id", lineIndex);
+        var key = StringValue(args, "key", $"aquarium:resource:texture2d:{id}");
+        var path = Required(args, "path", lineIndex);
+        var resource = AquariumFieldResourceDeclaration.LocalTexture2D(
+            key,
+            path,
+            StringValue(args, "format", "Rgba8Unorm"),
+            UInt64(args, "version", 0, lineIndex),
+            Int(args, "width", 0, lineIndex),
+            Int(args, "height", 0, lineIndex));
+
+        resourceAliases[id] = resource;
+        resourceAliases[key] = resource;
+        if (resources.All(existing => !string.Equals(existing.ResourceKey, resource.ResourceKey, StringComparison.Ordinal)))
+        {
+            resources.Add(resource);
+        }
     }
 
     public static AquariumBufferFieldFrame Compile(
@@ -262,6 +290,13 @@ public static class AquariumFieldScriptCompiler
         var claimKey = $"dsl:tube:{id}";
         var resourceId = Required(args, "resource", lineIndex);
         var resource = resourceAliases[resourceId];
+        var ramp = StringValue(args, "ramp", "");
+        var rampResourceKey = resourceAliases.TryGetValue(ramp, out var rampResource)
+            ? rampResource.ResourceKey
+            : "";
+        var rampTexturePath = rampResourceKey.Length > 0
+            ? rampResource.SourceUri
+            : ramp;
         var lowering = new AquariumFieldTubeSplineLowering(
             LoweringKey: $"dsl:tube-spline:{id}",
             ClaimKey: claimKey,
@@ -285,7 +320,8 @@ public static class AquariumFieldScriptCompiler
             RadiusScale: Float(args, "radiusScale", 0.030f, lineIndex),
             Alpha: Float(args, "alpha", 0.92f, lineIndex),
             Feather: Float(args, "feather", 0.20f, lineIndex),
-            RampTexturePath: StringValue(args, "ramp", ""),
+            RampTexturePath: rampTexturePath,
+            RampResourceKey: rampResourceKey,
             EmissionScale: Float(args, "emissionScale", 10.0f, lineIndex),
             CatmullRomSubdivisions: Int(args, "subdivisions", 4, lineIndex)).Normalized();
         lowerings.Add(lowering);
@@ -421,6 +457,9 @@ public static class AquariumFieldScriptCompiler
 
     private static uint UInt(IReadOnlyDictionary<string, string> args, string key, uint fallback, int lineIndex) =>
         args.TryGetValue(key, out var value) ? uint.Parse(value, CultureInfo.InvariantCulture) : fallback;
+
+    private static ulong UInt64(IReadOnlyDictionary<string, string> args, string key, ulong fallback, int lineIndex) =>
+        args.TryGetValue(key, out var value) ? ulong.Parse(value, CultureInfo.InvariantCulture) : fallback;
 
     private static float Float(IReadOnlyDictionary<string, string> args, string key, float fallback, int lineIndex) =>
         args.TryGetValue(key, out var value) ? float.Parse(value, CultureInfo.InvariantCulture) : fallback;

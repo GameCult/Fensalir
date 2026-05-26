@@ -92,6 +92,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootTubeFieldVertices = 2;
     private const int RootTubeFieldIndices = 3;
     private const int RootTubeFieldStats = 4;
+    private const int RootTubeFieldRenderFrameConstants = 0;
+    private const int RootTubeFieldRenderConstants = 1;
+    private const int RootTubeFieldRenderSource = 2;
+    private const int RootTubeFieldRenderRamp = 3;
     private static readonly DebugUi.DebugUiOption[] RenderDebugOptions =
     [
         new(0, "Final"),
@@ -136,6 +140,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly ID3D12RootSignature tubeFieldRootSignature;
     private readonly ID3D12RootSignature tubeFieldRenderRootSignature;
     private readonly D3D12BlueNoiseTexture blueNoiseTexture;
+    private D3D12FieldTexture2D? tubeFieldFallbackRampTexture;
     private ID3D12PipelineState? heightFieldBasePipelineState;
     private ID3D12PipelineState? heightFieldBrushPipelineState;
     private ID3D12PipelineState? scenePipelineState;
@@ -969,6 +974,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldRootSignature.Dispose();
         tubeFieldRenderRootSignature.Dispose();
         blueNoiseTexture.Dispose();
+        tubeFieldFallbackRampTexture?.Dispose();
         studioIrradianceTexture.Dispose();
         studioPmremTexture.Dispose();
         fieldResourceRegistry.Dispose();
@@ -1836,17 +1842,59 @@ public sealed class D3D12Renderer : IAquariumRenderer
             Format.R32_UInt);
         activeCommandList.SetPipelineState(tubeFieldRenderPipelineState);
         activeCommandList.SetGraphicsRootSignature(tubeFieldRenderRootSignature);
-        activeCommandList.SetGraphicsRootDescriptorTable(0, frameResources.FrameConstantsDescriptor.Gpu);
+        activeCommandList.SetGraphicsRootDescriptorTable(RootTubeFieldRenderFrameConstants, frameResources.FrameConstantsDescriptor.Gpu);
         activeCommandList.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         activeCommandList.IASetVertexBuffers(0, [vertexView]);
         activeCommandList.IASetIndexBuffer(indexView);
         foreach (var batch in tubeFieldDrawBatches)
         {
             batch.Source.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
-            activeCommandList.SetGraphicsRootConstantBufferView(1, batch.ConstantsGpuVirtualAddress);
-            activeCommandList.SetGraphicsRootShaderResourceView(2, batch.Source.Resource.GPUVirtualAddress);
+            var ramp = ResolveTubeFieldRamp(activeCommandList, batch.RampResourceKey);
+            ramp.Transition(activeCommandList, ResourceStates.PixelShaderResource);
+            var rampDescriptor = frameResources.TransientShaderDescriptors.Allocate();
+            ramp.CreateShaderResourceView(device, rampDescriptor);
+            activeCommandList.SetGraphicsRootConstantBufferView(RootTubeFieldRenderConstants, batch.ConstantsGpuVirtualAddress);
+            activeCommandList.SetGraphicsRootShaderResourceView(RootTubeFieldRenderSource, batch.Source.Resource.GPUVirtualAddress);
+            activeCommandList.SetGraphicsRootDescriptorTable(RootTubeFieldRenderRamp, rampDescriptor.Gpu);
             activeCommandList.DrawIndexedInstanced((uint)batch.IndexCount, 1, (uint)batch.StartIndex, 0, 0);
         }
+    }
+
+    private D3D12FieldTexture2D ResolveTubeFieldRamp(ID3D12GraphicsCommandList activeCommandList, string rampResourceKey)
+    {
+        if (!string.IsNullOrWhiteSpace(rampResourceKey) &&
+            fieldResourceRegistry.TryGetTexture2D(rampResourceKey, out var resolvedRamp))
+        {
+            return resolvedRamp;
+        }
+
+        if (!string.IsNullOrWhiteSpace(rampResourceKey) &&
+            TryFindActiveFieldResource(rampResourceKey, out var declaration) &&
+            fieldResourceRegistry.TryResolveTexture2D(device, activeCommandList, declaration, out var loadedRamp))
+        {
+            return loadedRamp;
+        }
+
+        tubeFieldFallbackRampTexture ??= D3D12FieldTexture2D.CreateFallbackRamp(
+            device,
+            activeCommandList,
+            "Aquarium D3D12 TubeField Fallback Ramp");
+        return tubeFieldFallbackRampTexture;
+    }
+
+    private bool TryFindActiveFieldResource(string resourceKey, out AquariumFieldResourceDeclaration declaration)
+    {
+        foreach (var resource in activeFieldEvidenceFrame.Resources)
+        {
+            if (string.Equals(resource.ResourceKey, resourceKey, StringComparison.Ordinal))
+            {
+                declaration = resource;
+                return true;
+            }
+        }
+
+        declaration = default;
+        return false;
     }
 
     private static void AppendSplineSurfaceEnvelopeGeometry(List<D3D12SplineVertex> output, AquariumSpline3D spline)
@@ -2314,6 +2362,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             tubeFieldDrawBatches.Add(new D3D12TubeFieldDrawBatch(
                 sourceBuffer,
                 constantsUpload.GpuVirtualAddress,
+                normalized.RampResourceKey,
                 startIndex,
                 dispatchSegments * 6));
         }
@@ -2947,6 +2996,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 $"resources {activeFieldEvidenceFrame.Resources.Count:N0}; " +
                 $"resolved resources {activeFieldResourceStats.Resolved:N0}; " +
                 $"structured buffers {activeFieldResourceStats.StructuredBuffers:N0}; " +
+                $"texture2d {activeFieldResourceStats.Texture2D:N0}; " +
                 $"unsupported resources {activeFieldResourceStats.Unsupported:N0}; " +
                 $"claims {activeFieldEvidenceFrame.Claims.Count:N0}; " +
                 $"candidates {activeFieldEvidenceFrame.Candidates.Count:N0}; " +
@@ -3540,16 +3590,40 @@ public sealed class D3D12Renderer : IAquariumRenderer
             0,
             0,
             D3D12.DescriptorRangeOffsetAppend);
+        var rampTexture = new DescriptorRange(
+            DescriptorRangeType.ShaderResourceView,
+            1,
+            43,
+            0,
+            D3D12.DescriptorRangeOffsetAppend);
         var rootParameters = new[]
         {
             new RootParameter(new RootDescriptorTable([frameConstants]), ShaderVisibility.All),
             new RootParameter(RootParameterType.ConstantBufferView, new RootDescriptor(3, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(42, 0), ShaderVisibility.Pixel),
+            new RootParameter(new RootDescriptorTable([rampTexture]), ShaderVisibility.Pixel),
+        };
+        var staticSamplers = new[]
+        {
+            new StaticSamplerDescription(
+                0,
+                Filter.MinMagMipLinear,
+                TextureAddressMode.Clamp,
+                TextureAddressMode.Clamp,
+                TextureAddressMode.Clamp,
+                0.0f,
+                1,
+                ComparisonFunction.Never,
+                StaticBorderColor.TransparentBlack,
+                0.0f,
+                float.MaxValue,
+                ShaderVisibility.Pixel,
+                0),
         };
         var description = new RootSignatureDescription(
             RootSignatureFlags.AllowInputAssemblerInputLayout,
             rootParameters,
-            []);
+            staticSamplers);
         return device.CreateRootSignature(0, in description, RootSignatureVersion.Version1);
     }
 
@@ -3996,6 +4070,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly record struct D3D12TubeFieldDrawBatch(
         D3D12StructuredBuffer Source,
         ulong ConstantsGpuVirtualAddress,
+        string RampResourceKey,
         int StartIndex,
         int IndexCount);
 

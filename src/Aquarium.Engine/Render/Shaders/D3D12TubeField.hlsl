@@ -57,6 +57,8 @@ cbuffer TubeFieldConstants : register(b3)
 };
 
 ByteAddressBuffer TubeFieldSamples : register(t42);
+Texture2D<float4> TubeFieldRamp : register(t43);
+SamplerState TubeFieldRampSampler : register(s0);
 RWStructuredBuffer<TubeFieldVertex> TubeFieldVertices : register(u10);
 RWStructuredBuffer<uint> TubeFieldIndices : register(u11);
 RWStructuredBuffer<uint> TubeFieldStats : register(u12);
@@ -146,7 +148,7 @@ TubeFieldVertex MakeTubeVertex(float3 position, float3 previous, float3 start, f
 {
     TubeFieldVertex vertex;
     float radius = max(tubeMaterial.x + value * tubeMaterial.y, 0.0001);
-    float3 rampColor = lerp(float3(0.0, 0.0, 0.0), float3(1.0, 0.62, 0.18), value);
+    float3 rampColor = value.xxx;
     vertex.position = position;
     vertex.segmentStart = start;
     vertex.segmentEnd = end;
@@ -440,7 +442,7 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     float coverage = 1.0 - smoothstep(0.0, aa, sdf);
     float sampleX = lerp(input.tubeData.y, input.tubeData.z, closestT);
     float value = SampleCurve((uint)round(input.tubeData.x), sampleX);
-    float3 rampColor = lerp(float3(0.0, 0.0, 0.0), float3(1.0, 0.62, 0.18), value);
+    float3 rampColor = TubeFieldRamp.SampleLevel(TubeFieldRampSampler, float2(saturate(value), 0.5), 0.0).rgb;
     float3 ray = rayDirectionForPixel(samplePx, jitterPixels, cameraPosition, cameraTarget);
     float3 forward;
     float3 right;

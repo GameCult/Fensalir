@@ -84,5 +84,47 @@ public sealed class FieldScriptCompilerTests
         Assert.Equal(2.0f, lowering.AmplitudePower);
         Assert.Equal(10.0f, lowering.EmissionScale);
         Assert.Equal(@"D:\WIP4\Projects\Aetheria\Assets\Resources\Ramps\blackbody.png", lowering.RampTexturePath);
+        Assert.Equal("", lowering.RampResourceKey);
+    }
+
+    [Fact]
+    public void CompileEvidenceBindsLocalTexture2DResourcesAsTubeRamps()
+    {
+        var resource = new AquariumFieldResourceDeclaration(
+            "mimir:resource:log-mel",
+            AquariumFieldResourceKind.StructuredBuffer,
+            AquariumFieldResourceResidency.SharedGpu,
+            AquariumFieldShaderAccess.ShaderResource,
+            "Float32",
+            Width: 64,
+            Height: 32,
+            DepthOrCount: 2048,
+            StrideBytes: 4,
+            ValidFromNs: 0,
+            ValidUntilNs: 10_000,
+            Version: 7,
+            NativeHandle: IntPtr.Zero,
+            NativeHandleKind: "fensalir-buffer");
+
+        var frame = AquariumFieldScriptCompiler.CompileEvidence(
+            """
+            resource id=mel key=mimir:resource:log-mel
+            texture2d id=blackbody key=aquarium:resource:ramp:blackbody path=D:\WIP4\Projects\Aetheria\Assets\Resources\Ramps\blackbody.png format=Rgba8Unorm version=11
+            tubespline id=mel-field resource=mel domain=mimir:log-mel width=64 height=32 stride=4 columns=8 ramp=blackbody
+            """,
+            new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal)
+            {
+                [resource.ResourceKey] = resource,
+            });
+
+        Assert.Equal(2, frame.Resources.Count);
+        var ramp = frame.Resources.Single(resource => resource.Kind == AquariumFieldResourceKind.Texture2D);
+        Assert.Equal("aquarium:resource:ramp:blackbody", ramp.ResourceKey);
+        Assert.Equal("local-asset", ramp.NativeHandleKind);
+        Assert.Equal(@"D:\WIP4\Projects\Aetheria\Assets\Resources\Ramps\blackbody.png", ramp.SourceUri);
+
+        var lowering = Assert.Single(frame.TubeSplineLowerings);
+        Assert.Equal(ramp.ResourceKey, lowering.RampResourceKey);
+        Assert.Equal(ramp.SourceUri, lowering.RampTexturePath);
     }
 }

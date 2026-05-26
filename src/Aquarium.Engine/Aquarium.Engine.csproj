@@ -12,6 +12,7 @@
   <ItemGroup>
     <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
     <PackageReference Include="AquaSynth.Faust" Version="0.1.0-alpha.3" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
     <ProjectReference Include="..\Aquarium.Engine.Contracts\Aquarium.Engine.Contracts.csproj" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D12" Version="3.8.3" />

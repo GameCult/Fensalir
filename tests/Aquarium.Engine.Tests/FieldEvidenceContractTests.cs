@@ -463,6 +463,7 @@ tubeclaim id=spectrum-trail resource=spectrum domain=mimir:spectrum:asio-ch0 con
                     Alpha: 1.0f,
                     Feather: 0.2f,
                     RampTexturePath: @"D:\WIP4\Projects\Aetheria\Assets\Resources\Ramps\blackbody.png",
+                    RampResourceKey: "",
                     EmissionScale: 10.0f,
                     CatmullRomSubdivisions: 4)
             ],

@@ -262,6 +262,7 @@ public readonly record struct AquariumFieldTubeSplineLowering(
     float Alpha,
     float Feather,
     string RampTexturePath,
+    string RampResourceKey,
     float EmissionScale,
     int CatmullRomSubdivisions)
 {
@@ -314,7 +315,8 @@ public readonly record struct AquariumFieldResourceDeclaration(
     long ValidUntilNs,
     ulong Version,
     IntPtr NativeHandle,
-    string NativeHandleKind)
+    string NativeHandleKind,
+    string SourceUri = "")
 {
     public bool HasIdentity => !string.IsNullOrWhiteSpace(ResourceKey);
 
@@ -322,7 +324,9 @@ public readonly record struct AquariumFieldResourceDeclaration(
         Kind != AquariumFieldResourceKind.Unknown &&
         Residency != AquariumFieldResourceResidency.Unknown &&
         Access != AquariumFieldShaderAccess.Unknown &&
-        (Width > 0 || DepthOrCount > 0 || StrideBytes > 0);
+        (Width > 0 || DepthOrCount > 0 || StrideBytes > 0 || HasSourceAsset);
+
+    public bool HasSourceAsset => !string.IsNullOrWhiteSpace(SourceUri);
 
     public bool IsGpuVisible =>
         Residency is AquariumFieldResourceResidency.GpuResident or AquariumFieldResourceResidency.SharedGpu;
@@ -331,6 +335,32 @@ public readonly record struct AquariumFieldResourceDeclaration(
         timestampNs <= 0 ||
         ((ValidFromNs <= 0 || timestampNs >= ValidFromNs) &&
          (ValidUntilNs <= 0 || timestampNs <= ValidUntilNs));
+
+    public static AquariumFieldResourceDeclaration LocalTexture2D(
+        string resourceKey,
+        string sourceUri,
+        string format = "Rgba8Unorm",
+        ulong version = 0,
+        int width = 0,
+        int height = 0,
+        long validFromNs = 0,
+        long validUntilNs = 0) =>
+        new(
+            ResourceKey: resourceKey,
+            Kind: AquariumFieldResourceKind.Texture2D,
+            Residency: AquariumFieldResourceResidency.GpuResident,
+            Access: AquariumFieldShaderAccess.ShaderResource,
+            Format: format,
+            Width: width,
+            Height: height,
+            DepthOrCount: 1,
+            StrideBytes: 4,
+            ValidFromNs: validFromNs,
+            ValidUntilNs: validUntilNs,
+            Version: version,
+            NativeHandle: IntPtr.Zero,
+            NativeHandleKind: "local-asset",
+            SourceUri: sourceUri);
 }
 
 public sealed class AquariumFieldEvidenceFrame
@@ -573,6 +603,12 @@ public static class AquariumFieldEvidenceValidator
             if (!resourceKeys.Contains(lowering.ResourceKey))
             {
                 issues.Add(Error(lowering.LoweringKey, $"Tube spline lowering references unknown resource '{lowering.ResourceKey}'."));
+            }
+
+            if (!string.IsNullOrWhiteSpace(lowering.RampResourceKey) &&
+                !resourceKeys.Contains(lowering.RampResourceKey))
+            {
+                issues.Add(Error(lowering.LoweringKey, $"Tube spline lowering references unknown ramp resource '{lowering.RampResourceKey}'."));
             }
         }
 

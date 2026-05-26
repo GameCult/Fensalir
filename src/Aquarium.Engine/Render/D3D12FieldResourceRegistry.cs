@@ -86,6 +86,18 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         liveKeys.Clear();
     }
 
+    public bool TryGetStructuredBuffer(string resourceKey, out D3D12StructuredBuffer buffer)
+    {
+        if (structuredBuffers.TryGetValue(resourceKey, out var slot))
+        {
+            buffer = slot.Buffer;
+            return true;
+        }
+
+        buffer = null!;
+        return false;
+    }
+
     private bool ResolveStructuredBuffer(
         ID3D12Device device,
         D3D12ResourceRegistry resourceRegistry,

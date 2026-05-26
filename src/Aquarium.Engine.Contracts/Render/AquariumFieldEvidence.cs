@@ -388,6 +388,32 @@ public readonly record struct AquariumFieldResourceDeclaration(
             NativeHandleKind: string.IsNullOrWhiteSpace(sourceUri) ? "fensalir-surface-page" : "local-asset",
             SourceUri: sourceUri);
 
+    public static AquariumFieldResourceDeclaration VolumeTexture(
+        string resourceKey,
+        int width,
+        int height,
+        int depth,
+        string format = "R16Float",
+        ulong version = 0,
+        long validFromNs = 0,
+        long validUntilNs = 0) =>
+        new(
+            ResourceKey: resourceKey,
+            Kind: AquariumFieldResourceKind.VolumeTexture,
+            Residency: AquariumFieldResourceResidency.GpuResident,
+            Access: AquariumFieldShaderAccess.ShaderResource,
+            Format: format,
+            Width: Math.Max(1, width),
+            Height: Math.Max(1, height),
+            DepthOrCount: Math.Max(1, depth),
+            StrideBytes: FormatStrideBytes(format),
+            ValidFromNs: validFromNs,
+            ValidUntilNs: validUntilNs,
+            Version: version,
+            NativeHandle: IntPtr.Zero,
+            NativeHandleKind: "fensalir-volume-texture",
+            SourceUri: "");
+
     private static int FormatStrideBytes(string format) =>
         format switch
         {

@@ -147,4 +147,25 @@ public sealed class FieldScriptCompilerTests
         Assert.Equal("R16Float", resource.Format);
         Assert.Equal("fensalir-surface-page", resource.NativeHandleKind);
     }
+
+    [Fact]
+    public void CompileEvidenceDeclaresVolumeTexturesAsGpuResources()
+    {
+        var frame = AquariumFieldScriptCompiler.CompileEvidence(
+            """
+            volumetexture id=density key=aquarium:resource:volume:density width=32 height=32 depth=16 format=R16Float version=5
+            """,
+            new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal));
+
+        var resource = Assert.Single(frame.Resources);
+        Assert.Equal("aquarium:resource:volume:density", resource.ResourceKey);
+        Assert.Equal(AquariumFieldResourceKind.VolumeTexture, resource.Kind);
+        Assert.Equal(AquariumFieldResourceResidency.GpuResident, resource.Residency);
+        Assert.Equal(AquariumFieldShaderAccess.ShaderResource, resource.Access);
+        Assert.Equal(32, resource.Width);
+        Assert.Equal(32, resource.Height);
+        Assert.Equal(16, resource.DepthOrCount);
+        Assert.Equal("R16Float", resource.Format);
+        Assert.Equal("fensalir-volume-texture", resource.NativeHandleKind);
+    }
 }

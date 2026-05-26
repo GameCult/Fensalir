@@ -3031,6 +3031,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 $"structured buffers {activeFieldResourceStats.StructuredBuffers:N0}; " +
                 $"texture2d {activeFieldResourceStats.Texture2D:N0}; " +
                 $"surface pages {activeFieldResourceStats.SurfacePages:N0}; " +
+                $"volume textures {activeFieldResourceStats.VolumeTextures:N0}; " +
                 $"unsupported resources {activeFieldResourceStats.Unsupported:N0}; " +
                 $"claims {activeFieldEvidenceFrame.Claims.Count:N0}; " +
                 $"candidates {activeFieldEvidenceFrame.Candidates.Count:N0}; " +

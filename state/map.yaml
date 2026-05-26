@@ -100,9 +100,12 @@ next_actions:
     reporting. SurfacePage resources now have a first resolver: contracts and
     DSL can declare GPU-resident 2D pages with width, height, format, version,
     and optional local source, and the D3D12 registry allocates/imports them as
-    shader-readable page textures. Remaining cuts are mesh and volume resolvers,
-    plus render lowerings that consume surface pages as height/SDF/material
-    domains.
+    shader-readable page textures. VolumeTexture resources now have the same
+    first resolver shape: contracts and DSL can declare GPU-resident 3D
+    textures with dimensions, depth, format, and version, and the D3D12 registry
+    allocates them as shader-readable volume textures. Remaining resolver cut
+    is Mesh, plus render lowerings that consume surface pages and volumes as
+    height/SDF/material/density domains.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

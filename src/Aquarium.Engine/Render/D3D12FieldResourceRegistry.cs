@@ -9,10 +9,11 @@ internal readonly record struct D3D12FieldResourceStats(
     int StructuredBuffers,
     int Texture2D,
     int SurfacePages,
+    int VolumeTextures,
     int Unsupported,
     int StaleRemoved)
 {
-    public static D3D12FieldResourceStats Empty { get; } = new(0, 0, 0, 0, 0, 0, 0);
+    public static D3D12FieldResourceStats Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 internal sealed class D3D12FieldResourceRegistry : IDisposable
@@ -21,6 +22,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
 
     private readonly Dictionary<string, StructuredBufferSlot> structuredBuffers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Texture2DSlot> textures = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, VolumeTextureSlot> volumeTextures = new(StringComparer.Ordinal);
     private readonly HashSet<string> liveKeys = new(StringComparer.Ordinal);
 
     public D3D12FieldResourceStats Resolve(
@@ -38,6 +40,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         var structuredBufferCount = 0;
         var textureCount = 0;
         var surfacePageCount = 0;
+        var volumeTextureCount = 0;
         var unsupported = 0;
         foreach (var declaration in declarations)
         {
@@ -93,17 +96,34 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
                 continue;
             }
 
+            if (declaration.Kind == AquariumFieldResourceKind.VolumeTexture)
+            {
+                volumeTextureCount++;
+                if (ResolveVolumeTexture(device, declaration))
+                {
+                    resolved++;
+                }
+                else
+                {
+                    unsupported++;
+                }
+
+                continue;
+            }
+
             unsupported++;
         }
 
         var staleRemoved = RemoveStaleStructuredBuffers(resourceRegistry, liveKeys);
         staleRemoved += RemoveStaleTextures(liveKeys);
+        staleRemoved += RemoveStaleVolumeTextures(liveKeys);
         return new D3D12FieldResourceStats(
             Declared: declarations.Count,
             Resolved: resolved,
             StructuredBuffers: structuredBufferCount,
             Texture2D: textureCount,
             SurfacePages: surfacePageCount,
+            VolumeTextures: volumeTextureCount,
             Unsupported: unsupported,
             StaleRemoved: staleRemoved);
     }
@@ -120,8 +140,14 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             slot.Texture.Dispose();
         }
 
+        foreach (var slot in volumeTextures.Values)
+        {
+            slot.Texture.Dispose();
+        }
+
         structuredBuffers.Clear();
         textures.Clear();
+        volumeTextures.Clear();
         liveKeys.Clear();
     }
 
@@ -159,6 +185,18 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         }
 
         surfacePage = null!;
+        return false;
+    }
+
+    public bool TryGetVolumeTexture(string resourceKey, out D3D12FieldTexture3D volumeTexture)
+    {
+        if (volumeTextures.TryGetValue(resourceKey, out var slot))
+        {
+            volumeTexture = slot.Texture;
+            return true;
+        }
+
+        volumeTexture = null!;
         return false;
     }
 
@@ -386,6 +424,45 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         return true;
     }
 
+    private bool ResolveVolumeTexture(
+        ID3D12Device device,
+        AquariumFieldResourceDeclaration declaration)
+    {
+        if (declaration.Residency != AquariumFieldResourceResidency.GpuResident ||
+            declaration.Access != AquariumFieldShaderAccess.ShaderResource)
+        {
+            return false;
+        }
+
+        if (volumeTextures.TryGetValue(declaration.ResourceKey, out var existing) &&
+            existing.Version == declaration.Version &&
+            existing.Width == declaration.Width &&
+            existing.Height == declaration.Height &&
+            existing.Depth == declaration.DepthOrCount)
+        {
+            return true;
+        }
+
+        if (existing is not null)
+        {
+            existing.Texture.Dispose();
+            volumeTextures.Remove(declaration.ResourceKey);
+        }
+
+        if (!D3D12FieldTexture3D.TryCreateEmpty(device, declaration, out var volumeTexture))
+        {
+            return false;
+        }
+
+        volumeTextures[declaration.ResourceKey] = new VolumeTextureSlot(
+            volumeTexture,
+            declaration.Width,
+            declaration.Height,
+            declaration.DepthOrCount,
+            declaration.Version);
+        return true;
+    }
+
     private int RemoveStaleStructuredBuffers(D3D12ResourceRegistry resourceRegistry, HashSet<string> currentKeys)
     {
         var removed = 0;
@@ -417,6 +494,24 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
 
             textures[key].Texture.Dispose();
             textures.Remove(key);
+            removed++;
+        }
+
+        return removed;
+    }
+
+    private int RemoveStaleVolumeTextures(HashSet<string> currentKeys)
+    {
+        var removed = 0;
+        foreach (var key in volumeTextures.Keys.ToArray())
+        {
+            if (currentKeys.Contains(key))
+            {
+                continue;
+            }
+
+            volumeTextures[key].Texture.Dispose();
+            volumeTextures.Remove(key);
             removed++;
         }
 
@@ -467,5 +562,12 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         D3D12FieldTexture2D Texture,
         AquariumFieldResourceKind Kind,
         string SourceUri,
+        ulong Version);
+
+    private sealed record VolumeTextureSlot(
+        D3D12FieldTexture3D Texture,
+        int Width,
+        int Height,
+        int Depth,
         ulong Version);
 }

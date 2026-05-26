@@ -42,6 +42,9 @@ public static class AquariumFieldScriptCompiler
                 case "surfacepage":
                     BindSurfacePage(args, resourceAliases, resources, lineIndex);
                     break;
+                case "volumetexture":
+                    BindVolumeTexture(args, resourceAliases, resources, lineIndex);
+                    break;
                 case "domain":
                     var domain = ParseFieldDomain(args, lineIndex);
                     if (domainKeys.Add(domain.DomainKey))
@@ -119,6 +122,30 @@ public static class AquariumFieldScriptCompiler
             StringValue(args, "format", "R16Float"),
             UInt64(args, "version", 0, lineIndex),
             StringValue(args, "path", ""));
+
+        resourceAliases[id] = resource;
+        resourceAliases[key] = resource;
+        if (resources.All(existing => !string.Equals(existing.ResourceKey, resource.ResourceKey, StringComparison.Ordinal)))
+        {
+            resources.Add(resource);
+        }
+    }
+
+    private static void BindVolumeTexture(
+        IReadOnlyDictionary<string, string> args,
+        IDictionary<string, AquariumFieldResourceDeclaration> resourceAliases,
+        ICollection<AquariumFieldResourceDeclaration> resources,
+        int lineIndex)
+    {
+        var id = Required(args, "id", lineIndex);
+        var key = StringValue(args, "key", $"aquarium:resource:volume-texture:{id}");
+        var resource = AquariumFieldResourceDeclaration.VolumeTexture(
+            key,
+            Int(args, "width", 1, lineIndex),
+            Int(args, "height", 1, lineIndex),
+            Int(args, "depth", 1, lineIndex),
+            StringValue(args, "format", "R16Float"),
+            UInt64(args, "version", 0, lineIndex));
 
         resourceAliases[id] = resource;
         resourceAliases[key] = resource;

@@ -10,10 +10,11 @@ internal readonly record struct D3D12FieldResourceStats(
     int Texture2D,
     int SurfacePages,
     int VolumeTextures,
+    int Meshes,
     int Unsupported,
     int StaleRemoved)
 {
-    public static D3D12FieldResourceStats Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0);
+    public static D3D12FieldResourceStats Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 internal sealed class D3D12FieldResourceRegistry : IDisposable
@@ -23,6 +24,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
     private readonly Dictionary<string, StructuredBufferSlot> structuredBuffers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Texture2DSlot> textures = new(StringComparer.Ordinal);
     private readonly Dictionary<string, VolumeTextureSlot> volumeTextures = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, D3D12FieldMesh> meshes = new(StringComparer.Ordinal);
     private readonly HashSet<string> liveKeys = new(StringComparer.Ordinal);
 
     public D3D12FieldResourceStats Resolve(
@@ -41,6 +43,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         var textureCount = 0;
         var surfacePageCount = 0;
         var volumeTextureCount = 0;
+        var meshCount = 0;
         var unsupported = 0;
         foreach (var declaration in declarations)
         {
@@ -111,12 +114,28 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
                 continue;
             }
 
+            if (declaration.Kind == AquariumFieldResourceKind.Mesh)
+            {
+                meshCount++;
+                if (ResolveMesh(device, declaration))
+                {
+                    resolved++;
+                }
+                else
+                {
+                    unsupported++;
+                }
+
+                continue;
+            }
+
             unsupported++;
         }
 
         var staleRemoved = RemoveStaleStructuredBuffers(resourceRegistry, liveKeys);
         staleRemoved += RemoveStaleTextures(liveKeys);
         staleRemoved += RemoveStaleVolumeTextures(liveKeys);
+        staleRemoved += RemoveStaleMeshes(liveKeys);
         return new D3D12FieldResourceStats(
             Declared: declarations.Count,
             Resolved: resolved,
@@ -124,6 +143,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             Texture2D: textureCount,
             SurfacePages: surfacePageCount,
             VolumeTextures: volumeTextureCount,
+            Meshes: meshCount,
             Unsupported: unsupported,
             StaleRemoved: staleRemoved);
     }
@@ -145,9 +165,15 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             slot.Texture.Dispose();
         }
 
+        foreach (var mesh in meshes.Values)
+        {
+            mesh.Dispose();
+        }
+
         structuredBuffers.Clear();
         textures.Clear();
         volumeTextures.Clear();
+        meshes.Clear();
         liveKeys.Clear();
     }
 
@@ -197,6 +223,17 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         }
 
         volumeTexture = null!;
+        return false;
+    }
+
+    public bool TryGetMesh(string resourceKey, out D3D12FieldMesh mesh)
+    {
+        if (meshes.TryGetValue(resourceKey, out mesh!))
+        {
+            return true;
+        }
+
+        mesh = null!;
         return false;
     }
 
@@ -463,6 +500,54 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         return true;
     }
 
+    private bool ResolveMesh(
+        ID3D12Device device,
+        AquariumFieldResourceDeclaration declaration)
+    {
+        var mesh = declaration.Mesh;
+        if (!mesh.IsValid || declaration.Residency != AquariumFieldResourceResidency.GpuResident)
+        {
+            return false;
+        }
+
+        if (meshes.TryGetValue(declaration.ResourceKey, out var existing) &&
+            existing.Version == declaration.Version &&
+            existing.Vertices.ElementCount == mesh.Vertices.Count &&
+            existing.Vertices.StrideBytes == mesh.Vertices.StrideBytes &&
+            existing.Indices.ElementCount == mesh.Indices.Count &&
+            existing.Indices.StrideBytes == mesh.Indices.StrideBytes &&
+            existing.Topology == mesh.Topology &&
+            existing.IndexFormat == mesh.IndexFormat)
+        {
+            return true;
+        }
+
+        if (existing is not null)
+        {
+            existing.Dispose();
+            meshes.Remove(declaration.ResourceKey);
+        }
+
+        var vertices = new D3D12StructuredBuffer(
+            device,
+            mesh.Vertices.Count,
+            mesh.Vertices.StrideBytes,
+            $"Aquarium D3D12 Field Mesh Vertices {declaration.ResourceKey}");
+        var indices = new D3D12StructuredBuffer(
+            device,
+            mesh.Indices.Count,
+            mesh.Indices.StrideBytes,
+            $"Aquarium D3D12 Field Mesh Indices {declaration.ResourceKey}");
+        meshes[declaration.ResourceKey] = new D3D12FieldMesh(
+            vertices,
+            indices,
+            mesh.Topology,
+            mesh.IndexFormat,
+            mesh.SubmeshCount,
+            declaration.Version);
+        return true;
+    }
+
     private int RemoveStaleStructuredBuffers(D3D12ResourceRegistry resourceRegistry, HashSet<string> currentKeys)
     {
         var removed = 0;
@@ -512,6 +597,24 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
 
             volumeTextures[key].Texture.Dispose();
             volumeTextures.Remove(key);
+            removed++;
+        }
+
+        return removed;
+    }
+
+    private int RemoveStaleMeshes(HashSet<string> currentKeys)
+    {
+        var removed = 0;
+        foreach (var key in meshes.Keys.ToArray())
+        {
+            if (currentKeys.Contains(key))
+            {
+                continue;
+            }
+
+            meshes[key].Dispose();
+            meshes.Remove(key);
             removed++;
         }
 

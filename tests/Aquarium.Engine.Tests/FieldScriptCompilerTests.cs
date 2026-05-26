@@ -168,4 +168,28 @@ public sealed class FieldScriptCompilerTests
         Assert.Equal("R16Float", resource.Format);
         Assert.Equal("fensalir-volume-texture", resource.NativeHandleKind);
     }
+
+    [Fact]
+    public void CompileEvidenceDeclaresMeshPackagesAsGpuResources()
+    {
+        var frame = AquariumFieldScriptCompiler.CompileEvidence(
+            """
+            mesh id=quad key=aquarium:resource:mesh:quad vertices=4 vertexStride=32 indices=6 indexFormat=UInt32 topology=TriangleList min=-1,-1,0 max=1,1,0 submeshes=1 version=9
+            """,
+            new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal));
+
+        var resource = Assert.Single(frame.Resources);
+        Assert.Equal("aquarium:resource:mesh:quad", resource.ResourceKey);
+        Assert.Equal(AquariumFieldResourceKind.Mesh, resource.Kind);
+        Assert.Equal(AquariumFieldResourceResidency.GpuResident, resource.Residency);
+        Assert.Equal(AquariumFieldShaderAccess.ShaderResource, resource.Access);
+        Assert.Equal("fensalir-mesh-package", resource.NativeHandleKind);
+        Assert.True(resource.Mesh.IsValid);
+        Assert.Equal(4, resource.Mesh.Vertices.Count);
+        Assert.Equal(32, resource.Mesh.Vertices.StrideBytes);
+        Assert.Equal(6, resource.Mesh.Indices.Count);
+        Assert.Equal(4, resource.Mesh.Indices.StrideBytes);
+        Assert.Equal(AquariumFieldMeshTopology.TriangleList, resource.Mesh.Topology);
+        Assert.Equal(AquariumFieldMeshIndexFormat.UInt32, resource.Mesh.IndexFormat);
+    }
 }

@@ -96,6 +96,23 @@ public enum AquariumFieldShaderAccess
     AccelerationStructure = 6,
 }
 
+public enum AquariumFieldMeshTopology
+{
+    Unknown = 0,
+    TriangleList = 1,
+    TriangleStrip = 2,
+    LineList = 3,
+    LineStrip = 4,
+    PointList = 5,
+}
+
+public enum AquariumFieldMeshIndexFormat
+{
+    Unknown = 0,
+    UInt16 = 1,
+    UInt32 = 2,
+}
+
 public enum AquariumFieldInvalidationCode
 {
     None = 0,
@@ -238,6 +255,36 @@ public readonly record struct AquariumFieldBackendPacket(
         Support.HasSupport;
 }
 
+public readonly record struct AquariumFieldMeshBuffer(
+    string BufferKey,
+    int Count,
+    int StrideBytes,
+    IntPtr NativeHandle,
+    string NativeHandleKind)
+{
+    public bool HasShape => Count > 0 && StrideBytes > 0;
+}
+
+public readonly record struct AquariumFieldMeshResource(
+    AquariumFieldMeshBuffer Vertices,
+    AquariumFieldMeshBuffer Indices,
+    AquariumFieldMeshTopology Topology,
+    AquariumFieldMeshIndexFormat IndexFormat,
+    Vector3 BoundsMin,
+    Vector3 BoundsMax,
+    int SubmeshCount)
+{
+    public bool IsValid =>
+        Vertices.HasShape &&
+        Indices.HasShape &&
+        Topology != AquariumFieldMeshTopology.Unknown &&
+        IndexFormat != AquariumFieldMeshIndexFormat.Unknown &&
+        SubmeshCount > 0 &&
+        BoundsMax.X >= BoundsMin.X &&
+        BoundsMax.Y >= BoundsMin.Y &&
+        BoundsMax.Z >= BoundsMin.Z;
+}
+
 public readonly record struct AquariumFieldTubeSplineLowering(
     string LoweringKey,
     string ClaimKey,
@@ -316,7 +363,8 @@ public readonly record struct AquariumFieldResourceDeclaration(
     ulong Version,
     IntPtr NativeHandle,
     string NativeHandleKind,
-    string SourceUri = "")
+    string SourceUri = "",
+    AquariumFieldMeshResource Mesh = default)
 {
     public bool HasIdentity => !string.IsNullOrWhiteSpace(ResourceKey);
 
@@ -324,7 +372,7 @@ public readonly record struct AquariumFieldResourceDeclaration(
         Kind != AquariumFieldResourceKind.Unknown &&
         Residency != AquariumFieldResourceResidency.Unknown &&
         Access != AquariumFieldShaderAccess.Unknown &&
-        (Width > 0 || DepthOrCount > 0 || StrideBytes > 0 || HasSourceAsset);
+        (Width > 0 || DepthOrCount > 0 || StrideBytes > 0 || HasSourceAsset || Mesh.IsValid);
 
     public bool HasSourceAsset => !string.IsNullOrWhiteSpace(SourceUri);
 
@@ -413,6 +461,30 @@ public readonly record struct AquariumFieldResourceDeclaration(
             NativeHandle: IntPtr.Zero,
             NativeHandleKind: "fensalir-volume-texture",
             SourceUri: "");
+
+    public static AquariumFieldResourceDeclaration MeshPackage(
+        string resourceKey,
+        AquariumFieldMeshResource mesh,
+        ulong version = 0,
+        long validFromNs = 0,
+        long validUntilNs = 0) =>
+        new(
+            ResourceKey: resourceKey,
+            Kind: AquariumFieldResourceKind.Mesh,
+            Residency: AquariumFieldResourceResidency.GpuResident,
+            Access: AquariumFieldShaderAccess.ShaderResource,
+            Format: "FieldMesh",
+            Width: Math.Max(1, mesh.Vertices.Count),
+            Height: Math.Max(1, mesh.SubmeshCount),
+            DepthOrCount: Math.Max(1, mesh.Indices.Count),
+            StrideBytes: Math.Max(1, mesh.Vertices.StrideBytes),
+            ValidFromNs: validFromNs,
+            ValidUntilNs: validUntilNs,
+            Version: version,
+            NativeHandle: IntPtr.Zero,
+            NativeHandleKind: "fensalir-mesh-package",
+            SourceUri: "",
+            Mesh: mesh);
 
     private static int FormatStrideBytes(string format) =>
         format switch
@@ -552,6 +624,11 @@ public static class AquariumFieldEvidenceValidator
             if (!resource.HasShape)
             {
                 issues.Add(Error(resource.ResourceKey, "Field resource declaration is missing kind, residency, access, or shape."));
+            }
+
+            if (resource.Kind == AquariumFieldResourceKind.Mesh && !resource.Mesh.IsValid)
+            {
+                issues.Add(Error(resource.ResourceKey, "Mesh field resource is missing vertex buffer, index buffer, topology, index format, bounds, or submesh count."));
             }
 
             if (!resource.IsGpuVisible)

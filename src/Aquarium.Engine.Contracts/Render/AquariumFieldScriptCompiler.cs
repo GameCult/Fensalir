@@ -45,6 +45,9 @@ public static class AquariumFieldScriptCompiler
                 case "volumetexture":
                     BindVolumeTexture(args, resourceAliases, resources, lineIndex);
                     break;
+                case "mesh":
+                    BindMesh(args, resourceAliases, resources, lineIndex);
+                    break;
                 case "domain":
                     var domain = ParseFieldDomain(args, lineIndex);
                     if (domainKeys.Add(domain.DomainKey))
@@ -145,6 +148,40 @@ public static class AquariumFieldScriptCompiler
             Int(args, "height", 1, lineIndex),
             Int(args, "depth", 1, lineIndex),
             StringValue(args, "format", "R16Float"),
+            UInt64(args, "version", 0, lineIndex));
+
+        resourceAliases[id] = resource;
+        resourceAliases[key] = resource;
+        if (resources.All(existing => !string.Equals(existing.ResourceKey, resource.ResourceKey, StringComparison.Ordinal)))
+        {
+            resources.Add(resource);
+        }
+    }
+
+    private static void BindMesh(
+        IReadOnlyDictionary<string, string> args,
+        IDictionary<string, AquariumFieldResourceDeclaration> resourceAliases,
+        ICollection<AquariumFieldResourceDeclaration> resources,
+        int lineIndex)
+    {
+        var id = Required(args, "id", lineIndex);
+        var key = StringValue(args, "key", $"aquarium:resource:mesh:{id}");
+        var vertexCount = Int(args, "vertices", 1, lineIndex);
+        var vertexStride = Int(args, "vertexStride", 32, lineIndex);
+        var indexCount = Int(args, "indices", 3, lineIndex);
+        var indexFormat = Enum.Parse<AquariumFieldMeshIndexFormat>(StringValue(args, "indexFormat", nameof(AquariumFieldMeshIndexFormat.UInt32)), ignoreCase: true);
+        var indexStride = indexFormat == AquariumFieldMeshIndexFormat.UInt16 ? 2 : 4;
+        var mesh = new AquariumFieldMeshResource(
+            Vertices: new AquariumFieldMeshBuffer($"{key}:vertices", vertexCount, vertexStride, IntPtr.Zero, "fensalir-mesh-vertices"),
+            Indices: new AquariumFieldMeshBuffer($"{key}:indices", indexCount, indexStride, IntPtr.Zero, "fensalir-mesh-indices"),
+            Topology: Enum.Parse<AquariumFieldMeshTopology>(StringValue(args, "topology", nameof(AquariumFieldMeshTopology.TriangleList)), ignoreCase: true),
+            IndexFormat: indexFormat,
+            BoundsMin: Vec3(args, "min", -Vector3.One, lineIndex),
+            BoundsMax: Vec3(args, "max", Vector3.One, lineIndex),
+            SubmeshCount: Int(args, "submeshes", 1, lineIndex));
+        var resource = AquariumFieldResourceDeclaration.MeshPackage(
+            key,
+            mesh,
             UInt64(args, "version", 0, lineIndex));
 
         resourceAliases[id] = resource;

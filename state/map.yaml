@@ -103,9 +103,13 @@ next_actions:
     shader-readable page textures. VolumeTexture resources now have the same
     first resolver shape: contracts and DSL can declare GPU-resident 3D
     textures with dimensions, depth, format, and version, and the D3D12 registry
-    allocates them as shader-readable volume textures. Remaining resolver cut
-    is Mesh, plus render lowerings that consume surface pages and volumes as
-    height/SDF/material/density domains.
+    allocates them as shader-readable volume textures. Mesh resources are now
+    first-class packages with `Mesh.Vertices` and `Mesh.Indices` buffer members,
+    topology, index format, bounds, submesh count, and version. The DSL can
+    declare a GPU-resident mesh package, and the D3D12 registry allocates and
+    reuses matching vertex/index GPU buffers under the mesh resource key.
+    Remaining cuts are render lowerings that consume meshes, surface pages, and
+    volumes as selected geometry/height/SDF/material/density domains.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

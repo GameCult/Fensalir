@@ -126,7 +126,9 @@ next_actions:
     draw ABI while owning their own producer buffers and materials. TubeField
     dispatch now obeys selected packet authority: only lowerings whose claim has
     a planned TubeField backend packet are expanded, and unplanned lowerings are
-    counted instead of rendered.
+    counted instead of rendered. Validation also rejects TubeSpline lowering
+    metadata whose claim is not Tube-encoded or whose resource does not match
+    the claim payload, so split authority is caught before render dispatch.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

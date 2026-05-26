@@ -195,6 +195,57 @@ public sealed class FieldEvidenceContractTests
     }
 
     [Fact]
+    public void ValidatorRejectsTubeSplineLoweringClaimEncodingMismatch()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+        frame = new AquariumFieldEvidenceFrame
+        {
+            Resources = frame.Resources,
+            Domains = frame.Domains,
+            Claims = [frame.Claims[0] with { Encoding = AquariumFieldEncoding.Mesh }],
+            Candidates = frame.Candidates,
+            BackendPackets = frame.BackendPackets,
+            TubeSplineLowerings = frame.TubeSplineLowerings,
+            AccumulationWindowSeconds = frame.AccumulationWindowSeconds,
+            PresentationDelaySeconds = frame.PresentationDelaySeconds,
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.True(report.HasErrors);
+        Assert.Contains(report.Issues, issue => issue.Key == "tube-spline:mimir:spectrum:asio-ch0:42");
+    }
+
+    [Fact]
+    public void ValidatorRejectsTubeSplineLoweringResourceMismatch()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+        frame = new AquariumFieldEvidenceFrame
+        {
+            Resources =
+            [
+                frame.Resources[0],
+                frame.Resources[0] with { ResourceKey = "mimir:resource:native-ring:asio-ch1" },
+            ],
+            Domains = frame.Domains,
+            Claims = frame.Claims,
+            Candidates = frame.Candidates,
+            BackendPackets = frame.BackendPackets,
+            TubeSplineLowerings =
+            [
+                frame.TubeSplineLowerings[0] with { ResourceKey = "mimir:resource:native-ring:asio-ch1" },
+            ],
+            AccumulationWindowSeconds = frame.AccumulationWindowSeconds,
+            PresentationDelaySeconds = frame.PresentationDelaySeconds,
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.True(report.HasErrors);
+        Assert.Contains(report.Issues, issue => issue.Key == "tube-spline:mimir:spectrum:asio-ch0:42");
+    }
+
+    [Fact]
     public void NormalizerBuildsPendingLoweringRequestsWithoutChoosingBackend()
     {
         var frame = BuildValidTubeEvidenceFrame();

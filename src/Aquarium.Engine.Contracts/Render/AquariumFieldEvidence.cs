@@ -629,6 +629,7 @@ public static class AquariumFieldEvidenceValidator
         }
 
         var claimKeys = new HashSet<string>(StringComparer.Ordinal);
+        var claimsByKey = new Dictionary<string, AquariumFieldClaim>(StringComparer.Ordinal);
         var resourceKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var resource in frame.Resources)
         {
@@ -688,6 +689,7 @@ public static class AquariumFieldEvidenceValidator
             }
 
             claimKeys.Add(claim.ClaimKey);
+            claimsByKey[claim.ClaimKey] = claim;
         }
 
         foreach (var candidate in frame.Candidates)
@@ -751,9 +753,21 @@ public static class AquariumFieldEvidenceValidator
                 continue;
             }
 
-            if (!claimKeys.Contains(lowering.ClaimKey))
+            if (!claimsByKey.TryGetValue(lowering.ClaimKey, out var claim))
             {
                 issues.Add(Error(lowering.LoweringKey, $"Tube spline lowering references unknown claim '{lowering.ClaimKey}'."));
+            }
+            else
+            {
+                if (claim.Encoding != AquariumFieldEncoding.Tube)
+                {
+                    issues.Add(Error(lowering.LoweringKey, $"Tube spline lowering claim '{lowering.ClaimKey}' is encoded as {claim.Encoding}, not Tube."));
+                }
+
+                if (!string.Equals(claim.PayloadHandle, lowering.ResourceKey, StringComparison.Ordinal))
+                {
+                    issues.Add(Error(lowering.LoweringKey, $"Tube spline lowering resource '{lowering.ResourceKey}' does not match claim payload '{claim.PayloadHandle}'."));
+                }
             }
 
             if (!resourceKeys.Contains(lowering.ResourceKey))

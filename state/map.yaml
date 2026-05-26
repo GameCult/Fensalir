@@ -56,10 +56,16 @@ invariants:
     terrain should be a quadtree of brush-painted surface tiles, subdivided by
     projected footprint, curvature, brush/material detail, silhouettes, and
     temporal uncertainty before SDF probes emit detail-adaptive surface splats.
+  - Rendering backends are lowerings, not truth owners. Heightfields, splines,
+    direct SDF proxies, meshes, volumes, fractal probes, and Mimir sensor
+    observations must publish bounded Form/Appearance/Transport field claims
+    before they can participate in reusable field evidence.
 
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.
   - Keep `dotnet build Fensalir.sln` green after the split.
+  - Cut the rendering rebuild through explicit field-domain/field-claim
+    contracts before adding another backend-specific visual path.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

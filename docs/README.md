@@ -16,6 +16,8 @@ historical branch scar.
 - `perfect-machine-architecture.md`: end-to-end map for authored/sensor field
   input, domain binding, evidence candidates, reservoir reuse, residency, and
   renderer lowering.
+- `rendering-teardown-rebuild-protocol.md`: current teardown/rebuild authority
+  map for collapsing renderer-era paths into one field-evidence machine.
 - `temporal-spatial-evidence-reservoir.md`: stable-key temporal evidence cache
   for fractal rendering, Mimir-style sensor fusion, direct SDF contributors,
   and mesh-backed field evidence.

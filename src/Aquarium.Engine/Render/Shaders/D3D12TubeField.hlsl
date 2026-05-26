@@ -48,6 +48,7 @@ cbuffer TubeFieldConstants : register(b3)
     float4 tubeAmplitude;
     float4 tubeMaterial;
     float4 tubeDispatch;
+    float4 tubeDraw;
     float3 tubeOrigin;
     float tubePadding0;
     float3 tubeAxisStep;
@@ -62,6 +63,7 @@ SamplerState TubeFieldRampSampler : register(s0);
 RWStructuredBuffer<TubeFieldVertex> TubeFieldVertices : register(u10);
 RWStructuredBuffer<uint> TubeFieldIndices : register(u11);
 RWStructuredBuffer<uint> TubeFieldStats : register(u12);
+RWStructuredBuffer<uint> TubeFieldDrawArguments : register(u13);
 
 uint PositiveModulo(int value, uint modulo)
 {
@@ -167,6 +169,16 @@ void D3D12TubeFieldExpandCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     uint localSegment = dispatchThreadId.x;
     uint dispatchSegments = (uint)round(tubeDispatch.w);
+    if (localSegment == 0u)
+    {
+        uint argumentBase = (uint)round(tubeDraw.x);
+        TubeFieldDrawArguments[argumentBase + 0u] = dispatchSegments * 6u;
+        TubeFieldDrawArguments[argumentBase + 1u] = 1u;
+        TubeFieldDrawArguments[argumentBase + 2u] = (uint)round(tubeDraw.y);
+        TubeFieldDrawArguments[argumentBase + 3u] = 0u;
+        TubeFieldDrawArguments[argumentBase + 4u] = 0u;
+    }
+
     if (localSegment >= dispatchSegments)
     {
         return;

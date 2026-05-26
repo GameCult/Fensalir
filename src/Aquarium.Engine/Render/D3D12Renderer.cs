@@ -41,6 +41,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int MaxTubeFieldSegments = 65_536;
     private const int MaxTubeFieldVertices = MaxTubeFieldSegments * 4;
     private const int MaxTubeFieldIndices = MaxTubeFieldSegments * 6;
+    private const int MaxTubeFieldDrawBatches = 4_096;
+    private const int TubeFieldDrawArgumentUIntCount = 5;
+    private const int TubeFieldDrawArgumentBytes = TubeFieldDrawArgumentUIntCount * sizeof(uint);
     private const float SurfaceTransparentMinZ = -1.85f;
     private const float SurfaceTransparentMaxZ = 0.45f;
     private const int BloomLevelCount = 3;
@@ -92,6 +95,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootTubeFieldVertices = 2;
     private const int RootTubeFieldIndices = 3;
     private const int RootTubeFieldStats = 4;
+    private const int RootTubeFieldDrawArguments = 5;
     private const int RootTubeFieldRenderFrameConstants = 0;
     private const int RootTubeFieldRenderConstants = 1;
     private const int RootTubeFieldRenderSource = 2;
@@ -139,6 +143,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly ID3D12RootSignature fractalReservoirRootSignature;
     private readonly ID3D12RootSignature tubeFieldRootSignature;
     private readonly ID3D12RootSignature tubeFieldRenderRootSignature;
+    private readonly ID3D12CommandSignature tubeFieldDrawCommandSignature;
     private readonly D3D12BlueNoiseTexture blueNoiseTexture;
     private D3D12FieldTexture2D? tubeFieldFallbackRampTexture;
     private ID3D12PipelineState? heightFieldBasePipelineState;
@@ -210,6 +215,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly D3D12StructuredBuffer tubeFieldVertexBuffer;
     private readonly D3D12StructuredBuffer tubeFieldIndexBuffer;
     private readonly D3D12StructuredBuffer tubeFieldStatsBuffer;
+    private readonly D3D12StructuredBuffer tubeFieldDrawArgumentBuffer;
     private readonly List<D3D12TubeFieldDrawBatch> tubeFieldDrawBatches = [];
     private readonly Dictionary<string, D3D12ExternalSensorTexture> externalSensorTextures = new(StringComparer.Ordinal);
     private D3D12TrackedResource? programOutputTexture;
@@ -247,6 +253,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private int activeTubeFieldDispatchedSegments;
     private int activeTubeFieldRequestedSegments;
     private int activeTubeFieldTruncatedSegments;
+    private int activeTubeFieldIndirectDrawCount;
+    private int activeTubeFieldSkippedDrawBatches;
     private Viewport viewport;
     private RawRect scissorRect;
     private int width;
@@ -363,6 +371,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldVertexBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldVertices, Marshal.SizeOf<D3D12TubeFieldVertex>(), "Aquarium D3D12 TubeField Vertex Buffer", allowUnorderedAccess: true);
         tubeFieldIndexBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldIndices, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Index Buffer", allowUnorderedAccess: true);
         tubeFieldStatsBuffer = new D3D12StructuredBuffer(device, 4, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Stats Buffer", allowUnorderedAccess: true);
+        tubeFieldDrawArgumentBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldDrawBatches * TubeFieldDrawArgumentUIntCount, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Indirect Draw Arguments", allowUnorderedAccess: true);
         resourceRegistry.Add("sdf-light-buffer", sdfLightBuffer);
         resourceRegistry.Add("sdf-object-buffer", sdfObjectBuffer);
         resourceRegistry.Add("gpu-sensor-camera-buffer", gpuSensorCameraBuffer);
@@ -373,6 +382,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         resourceRegistry.Add("tube-field-vertex-buffer", tubeFieldVertexBuffer);
         resourceRegistry.Add("tube-field-index-buffer", tubeFieldIndexBuffer);
         resourceRegistry.Add("tube-field-stats-buffer", tubeFieldStatsBuffer);
+        resourceRegistry.Add("tube-field-indirect-draw-arguments", tubeFieldDrawArgumentBuffer);
         commandList = device.CreateCommandList<ID3D12GraphicsCommandList>(0, CommandListType.Direct, frames[frameIndex].CommandAllocator, null);
         commandList.Name = "Aquarium D3D12 Graphics Command List";
         commandList.Close();
@@ -399,6 +409,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldRootSignature.Name = "Aquarium D3D12 TubeField Root Signature";
         tubeFieldRenderRootSignature = CreateTubeFieldRenderRootSignature();
         tubeFieldRenderRootSignature.Name = "Aquarium D3D12 TubeField Render Root Signature";
+        tubeFieldDrawCommandSignature = CreateTubeFieldDrawCommandSignature();
+        tubeFieldDrawCommandSignature.Name = "Aquarium D3D12 TubeField Draw Command Signature";
         CaptureShaderWriteTimes();
         StartPipelineBuild("initial");
         viewport = new Viewport(0.0f, 0.0f, width, height);
@@ -973,6 +985,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fractalReservoirRootSignature.Dispose();
         tubeFieldRootSignature.Dispose();
         tubeFieldRenderRootSignature.Dispose();
+        tubeFieldDrawCommandSignature.Dispose();
         blueNoiseTexture.Dispose();
         tubeFieldFallbackRampTexture?.Dispose();
         studioIrradianceTexture.Dispose();
@@ -982,6 +995,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         bufferFieldTextureSplineProgramBuffer?.Dispose();
         bufferFieldTextureSampleBuffer?.Dispose();
         tubeFieldStatsBuffer.Dispose();
+        tubeFieldDrawArgumentBuffer.Dispose();
         tubeFieldIndexBuffer.Dispose();
         tubeFieldVertexBuffer.Dispose();
         temporalGaussianBuffer.Dispose();
@@ -1832,6 +1846,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
         tubeFieldVertexBuffer.Transition(activeCommandList, ResourceStates.VertexAndConstantBuffer);
         tubeFieldIndexBuffer.Transition(activeCommandList, ResourceStates.IndexBuffer);
+        tubeFieldDrawArgumentBuffer.Transition(activeCommandList, ResourceStates.IndirectArgument);
         var vertexView = new VertexBufferView(
             tubeFieldVertexBuffer.Resource.GPUVirtualAddress,
             (uint)(MaxTubeFieldVertices * Marshal.SizeOf<D3D12TubeFieldVertex>()),
@@ -1856,7 +1871,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
             activeCommandList.SetGraphicsRootConstantBufferView(RootTubeFieldRenderConstants, batch.ConstantsGpuVirtualAddress);
             activeCommandList.SetGraphicsRootShaderResourceView(RootTubeFieldRenderSource, batch.Source.Resource.GPUVirtualAddress);
             activeCommandList.SetGraphicsRootDescriptorTable(RootTubeFieldRenderRamp, rampDescriptor.Gpu);
-            activeCommandList.DrawIndexedInstanced((uint)batch.IndexCount, 1, (uint)batch.StartIndex, 0, 0);
+            activeCommandList.ExecuteIndirect(
+                tubeFieldDrawCommandSignature,
+                1,
+                tubeFieldDrawArgumentBuffer.Resource,
+                (ulong)batch.DrawArgumentOffsetBytes,
+                null,
+                0);
         }
     }
 
@@ -2294,6 +2315,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeTubeFieldDispatchedSegments = 0;
         activeTubeFieldRequestedSegments = 0;
         activeTubeFieldTruncatedSegments = 0;
+        activeTubeFieldIndirectDrawCount = 0;
+        activeTubeFieldSkippedDrawBatches = 0;
         tubeFieldDrawBatches.Clear();
         if (tubeFieldComputePipelineState is null || activeFieldEvidenceFrame.TubeSplineLowerings.Count == 0)
         {
@@ -2306,6 +2329,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
             if (!lowering.IsValid ||
                 !fieldResourceRegistry.TryGetStructuredBuffer(lowering.ResourceKey, out var sourceBuffer))
             {
+                continue;
+            }
+
+            if (tubeFieldDrawBatches.Count >= MaxTubeFieldDrawBatches)
+            {
+                activeTubeFieldSkippedDrawBatches++;
                 continue;
             }
 
@@ -2326,12 +2355,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
             }
 
             activeTubeFieldTruncatedSegments += requestedSegments - dispatchSegments;
+            var startIndex = segmentBase * 6;
             var constants = new D3D12TubeFieldConstants(
                 new Vector4(normalized.Width, normalized.Height, normalized.StrideBytes, normalized.FirstColumn),
                 new Vector4(normalized.ColumnCount, normalized.ColumnStride, normalized.RollingModulo, normalized.RollingOffset),
                 new Vector4(normalized.AmplitudePower, normalized.AmplitudeScale, normalized.NormalizeMin, normalized.NormalizeMax),
                 new Vector4(normalized.BaseRadius, normalized.RadiusScale, normalized.Alpha, normalized.Feather),
                 new Vector4(normalized.EmissionScale, normalized.CatmullRomSubdivisions, segmentBase, dispatchSegments),
+                new Vector4(tubeFieldDrawBatches.Count * TubeFieldDrawArgumentUIntCount, startIndex, 0.0f, 0.0f),
                 normalized.Origin,
                 0.0f,
                 normalized.AxisStep,
@@ -2339,12 +2370,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 normalized.ColumnStep,
                 0.0f);
             var constantsUpload = frameResources.UploadRing.WriteConstant(constants);
-            var startIndex = segmentBase * 6;
 
             sourceBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
             tubeFieldVertexBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
             tubeFieldIndexBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
             tubeFieldStatsBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+            tubeFieldDrawArgumentBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
             activeCommandList.SetComputeRootSignature(tubeFieldRootSignature);
             activeCommandList.SetPipelineState(tubeFieldComputePipelineState);
             activeCommandList.SetComputeRootConstantBufferView(RootTubeFieldConstants, constantsUpload.GpuVirtualAddress);
@@ -2352,19 +2383,21 @@ public sealed class D3D12Renderer : IAquariumRenderer
             activeCommandList.SetComputeRootUnorderedAccessView(RootTubeFieldVertices, tubeFieldVertexBuffer.Resource.GPUVirtualAddress);
             activeCommandList.SetComputeRootUnorderedAccessView(RootTubeFieldIndices, tubeFieldIndexBuffer.Resource.GPUVirtualAddress);
             activeCommandList.SetComputeRootUnorderedAccessView(RootTubeFieldStats, tubeFieldStatsBuffer.Resource.GPUVirtualAddress);
+            activeCommandList.SetComputeRootUnorderedAccessView(RootTubeFieldDrawArguments, tubeFieldDrawArgumentBuffer.Resource.GPUVirtualAddress);
             activeCommandList.Dispatch((uint)((dispatchSegments + 255) / 256), 1, 1);
             activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldVertexBuffer.Resource));
             activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldIndexBuffer.Resource));
             activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldStatsBuffer.Resource));
+            activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldDrawArgumentBuffer.Resource));
 
             segmentBase += dispatchSegments;
             activeTubeFieldDispatchedSegments += dispatchSegments;
+            activeTubeFieldIndirectDrawCount++;
             tubeFieldDrawBatches.Add(new D3D12TubeFieldDrawBatch(
                 sourceBuffer,
                 constantsUpload.GpuVirtualAddress,
                 normalized.RampResourceKey,
-                startIndex,
-                dispatchSegments * 6));
+                tubeFieldDrawBatches.Count * TubeFieldDrawArgumentBytes));
         }
 
         activeTubeFieldDrawIndexCount = activeTubeFieldDispatchedSegments * 6;
@@ -3013,6 +3046,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 $"segments requested {activeTubeFieldRequestedSegments:N0}; " +
                 $"dispatched {activeTubeFieldDispatchedSegments:N0}; " +
                 $"truncated {activeTubeFieldTruncatedSegments:N0}; " +
+                $"indirect draws {activeTubeFieldIndirectDrawCount:N0}; " +
+                $"skipped draw batches {activeTubeFieldSkippedDrawBatches:N0}; " +
                 $"index draw count {activeTubeFieldDrawIndexCount:N0}; " +
                 $"budget {MaxTubeFieldSegments:N0}");
         }
@@ -3574,12 +3609,30 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(10, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(11, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(12, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(13, 0), ShaderVisibility.All),
         };
         var description = new RootSignatureDescription(
             RootSignatureFlags.None,
             rootParameters,
             []);
         return device.CreateRootSignature(0, in description, RootSignatureVersion.Version1);
+    }
+
+    private ID3D12CommandSignature CreateTubeFieldDrawCommandSignature()
+    {
+        var arguments = new[]
+        {
+            new IndirectArgumentDescription
+            {
+                Type = IndirectArgumentType.DrawIndexed,
+            },
+        };
+        var description = new CommandSignatureDescription
+        {
+            ByteStride = TubeFieldDrawArgumentBytes,
+            IndirectArguments = arguments,
+        };
+        return device.CreateCommandSignature<ID3D12CommandSignature>(description, null);
     }
 
     private ID3D12RootSignature CreateTubeFieldRenderRootSignature()
@@ -4071,8 +4124,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         D3D12StructuredBuffer Source,
         ulong ConstantsGpuVirtualAddress,
         string RampResourceKey,
-        int StartIndex,
-        int IndexCount);
+        int DrawArgumentOffsetBytes);
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct D3D12TubeFieldConstants(
@@ -4081,6 +4133,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Vector4 Amplitude,
         Vector4 Material,
         Vector4 Dispatch,
+        Vector4 Draw,
         Vector3 Origin,
         float Padding0,
         Vector3 AxisStep,

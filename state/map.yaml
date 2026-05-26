@@ -91,11 +91,13 @@ next_actions:
     5-tap approximation. Texture2D local assets are now declared as first-class
     field resources with source URI metadata, DSL aliases, lazy D3D12 upload,
     SRV binding, and TubeField ramp lookup by resource key; missing/unresolved
-    ramps bind a Fensalir-owned linear fallback ramp. The first material is
-    opaque field geometry with squared normalized emission, fake Fresnel
-    center-bright/edge-dark shaping, and requested/dispatched/truncated segment
-    reporting. Remaining cuts are indirect draw packets plus mesh/surface-page/
-    volume resolvers.
+    ramps bind a Fensalir-owned linear fallback ramp. TubeField compute now
+    emits one GPU-resident D3D12 DrawIndexed indirect argument packet per
+    material/resource batch, and render binds the batch source/ramp state then
+    executes the packet with ExecuteIndirect. The first material is opaque field
+    geometry with squared normalized emission, fake Fresnel center-bright/
+    edge-dark shaping, and requested/dispatched/truncated/indirect-draw segment
+    reporting. Remaining cuts are mesh/surface-page/volume resolvers.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

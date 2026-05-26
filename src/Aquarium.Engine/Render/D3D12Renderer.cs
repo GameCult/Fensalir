@@ -256,6 +256,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private int activeTubeFieldIndirectDrawCount;
     private int activeTubeFieldSkippedDrawBatches;
     private int activeTubeFieldUnplannedLowerings;
+    private int activeFieldResourceUploadCount;
+    private int activeFieldResourceUploadSkippedCount;
     private Viewport viewport;
     private RawRect scissorRect;
     private int width;
@@ -2339,11 +2341,15 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeTubeFieldIndirectDrawCount = 0;
         activeTubeFieldSkippedDrawBatches = 0;
         activeTubeFieldUnplannedLowerings = 0;
+        activeFieldResourceUploadCount = 0;
+        activeFieldResourceUploadSkippedCount = 0;
         tubeFieldDrawBatches.Clear();
         if (tubeFieldComputePipelineState is null || activeFieldEvidenceFrame.TubeSplineLowerings.Count == 0)
         {
             return;
         }
+
+        UploadFieldResourceData(activeCommandList, frameResources);
 
         var plannedTubeFieldClaims = PlannedTubeFieldClaimKeys();
         if (plannedTubeFieldClaims.Count == 0)
@@ -2451,6 +2457,32 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         return planned;
+    }
+
+    private void UploadFieldResourceData(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
+    {
+        foreach (var upload in activeFieldEvidenceFrame.ResourceUploads)
+        {
+            if (!upload.IsValid ||
+                !fieldResourceRegistry.TryGetStructuredBuffer(upload.ResourceKey, out var buffer) ||
+                buffer.StrideBytes != sizeof(float) ||
+                upload.Float32Data.Count > buffer.ElementCount)
+            {
+                activeFieldResourceUploadSkippedCount++;
+                continue;
+            }
+
+            if (upload.Float32Data is float[] array)
+            {
+                buffer.UploadPartial<float>(activeCommandList, frameResources.UploadRing, array);
+            }
+            else
+            {
+                buffer.UploadPartial<float>(activeCommandList, frameResources.UploadRing, upload.Float32Data.ToArray());
+            }
+
+            activeFieldResourceUploadCount++;
+        }
     }
 
     private void BindFractalReservoirConstants(ID3D12GraphicsCommandList activeCommandList, int splatDispatchCount)
@@ -3102,6 +3134,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 $"indirect draws {activeTubeFieldIndirectDrawCount:N0}; " +
                 $"skipped draw batches {activeTubeFieldSkippedDrawBatches:N0}; " +
                 $"unplanned lowerings {activeTubeFieldUnplannedLowerings:N0}; " +
+                $"resource uploads {activeFieldResourceUploadCount:N0}; " +
+                $"skipped uploads {activeFieldResourceUploadSkippedCount:N0}; " +
                 $"index draw count {activeTubeFieldDrawIndexCount:N0}; " +
                 $"budget {MaxTubeFieldSegments:N0}");
         }

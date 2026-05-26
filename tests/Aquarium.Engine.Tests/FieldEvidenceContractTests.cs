@@ -195,6 +195,66 @@ public sealed class FieldEvidenceContractTests
     }
 
     [Fact]
+    public void ValidatorAcceptsKnownFieldResourceUploads()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+        frame = new AquariumFieldEvidenceFrame
+        {
+            Resources = frame.Resources,
+            ResourceUploads =
+            [
+                new AquariumFieldResourceUpload
+                {
+                    ResourceKey = frame.Resources[0].ResourceKey,
+                    Version = frame.Resources[0].Version,
+                    Float32Data = [0.0f, 0.25f, 0.5f, 1.0f],
+                },
+            ],
+            Domains = frame.Domains,
+            Claims = frame.Claims,
+            Candidates = frame.Candidates,
+            BackendPackets = frame.BackendPackets,
+            TubeSplineLowerings = frame.TubeSplineLowerings,
+            AccumulationWindowSeconds = frame.AccumulationWindowSeconds,
+            PresentationDelaySeconds = frame.PresentationDelaySeconds,
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.False(report.HasErrors);
+    }
+
+    [Fact]
+    public void ValidatorRejectsUnknownFieldResourceUploads()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+        frame = new AquariumFieldEvidenceFrame
+        {
+            Resources = frame.Resources,
+            ResourceUploads =
+            [
+                new AquariumFieldResourceUpload
+                {
+                    ResourceKey = "mimir:resource:missing",
+                    Float32Data = [1.0f],
+                },
+            ],
+            Domains = frame.Domains,
+            Claims = frame.Claims,
+            Candidates = frame.Candidates,
+            BackendPackets = frame.BackendPackets,
+            TubeSplineLowerings = frame.TubeSplineLowerings,
+            AccumulationWindowSeconds = frame.AccumulationWindowSeconds,
+            PresentationDelaySeconds = frame.PresentationDelaySeconds,
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.True(report.HasErrors);
+        Assert.Contains(report.Issues, issue => issue.Key == "mimir:resource:missing");
+    }
+
+    [Fact]
     public void ValidatorRejectsTubeSplineLoweringClaimEncodingMismatch()
     {
         var frame = BuildValidTubeEvidenceFrame();

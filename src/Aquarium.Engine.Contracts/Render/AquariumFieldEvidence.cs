@@ -302,6 +302,19 @@ public readonly record struct AquariumFieldMeshResource(
     public bool IsPipelinePrivate => Layout == AquariumFieldMeshLayout.PipelinePrivate;
 }
 
+public sealed class AquariumFieldResourceUpload
+{
+    public string ResourceKey { get; init; } = "";
+
+    public ulong Version { get; init; }
+
+    public IReadOnlyList<float> Float32Data { get; init; } = [];
+
+    public bool IsValid =>
+        !string.IsNullOrWhiteSpace(ResourceKey) &&
+        Float32Data.Count > 0;
+}
+
 public readonly record struct AquariumFieldTubeSplineLowering(
     string LoweringKey,
     string ClaimKey,
@@ -528,6 +541,8 @@ public sealed class AquariumFieldEvidenceFrame
 
     public IReadOnlyList<AquariumFieldResourceDeclaration> Resources { get; init; } = [];
 
+    public IReadOnlyList<AquariumFieldResourceUpload> ResourceUploads { get; init; } = [];
+
     public IReadOnlyList<AquariumFieldTubeSplineLowering> TubeSplineLowerings { get; init; } = [];
 
     public float AccumulationWindowSeconds { get; init; }
@@ -540,6 +555,7 @@ public sealed class AquariumFieldEvidenceFrame
         Candidates.Count > 0 ||
         BackendPackets.Count > 0 ||
         Resources.Count > 0 ||
+        ResourceUploads.Count > 0 ||
         TubeSplineLowerings.Count > 0;
 }
 
@@ -657,6 +673,20 @@ public static class AquariumFieldEvidenceValidator
             if (!resourceKeys.Add(resource.ResourceKey))
             {
                 issues.Add(Error(resource.ResourceKey, "Field resource declarations must have unique keys."));
+            }
+        }
+
+        foreach (var upload in frame.ResourceUploads)
+        {
+            if (!upload.IsValid)
+            {
+                issues.Add(Error("resource-upload", "Field resource upload is missing a resource key or data."));
+                continue;
+            }
+
+            if (!resourceKeys.Contains(upload.ResourceKey))
+            {
+                issues.Add(Error(upload.ResourceKey, $"Field resource upload references unknown resource '{upload.ResourceKey}'."));
             }
         }
 

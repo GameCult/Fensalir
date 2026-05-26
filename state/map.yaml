@@ -41,6 +41,10 @@ invariants:
   - Spline/tube visibility is owned by shader SDF evaluation. CPU geometry may
     place conservative sampling envelopes and endpoint/neighbor packets, but
     quad-local strip UVs must not decide visible line coverage.
+  - Reservoir splat rendering must not impose large minimum billboard radii on
+    transparent buffer-field/tube samples. Sample envelopes should stay tied to
+    authored field radius so clients can reduce reservoir sample count without
+    turning sparse probes into visible plates.
 
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.

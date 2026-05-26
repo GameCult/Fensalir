@@ -120,6 +120,12 @@ uint VisibleSplatIndex(uint instanceId)
     return min((instanceId * splatCount) / visibleCount, splatCount - 1u);
 }
 
+bool IsTransparentField(float encoding)
+{
+    return abs(encoding - FIELD_ENCODING_DENSITY) < 0.5 ||
+        abs(encoding - FIELD_ENCODING_EXTINCTION) < 0.5;
+}
+
 FractalSplatVertexOut D3D12FractalSplatVS(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
 {
     float2 corners[6] =
@@ -137,6 +143,7 @@ FractalSplatVertexOut D3D12FractalSplatVS(uint vertexId : SV_VertexID, uint inst
     SdfEnvelopeReservoir sdf = sdfEnvelopeReservoirs[splatIndex];
     bool sdfResident = sdf.weightTargetCount.z > 0.5;
     float4 centerRadius = sdfResident ? sdf.centerRadius : splat.centerRadius;
+    bool transparentField = IsTransparentField(splat.materialConfidence.z);
     float3 forward;
     float3 right;
     float3 up;
@@ -148,7 +155,8 @@ FractalSplatVertexOut D3D12FractalSplatVS(uint vertexId : SV_VertexID, uint inst
     float3 referenceUp = abs(surfaceNormal.z) < 0.92 ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
     float3 tangentRight = normalize(cross(referenceUp, surfaceNormal));
     float3 tangentUp = normalize(cross(surfaceNormal, tangentRight));
-    float boundRadius = max(centerRadius.w * fieldRadius * 1.25, 0.035 * fieldRadius);
+    float minimumSampleRadius = transparentField ? 0.0015 * fieldRadius : 0.035 * fieldRadius;
+    float boundRadius = max(centerRadius.w * fieldRadius * 1.25, minimumSampleRadius);
     float3 cornerWorld = center + ((tangentRight * corners[vertexId].x) + (tangentUp * corners[vertexId].y)) * boundRadius;
     float z;
     float4 projectedCorner = projectWorld(cornerWorld, cameraPosition, forward, right, up, z);
@@ -164,12 +172,6 @@ FractalSplatVertexOut D3D12FractalSplatVS(uint vertexId : SV_VertexID, uint inst
     output.basisUp = tangentUp;
     output.basisForward = surfaceNormal;
     return output;
-}
-
-bool IsTransparentField(float encoding)
-{
-    return abs(encoding - FIELD_ENCODING_DENSITY) < 0.5 ||
-        abs(encoding - FIELD_ENCODING_EXTINCTION) < 0.5;
 }
 
 SceneOut ResolveFractalSplat(FractalSplatVertexOut input, bool renderTransparent)

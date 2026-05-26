@@ -172,6 +172,41 @@ public sealed class FieldEvidenceContractTests
         Assert.Contains(report.Issues, issue => issue.Key == "packet:debug");
     }
 
+    [Fact]
+    public void NormalizerBuildsPendingLoweringRequestsWithoutChoosingBackend()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+
+        var requests = AquariumFieldEvidenceNormalizer.BuildLoweringRequests(frame);
+
+        Assert.Single(requests);
+        Assert.True(requests[0].IsPendingBackendSelection);
+        Assert.Equal("claim:mimir:spectrum:asio-ch0:42", requests[0].ClaimKey);
+        Assert.Equal(AquariumFieldEncoding.Tube, requests[0].Encoding);
+    }
+
+    [Fact]
+    public void NormalizerRefusesInvalidEvidence()
+    {
+        var frame = new AquariumFieldEvidenceFrame
+        {
+            Candidates =
+            [
+                new AquariumFieldCandidate(
+                    "candidate:orphan",
+                    "claim:missing",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Feature,
+                    new AquariumFieldProposalPolicy(AquariumFieldProposalKind.SensorObservation, 1.0f, 1.0f, 1, 1u),
+                    AquariumFieldGuide.Valid(1.0f))
+            ],
+        };
+
+        var requests = AquariumFieldEvidenceNormalizer.BuildLoweringRequests(frame);
+
+        Assert.Empty(requests);
+    }
+
     private static AquariumFieldEvidenceFrame BuildValidTubeEvidenceFrame()
     {
         var support = new AquariumFieldSupport(

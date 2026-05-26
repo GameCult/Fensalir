@@ -234,6 +234,26 @@ public readonly record struct AquariumFieldEvidenceIssue(
     string Key,
     string Message);
 
+public readonly record struct AquariumFieldLoweringRequest(
+    string RequestKey,
+    string ClaimKey,
+    string DomainKey,
+    AquariumFieldLayer Layer,
+    AquariumFieldEncoding Encoding,
+    AquariumFieldSupport Support,
+    AquariumFieldGuide Guide,
+    string PayloadHandle)
+{
+    public bool IsPendingBackendSelection =>
+        !string.IsNullOrWhiteSpace(RequestKey) &&
+        !string.IsNullOrWhiteSpace(ClaimKey) &&
+        !string.IsNullOrWhiteSpace(DomainKey) &&
+        Layer != AquariumFieldLayer.Unknown &&
+        Encoding != AquariumFieldEncoding.Unknown &&
+        Support.HasSupport &&
+        Guide.IsReusable;
+}
+
 public sealed class AquariumFieldEvidenceValidationReport
 {
     public static AquariumFieldEvidenceValidationReport Empty { get; } = new([]);
@@ -360,4 +380,43 @@ public static class AquariumFieldEvidenceValidator
 
     private static AquariumFieldEvidenceIssue Warning(string key, string message) =>
         new(AquariumFieldEvidenceIssueSeverity.Warning, key, message);
+}
+
+public static class AquariumFieldEvidenceNormalizer
+{
+    public static IReadOnlyList<AquariumFieldLoweringRequest> BuildLoweringRequests(AquariumFieldEvidenceFrame frame)
+    {
+        var validation = AquariumFieldEvidenceValidator.Validate(frame);
+        if (validation.HasErrors)
+        {
+            return [];
+        }
+
+        var claims = new Dictionary<string, AquariumFieldClaim>(StringComparer.Ordinal);
+        foreach (var claim in frame.Claims)
+        {
+            claims[claim.ClaimKey] = claim;
+        }
+
+        var requests = new List<AquariumFieldLoweringRequest>();
+        foreach (var candidate in frame.Candidates)
+        {
+            if (!candidate.IsSelectable || !claims.TryGetValue(candidate.ClaimKey, out var claim))
+            {
+                continue;
+            }
+
+            requests.Add(new AquariumFieldLoweringRequest(
+                RequestKey: $"lower:{candidate.CandidateKey}",
+                ClaimKey: claim.ClaimKey,
+                DomainKey: claim.DomainKey,
+                Layer: claim.Layer,
+                Encoding: claim.Encoding,
+                Support: claim.Support,
+                Guide: candidate.Guide,
+                PayloadHandle: claim.PayloadHandle));
+        }
+
+        return requests;
+    }
 }

@@ -567,6 +567,12 @@ public static class AquariumFieldLoweringPlanner
         var deferred = new List<AquariumFieldLoweringRequest>();
         foreach (var request in requests)
         {
+            if (RequiresResource(request.Encoding) && !LooksLikeResourceKey(request.PayloadHandle))
+            {
+                deferred.Add(request);
+                continue;
+            }
+
             if (LooksLikeResourceKey(request.PayloadHandle) &&
                 (!resources.TryGetValue(request.PayloadHandle, out var resource) ||
                  !IsResourceCompatible(request, resource)))
@@ -630,6 +636,17 @@ public static class AquariumFieldLoweringPlanner
             _ => false,
         };
     }
+
+    private static bool RequiresResource(AquariumFieldEncoding encoding) =>
+        encoding is
+            AquariumFieldEncoding.Height or
+            AquariumFieldEncoding.Sdf2D or
+            AquariumFieldEncoding.Sdf3D or
+            AquariumFieldEncoding.Density or
+            AquariumFieldEncoding.Extinction or
+            AquariumFieldEncoding.Material or
+            AquariumFieldEncoding.Tube or
+            AquariumFieldEncoding.Mesh;
 
     private static bool LooksLikeResourceKey(string payloadHandle) =>
         payloadHandle.StartsWith("resource:", StringComparison.Ordinal) ||

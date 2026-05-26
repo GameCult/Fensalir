@@ -5,6 +5,69 @@ namespace Aquarium.Engine.Render;
 
 public static class AquariumFieldScriptCompiler
 {
+    public static AquariumFieldEvidenceFrame CompileEvidence(
+        string source,
+        IReadOnlyDictionary<string, AquariumFieldResourceDeclaration> resourceBindings)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(resourceBindings);
+
+        var resources = new List<AquariumFieldResourceDeclaration>();
+        var domains = new List<AquariumFieldDomain>();
+        var claims = new List<AquariumFieldClaim>();
+        var candidates = new List<AquariumFieldCandidate>();
+        var resourceAliases = new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal);
+        var domainKeys = new HashSet<string>(StringComparer.Ordinal);
+
+        var lines = source.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        for (var lineIndex = 0; lineIndex < lines.Length; lineIndex++)
+        {
+            var line = StripComment(lines[lineIndex]).Trim();
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            var tokens = line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var args = ParseArgs(tokens.Skip(1), lineIndex);
+            switch (tokens[0])
+            {
+                case "resource":
+                    BindResource(args, resourceBindings, resourceAliases, resources, lineIndex);
+                    break;
+                case "domain":
+                    var domain = ParseFieldDomain(args, lineIndex);
+                    if (domainKeys.Add(domain.DomainKey))
+                    {
+                        domains.Add(domain);
+                    }
+
+                    break;
+                case "tubeclaim":
+                    AddTubeClaim(args, resourceAliases, domainKeys, domains, claims, candidates, lineIndex);
+                    break;
+                default:
+                    throw new FormatException($"Unknown field evidence DSL command `{tokens[0]}` at line {lineIndex + 1}.");
+            }
+        }
+
+        var frame = new AquariumFieldEvidenceFrame
+        {
+            Resources = resources,
+            Domains = domains,
+            Claims = claims,
+            Candidates = candidates,
+        };
+        var validation = AquariumFieldEvidenceValidator.Validate(frame);
+        if (validation.HasErrors)
+        {
+            var first = validation.Issues.First(issue => issue.Severity == AquariumFieldEvidenceIssueSeverity.Error);
+            throw new FormatException($"Invalid field evidence DSL output for `{first.Key}`: {first.Message}");
+        }
+
+        return frame;
+    }
+
     public static AquariumBufferFieldFrame Compile(
         string source,
         IReadOnlyDictionary<string, AquariumTextureFieldBinding> textureBindings,
@@ -77,6 +140,106 @@ public static class AquariumFieldScriptCompiler
             LoweringPolicy = loweringPolicy,
             SourceScript = source,
         };
+    }
+
+    private static void BindResource(
+        IReadOnlyDictionary<string, string> args,
+        IReadOnlyDictionary<string, AquariumFieldResourceDeclaration> resourceBindings,
+        IDictionary<string, AquariumFieldResourceDeclaration> resourceAliases,
+        ICollection<AquariumFieldResourceDeclaration> resources,
+        int lineIndex)
+    {
+        var id = Required(args, "id", lineIndex);
+        var key = StringValue(args, "key", id);
+        if (!resourceBindings.TryGetValue(id, out var resource) &&
+            !resourceBindings.TryGetValue(key, out resource))
+        {
+            throw new FormatException($"Unknown field resource `{key}` at line {lineIndex + 1}.");
+        }
+
+        resourceAliases[id] = resource;
+        if (resources.All(existing => !string.Equals(existing.ResourceKey, resource.ResourceKey, StringComparison.Ordinal)))
+        {
+            resources.Add(resource);
+        }
+    }
+
+    private static AquariumFieldDomain ParseFieldDomain(IReadOnlyDictionary<string, string> args, int lineIndex) =>
+        new(
+            Required(args, "id", lineIndex),
+            StringValue(args, "parent", ""),
+            Enum.Parse<AquariumFieldDomainKind>(StringValue(args, "kind", nameof(AquariumFieldDomainKind.RollingBuffer)), ignoreCase: true),
+            Matrix4x4.Identity,
+            Matrix4x4.Identity,
+            Vec3(args, "min", Vector3.Zero, lineIndex),
+            Vec3(args, "max", Vector3.One, lineIndex),
+            Vec3(args, "period", Vector3.Zero, lineIndex),
+            StringValue(args, "owner", "AquariumFieldScriptCompiler"));
+
+    private static void AddTubeClaim(
+        IReadOnlyDictionary<string, string> args,
+        IReadOnlyDictionary<string, AquariumFieldResourceDeclaration> resourceAliases,
+        ISet<string> domainKeys,
+        ICollection<AquariumFieldDomain> domains,
+        ICollection<AquariumFieldClaim> claims,
+        ICollection<AquariumFieldCandidate> candidates,
+        int lineIndex)
+    {
+        var id = Required(args, "id", lineIndex);
+        var resourceId = Required(args, "resource", lineIndex);
+        if (!resourceAliases.TryGetValue(resourceId, out var resource))
+        {
+            throw new FormatException($"Tube claim `{id}` references unbound resource `{resourceId}` at line {lineIndex + 1}.");
+        }
+
+        var domainKey = StringValue(args, "domain", $"dsl:domain:{id}");
+        if (domainKeys.Add(domainKey))
+        {
+            domains.Add(new AquariumFieldDomain(
+                domainKey,
+                "",
+                AquariumFieldDomainKind.RollingBuffer,
+                Matrix4x4.Identity,
+                Matrix4x4.Identity,
+                Vector3.Zero,
+                Vector3.One,
+                Vector3.Zero,
+                "AquariumFieldScriptCompiler"));
+        }
+
+        var confidence = Math.Clamp(Float(args, "confidence", 1.0f, lineIndex), 0.0f, 1.0f);
+        var supportRadius = MathF.Max(0.0001f, Float(args, "radius", 0.01f, lineIndex));
+        var claim = new AquariumFieldClaim(
+            ClaimKey: $"dsl:tube:{id}",
+            DomainKey: domainKey,
+            ProducerKey: StringValue(args, "producer", resource.ResourceKey),
+            Layer: AquariumFieldLayer.Form,
+            Encoding: AquariumFieldEncoding.Tube,
+            Support: new AquariumFieldSupport(
+                Vec3(args, "center", Vector3.Zero, lineIndex),
+                Vec3(args, "support", new Vector3(supportRadius), lineIndex),
+                Matrix4x4.Identity,
+                supportRadius,
+                ProjectedError: 0.0f,
+                Curvature: Float(args, "curvature", 0.0f, lineIndex),
+                TemporalUncertainty: Float(args, "temporal", 0.0f, lineIndex)),
+            Proposal: new AquariumFieldProposalPolicy(
+                AquariumFieldProposalKind.DeterministicStructural,
+                SourcePdf: 1.0f,
+                TargetContribution: confidence,
+                RepresentedCandidateCount: Math.Max(1, resource.DepthOrCount),
+                Seed: UInt(args, "seed", StableSeed(id), lineIndex)),
+            PayloadHandle: resource.ResourceKey,
+            ObservedTimeNs: resource.ValidUntilNs,
+            Confidence: confidence);
+        claims.Add(claim);
+        candidates.Add(new AquariumFieldCandidate(
+            CandidateKey: $"dsl:tube:{id}:candidate",
+            ClaimKey: claim.ClaimKey,
+            Layer: claim.Layer,
+            Encoding: claim.Encoding,
+            Proposal: claim.Proposal,
+            Guide: AquariumFieldGuide.Valid(confidence, Float(args, "age", 0.0f, lineIndex))));
     }
 
     private static AquariumTextureSplineFieldProgram ParseSplineField(
@@ -246,4 +409,17 @@ public static class AquariumFieldScriptCompiler
     }
 
     private static float Parse(string value) => float.Parse(value, CultureInfo.InvariantCulture);
+
+    private static uint StableSeed(string key)
+    {
+        const uint fnvPrime = 16777619u;
+        var hash = 2166136261u;
+        foreach (var character in key)
+        {
+            hash ^= character;
+            hash *= fnvPrime;
+        }
+
+        return hash == 0 ? 1u : hash;
+    }
 }

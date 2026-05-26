@@ -60,12 +60,22 @@ invariants:
     direct SDF proxies, meshes, volumes, fractal probes, and Mimir sensor
     observations must publish bounded Form/Appearance/Transport field claims
     before they can participate in reusable field evidence.
+  - Field packet payload handles are not authority. Resource-backed claims and
+    packets must reference declared AquariumFieldResourceDeclaration rows with
+    kind, GPU residency, shader access, format, shape, validity, version, and
+    native handle metadata. Missing, CPU-only, or backend-incompatible resources
+    defer lowering instead of becoming visible evidence.
 
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.
   - Keep `dotnet build Fensalir.sln` green after the split.
   - Cut the rendering rebuild through explicit field-domain/field-claim
     contracts before adding another backend-specific visual path.
+  - Add the D3D12 field packet/resource resolver: import or alias declared
+    GPU-resident structured buffers, textures, meshes, surface pages, and
+    volumes, then bind them to selected shader lowerings. Current contracts and
+    DSL can plan resource-backed TubeField packets, but visible rendering is
+    blocked until this engine-owned resolver exists.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

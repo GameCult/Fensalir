@@ -497,6 +497,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var errorCount = activeFieldEvidenceValidation.Issues.Count(issue => issue.Severity == AquariumFieldEvidenceIssueSeverity.Error);
         return
             $"domains {activeFieldEvidenceFrame.Domains.Count} / claims {activeFieldEvidenceFrame.Claims.Count} / " +
+            $"resources {activeFieldEvidenceFrame.Resources.Count} / " +
             $"candidates {activeFieldEvidenceFrame.Candidates.Count} / packets {activeFieldEvidenceFrame.BackendPackets.Count} / " +
             $"planned {activeFieldLoweringPlan.Packets.Count} / deferred {activeFieldLoweringPlan.DeferredRequests.Count} / errors {errorCount}";
     }
@@ -2779,6 +2780,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         {
             Console.WriteLine(
                 $"D3D12 field evidence: domains {activeFieldEvidenceFrame.Domains.Count:N0}; " +
+                $"resources {activeFieldEvidenceFrame.Resources.Count:N0}; " +
                 $"claims {activeFieldEvidenceFrame.Claims.Count:N0}; " +
                 $"candidates {activeFieldEvidenceFrame.Candidates.Count:N0}; " +
                 $"producer packets {activeFieldEvidenceFrame.BackendPackets.Count:N0}; " +

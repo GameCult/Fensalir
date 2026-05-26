@@ -287,6 +287,46 @@ public sealed class FieldEvidenceContractTests
         Assert.Equal("claim:feature", plan.DeferredRequests[0].ClaimKey);
     }
 
+    [Fact]
+    public void FieldDslBindsDeclaredResourcesBeforePlanningTubePackets()
+    {
+        var resource = new AquariumFieldResourceDeclaration(
+            "mimir:resource:native-ring:asio-ch0",
+            AquariumFieldResourceKind.StructuredBuffer,
+            AquariumFieldResourceResidency.SharedGpu,
+            AquariumFieldShaderAccess.ShaderResource,
+            "Float32",
+            Width: 192,
+            Height: 1,
+            DepthOrCount: 192,
+            StrideBytes: 4,
+            ValidFromNs: 0,
+            ValidUntilNs: 10_000_000,
+            Version: 42,
+            NativeHandle: new IntPtr(0x1234),
+            NativeHandleKind: "native-ring");
+        const string source = """
+resource id=spectrum key=mimir:resource:native-ring:asio-ch0
+domain id=mimir:spectrum:asio-ch0 kind=RollingBuffer min=-1,0,-5 max=1,2,0 owner=Mimir.Runtime
+tubeclaim id=spectrum-trail resource=spectrum domain=mimir:spectrum:asio-ch0 confidence=0.91 radius=0.02
+""";
+
+        var frame = AquariumFieldScriptCompiler.CompileEvidence(
+            source,
+            new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal)
+            {
+                [resource.ResourceKey] = resource,
+            });
+        var plan = AquariumFieldLoweringPlanner.Plan(frame);
+
+        Assert.Single(frame.Resources);
+        Assert.Single(frame.Claims);
+        Assert.Single(plan.Packets);
+        Assert.Empty(plan.DeferredRequests);
+        Assert.Equal(AquariumFieldBackendKind.TubeField, plan.Packets[0].Backend);
+        Assert.Equal(resource.ResourceKey, plan.Packets[0].PayloadHandle);
+    }
+
     private static AquariumFieldEvidenceFrame BuildValidTubeEvidenceFrame()
     {
         var support = new AquariumFieldSupport(
@@ -307,6 +347,24 @@ public sealed class FieldEvidenceContractTests
 
         return new AquariumFieldEvidenceFrame
         {
+            Resources =
+            [
+                new AquariumFieldResourceDeclaration(
+                    "mimir:resource:native-ring:asio-ch0",
+                    AquariumFieldResourceKind.StructuredBuffer,
+                    AquariumFieldResourceResidency.SharedGpu,
+                    AquariumFieldShaderAccess.ShaderResource,
+                    "Float32",
+                    Width: 192,
+                    Height: 1,
+                    DepthOrCount: 192,
+                    StrideBytes: 4,
+                    ValidFromNs: 0,
+                    ValidUntilNs: 10_000_000,
+                    Version: 42,
+                    NativeHandle: new IntPtr(0x1234),
+                    NativeHandleKind: "native-ring")
+            ],
             Domains =
             [
                 new AquariumFieldDomain(
@@ -330,7 +388,7 @@ public sealed class FieldEvidenceContractTests
                     AquariumFieldEncoding.Tube,
                     support,
                     proposal,
-                    "rolling-window:asio-ch0:spectrum",
+                    "mimir:resource:native-ring:asio-ch0",
                     ObservedTimeNs: 10_000_000,
                     Confidence: 0.91f)
             ],
@@ -355,7 +413,7 @@ public sealed class FieldEvidenceContractTests
                     AquariumFieldBackendKind.TubeField,
                     support,
                     AquariumFieldGuide.Valid(0.91f, sampleAgeSeconds: 0.016f),
-                    "rolling-window:asio-ch0:spectrum")
+                    "mimir:resource:native-ring:asio-ch0")
             ],
         };
     }

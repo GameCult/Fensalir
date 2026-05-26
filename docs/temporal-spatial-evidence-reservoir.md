@@ -94,6 +94,23 @@ Opaque worlds can promote Form evidence into SDF surfaces. Flames and uncertain
 sensor fields may remain density/extinction/confidence volumes. That is not a
 failure to find the surface; it is the correct field.
 
+Reservoir resolve may happen at pixel scale, but reservoir contents are not
+therefore pixel-sized. A claim carries bounded support in its own domain. A
+perfectly flat, infinite, uniform plane is theoretically one enormous surface
+claim with uninteresting curvature and material variation. A complex terrain
+is the opposite: it should subdivide only where projected footprint, curvature,
+brush detail, material change, or temporal uncertainty require more claims.
+Pixel-level resolve samples the claims; it does not dictate their native scale.
+
+For heightfield terrain, the coherent shape is a quadtree over the authored
+surface domain. 2D surface brushes paint into quadtree tiles to determine the
+height/SDF/material payload. The SDF probe or surface-claim producer then emits
+surface splats at the density needed to represent tile detail under the current
+view: flat tiles can stay broad, while high curvature, sharp brush gradients,
+silhouettes, and high projected error subdivide. A reservoir full of pixel-sized
+terrain dots is a failed lowering unless the terrain actually contains
+pixel-scale variation.
+
 Reuse passes own validity and shift mapping. A sample may be reused only when
 the target domain can explain it. For pixels this means depth/normal/material
 compatibility, motion vectors, conservative visibility, and disocclusion tests.

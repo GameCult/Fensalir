@@ -50,6 +50,12 @@ invariants:
     transparent buffer-field/tube samples. Sample envelopes should stay tied to
     authored field radius so clients can reduce reservoir sample count without
     turning sparse probes into visible plates.
+  - Reservoir contents are not forced to be pixel-sized. Pixel-level resolve
+    samples bounded claims; it does not define their native support. Broad,
+    smooth surfaces may be represented by few large surface claims. Heightfield
+    terrain should be a quadtree of brush-painted surface tiles, subdivided by
+    projected footprint, curvature, brush/material detail, silhouettes, and
+    temporal uncertainty before SDF probes emit detail-adaptive surface splats.
 
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.

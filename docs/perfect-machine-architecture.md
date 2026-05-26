@@ -411,6 +411,21 @@ borrow Gaussian splatting's covariance discipline without inheriting infinite
 support as a default runtime tax. Surface and volume encodings may share the
 same envelope math; they do not share resolve rules.
 
+Support size is semantic, not pixel dogma. The reservoir may resolve claims at
+pixel granularity, but the claims themselves should be as large as the domain
+allows. A flat, infinite, uniform plane can collapse to one huge surface splat
+with stable normal/material evidence. A detailed heightfield should not become
+one splat per pixel by default; it should be represented by a quadtree of
+surface tiles whose subdivision follows projected footprint, curvature, brush
+detail, material discontinuity, silhouette risk, and temporal uncertainty.
+
+For Aquarium-style terrain, 2D surface brushes paint tile payloads first:
+height, signed-distance support, material, and confidence. The probe/lowering
+stage then emits surface splats only where the tile cannot be represented by a
+larger claim. Flat broad terrain stays broad. Curved or brush-detailed terrain
+subdivides. The SDF probe shader is a detail-adaptive claim emitter, not a
+pixel-dot factory.
+
 This is the explicit escape hatch from brush monoculture. IFS probes, sensor
 fusion, and stochastic splat reservoirs are not the only way to feed the
 spatiotemporal machine. If a mesh, analytic SDF, tube envelope, or volume pass

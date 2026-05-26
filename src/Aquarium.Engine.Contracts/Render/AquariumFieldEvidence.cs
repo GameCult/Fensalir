@@ -64,6 +64,38 @@ public enum AquariumFieldBackendKind
     DebugOverlay = 7,
 }
 
+public enum AquariumFieldResourceKind
+{
+    Unknown = 0,
+    StructuredBuffer = 1,
+    Texture2D = 2,
+    Texture2DArray = 3,
+    Mesh = 4,
+    SurfacePage = 5,
+    VolumeTexture = 6,
+    CurvePointBuffer = 7,
+    RollingTexture = 8,
+}
+
+public enum AquariumFieldResourceResidency
+{
+    Unknown = 0,
+    CpuVisible = 1,
+    GpuResident = 2,
+    SharedGpu = 3,
+}
+
+public enum AquariumFieldShaderAccess
+{
+    Unknown = 0,
+    ShaderResource = 1,
+    UnorderedAccess = 2,
+    VertexBuffer = 3,
+    IndexBuffer = 4,
+    IndirectArguments = 5,
+    AccelerationStructure = 6,
+}
+
 public enum AquariumFieldInvalidationCode
 {
     None = 0,
@@ -206,6 +238,39 @@ public readonly record struct AquariumFieldBackendPacket(
         Support.HasSupport;
 }
 
+public readonly record struct AquariumFieldResourceDeclaration(
+    string ResourceKey,
+    AquariumFieldResourceKind Kind,
+    AquariumFieldResourceResidency Residency,
+    AquariumFieldShaderAccess Access,
+    string Format,
+    int Width,
+    int Height,
+    int DepthOrCount,
+    int StrideBytes,
+    long ValidFromNs,
+    long ValidUntilNs,
+    ulong Version,
+    IntPtr NativeHandle,
+    string NativeHandleKind)
+{
+    public bool HasIdentity => !string.IsNullOrWhiteSpace(ResourceKey);
+
+    public bool HasShape =>
+        Kind != AquariumFieldResourceKind.Unknown &&
+        Residency != AquariumFieldResourceResidency.Unknown &&
+        Access != AquariumFieldShaderAccess.Unknown &&
+        (Width > 0 || DepthOrCount > 0 || StrideBytes > 0);
+
+    public bool IsGpuVisible =>
+        Residency is AquariumFieldResourceResidency.GpuResident or AquariumFieldResourceResidency.SharedGpu;
+
+    public bool IsLiveAt(long timestampNs) =>
+        timestampNs <= 0 ||
+        ((ValidFromNs <= 0 || timestampNs >= ValidFromNs) &&
+         (ValidUntilNs <= 0 || timestampNs <= ValidUntilNs));
+}
+
 public sealed class AquariumFieldEvidenceFrame
 {
     public static AquariumFieldEvidenceFrame Empty { get; } = new();
@@ -218,6 +283,8 @@ public sealed class AquariumFieldEvidenceFrame
 
     public IReadOnlyList<AquariumFieldBackendPacket> BackendPackets { get; init; } = [];
 
+    public IReadOnlyList<AquariumFieldResourceDeclaration> Resources { get; init; } = [];
+
     public float AccumulationWindowSeconds { get; init; }
 
     public float PresentationDelaySeconds { get; init; }
@@ -226,7 +293,8 @@ public sealed class AquariumFieldEvidenceFrame
         Domains.Count > 0 ||
         Claims.Count > 0 ||
         Candidates.Count > 0 ||
-        BackendPackets.Count > 0;
+        BackendPackets.Count > 0 ||
+        Resources.Count > 0;
 }
 
 public readonly record struct AquariumFieldEvidenceIssue(
@@ -315,6 +383,28 @@ public static class AquariumFieldEvidenceValidator
         }
 
         var claimKeys = new HashSet<string>(StringComparer.Ordinal);
+        var resourceKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var resource in frame.Resources)
+        {
+            if (!resource.HasIdentity)
+            {
+                issues.Add(Error("resource", "Field resource declaration is missing a stable key."));
+                continue;
+            }
+
+            if (!resource.HasShape)
+            {
+                issues.Add(Error(resource.ResourceKey, "Field resource declaration is missing kind, residency, access, or shape."));
+            }
+
+            if (!resource.IsGpuVisible)
+            {
+                issues.Add(Warning(resource.ResourceKey, "Field resource is not GPU-visible; shader lowering must import or upload before use."));
+            }
+
+            resourceKeys.Add(resource.ResourceKey);
+        }
+
         foreach (var claim in frame.Claims)
         {
             if (!claim.HasIdentity)
@@ -336,6 +426,11 @@ public static class AquariumFieldEvidenceValidator
             if (!claim.Proposal.IsValid)
             {
                 issues.Add(Error(claim.ClaimKey, "Field claim has an invalid proposal policy."));
+            }
+
+            if (LooksLikeResourceKey(claim.PayloadHandle) && !resourceKeys.Contains(claim.PayloadHandle))
+            {
+                issues.Add(Error(claim.ClaimKey, $"Field claim references unknown resource '{claim.PayloadHandle}'."));
             }
 
             claimKeys.Add(claim.ClaimKey);
@@ -387,6 +482,11 @@ public static class AquariumFieldEvidenceValidator
             {
                 issues.Add(Warning(packet.PacketKey, "Field backend packet guide marks the packet as non-reusable."));
             }
+
+            if (LooksLikeResourceKey(packet.PayloadHandle) && !resourceKeys.Contains(packet.PayloadHandle))
+            {
+                issues.Add(Error(packet.PacketKey, $"Field backend packet references unknown resource '{packet.PayloadHandle}'."));
+            }
         }
 
         return issues.Count == 0
@@ -399,6 +499,11 @@ public static class AquariumFieldEvidenceValidator
 
     private static AquariumFieldEvidenceIssue Warning(string key, string message) =>
         new(AquariumFieldEvidenceIssueSeverity.Warning, key, message);
+
+    private static bool LooksLikeResourceKey(string payloadHandle) =>
+        payloadHandle.StartsWith("resource:", StringComparison.Ordinal) ||
+        payloadHandle.StartsWith("mimir:resource:", StringComparison.Ordinal) ||
+        payloadHandle.StartsWith("aquarium:resource:", StringComparison.Ordinal);
 }
 
 public static class AquariumFieldEvidenceNormalizer
@@ -444,6 +549,14 @@ public static class AquariumFieldLoweringPlanner
 {
     public static AquariumFieldLoweringPlan Plan(AquariumFieldEvidenceFrame frame)
     {
+        var resources = frame.Resources.ToDictionary(static resource => resource.ResourceKey, StringComparer.Ordinal);
+        return Plan(frame, resources);
+    }
+
+    public static AquariumFieldLoweringPlan Plan(
+        AquariumFieldEvidenceFrame frame,
+        IReadOnlyDictionary<string, AquariumFieldResourceDeclaration> resources)
+    {
         var requests = AquariumFieldEvidenceNormalizer.BuildLoweringRequests(frame);
         if (requests.Count == 0)
         {
@@ -454,6 +567,14 @@ public static class AquariumFieldLoweringPlanner
         var deferred = new List<AquariumFieldLoweringRequest>();
         foreach (var request in requests)
         {
+            if (LooksLikeResourceKey(request.PayloadHandle) &&
+                (!resources.TryGetValue(request.PayloadHandle, out var resource) ||
+                 !IsResourceCompatible(request, resource)))
+            {
+                deferred.Add(request);
+                continue;
+            }
+
             if (!TrySelectBackend(request, out var backend))
             {
                 deferred.Add(request);
@@ -489,4 +610,29 @@ public static class AquariumFieldLoweringPlanner
 
         return backend != AquariumFieldBackendKind.Unknown;
     }
+
+    private static bool IsResourceCompatible(
+        AquariumFieldLoweringRequest request,
+        AquariumFieldResourceDeclaration resource)
+    {
+        if (!resource.HasShape || !resource.IsGpuVisible)
+        {
+            return false;
+        }
+
+        return request.Encoding switch
+        {
+            AquariumFieldEncoding.Tube => resource.Kind is AquariumFieldResourceKind.CurvePointBuffer or AquariumFieldResourceKind.StructuredBuffer,
+            AquariumFieldEncoding.Mesh => resource.Kind == AquariumFieldResourceKind.Mesh,
+            AquariumFieldEncoding.Height or AquariumFieldEncoding.Sdf2D or AquariumFieldEncoding.Material => resource.Kind is AquariumFieldResourceKind.SurfacePage or AquariumFieldResourceKind.Texture2D or AquariumFieldResourceKind.RollingTexture,
+            AquariumFieldEncoding.Density or AquariumFieldEncoding.Extinction or AquariumFieldEncoding.Sdf3D => resource.Kind == AquariumFieldResourceKind.VolumeTexture,
+            AquariumFieldEncoding.Feature or AquariumFieldEncoding.Confidence or AquariumFieldEncoding.Phase => true,
+            _ => false,
+        };
+    }
+
+    private static bool LooksLikeResourceKey(string payloadHandle) =>
+        payloadHandle.StartsWith("resource:", StringComparison.Ordinal) ||
+        payloadHandle.StartsWith("mimir:resource:", StringComparison.Ordinal) ||
+        payloadHandle.StartsWith("aquarium:resource:", StringComparison.Ordinal);
 }

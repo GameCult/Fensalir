@@ -8,10 +8,11 @@ internal readonly record struct D3D12FieldResourceStats(
     int Resolved,
     int StructuredBuffers,
     int Texture2D,
+    int SurfacePages,
     int Unsupported,
     int StaleRemoved)
 {
-    public static D3D12FieldResourceStats Empty { get; } = new(0, 0, 0, 0, 0, 0);
+    public static D3D12FieldResourceStats Empty { get; } = new(0, 0, 0, 0, 0, 0, 0);
 }
 
 internal sealed class D3D12FieldResourceRegistry : IDisposable
@@ -36,6 +37,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         var resolved = 0;
         var structuredBufferCount = 0;
         var textureCount = 0;
+        var surfacePageCount = 0;
         var unsupported = 0;
         foreach (var declaration in declarations)
         {
@@ -72,6 +74,25 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
                 continue;
             }
 
+            if (declaration.Kind == AquariumFieldResourceKind.SurfacePage)
+            {
+                surfacePageCount++;
+                if (!declaration.HasSourceAsset && ResolveSurfacePage(device, declaration))
+                {
+                    resolved++;
+                }
+                else if (declaration.HasSourceAsset)
+                {
+                    // Local asset surface pages need a command list and are loaded lazily by TryResolveSurfacePage.
+                }
+                else
+                {
+                    unsupported++;
+                }
+
+                continue;
+            }
+
             unsupported++;
         }
 
@@ -82,6 +103,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             Resolved: resolved,
             StructuredBuffers: structuredBufferCount,
             Texture2D: textureCount,
+            SurfacePages: surfacePageCount,
             Unsupported: unsupported,
             StaleRemoved: staleRemoved);
     }
@@ -127,6 +149,19 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         return false;
     }
 
+    public bool TryGetSurfacePage(string resourceKey, out D3D12FieldTexture2D surfacePage)
+    {
+        if (textures.TryGetValue(resourceKey, out var slot) &&
+            slot.Kind == AquariumFieldResourceKind.SurfacePage)
+        {
+            surfacePage = slot.Texture;
+            return true;
+        }
+
+        surfacePage = null!;
+        return false;
+    }
+
     public bool TryResolveTexture2D(
         ID3D12Device device,
         ID3D12GraphicsCommandList commandList,
@@ -159,7 +194,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         try
         {
             texture = D3D12FieldTexture2D.LoadLocalAsset(device, commandList, declaration);
-            textures[declaration.ResourceKey] = new Texture2DSlot(texture, declaration.SourceUri, declaration.Version);
+            textures[declaration.ResourceKey] = new Texture2DSlot(texture, declaration.Kind, declaration.SourceUri, declaration.Version);
             return true;
         }
         catch (IOException)
@@ -185,6 +220,81 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         catch (SharpGenException)
         {
             texture = null!;
+            return false;
+        }
+    }
+
+    public bool TryResolveSurfacePage(
+        ID3D12Device device,
+        ID3D12GraphicsCommandList commandList,
+        AquariumFieldResourceDeclaration declaration,
+        out D3D12FieldTexture2D surfacePage)
+    {
+        surfacePage = null!;
+        if (declaration.Kind != AquariumFieldResourceKind.SurfacePage ||
+            declaration.Residency != AquariumFieldResourceResidency.GpuResident ||
+            declaration.Access != AquariumFieldShaderAccess.ShaderResource)
+        {
+            return false;
+        }
+
+        if (textures.TryGetValue(declaration.ResourceKey, out var existing) &&
+            existing.Kind == AquariumFieldResourceKind.SurfacePage &&
+            existing.Version == declaration.Version &&
+            string.Equals(existing.SourceUri, declaration.SourceUri, StringComparison.Ordinal))
+        {
+            surfacePage = existing.Texture;
+            return true;
+        }
+
+        if (existing is not null)
+        {
+            existing.Texture.Dispose();
+            textures.Remove(declaration.ResourceKey);
+        }
+
+        try
+        {
+            surfacePage = declaration.HasSourceAsset
+                ? D3D12FieldTexture2D.LoadLocalAsset(device, commandList, declaration)
+                : D3D12FieldTexture2D.TryCreateEmpty(device, declaration, out var emptySurfacePage)
+                    ? emptySurfacePage
+                    : null!;
+            if (surfacePage is null)
+            {
+                return false;
+            }
+
+            textures[declaration.ResourceKey] = new Texture2DSlot(
+                surfacePage,
+                AquariumFieldResourceKind.SurfacePage,
+                declaration.SourceUri,
+                declaration.Version);
+            return true;
+        }
+        catch (IOException)
+        {
+            surfacePage = null!;
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            surfacePage = null!;
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            surfacePage = null!;
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            surfacePage = null!;
+            return false;
+        }
+        catch (SharpGenException)
+        {
+            surfacePage = null!;
             return false;
         }
     }
@@ -235,6 +345,43 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             elementCount,
             strideBytes,
             allowUnorderedAccess,
+            declaration.Version);
+        return true;
+    }
+
+    private bool ResolveSurfacePage(
+        ID3D12Device device,
+        AquariumFieldResourceDeclaration declaration)
+    {
+        if (declaration.Residency != AquariumFieldResourceResidency.GpuResident ||
+            declaration.Access != AquariumFieldShaderAccess.ShaderResource)
+        {
+            return false;
+        }
+
+        if (textures.TryGetValue(declaration.ResourceKey, out var existing) &&
+            existing.Kind == AquariumFieldResourceKind.SurfacePage &&
+            existing.Version == declaration.Version &&
+            string.Equals(existing.SourceUri, declaration.SourceUri, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (existing is not null)
+        {
+            existing.Texture.Dispose();
+            textures.Remove(declaration.ResourceKey);
+        }
+
+        if (!D3D12FieldTexture2D.TryCreateEmpty(device, declaration, out var surfacePage))
+        {
+            return false;
+        }
+
+        textures[declaration.ResourceKey] = new Texture2DSlot(
+            surfacePage,
+            AquariumFieldResourceKind.SurfacePage,
+            declaration.SourceUri,
             declaration.Version);
         return true;
     }
@@ -318,6 +465,7 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
 
     private sealed record Texture2DSlot(
         D3D12FieldTexture2D Texture,
+        AquariumFieldResourceKind Kind,
         string SourceUri,
         ulong Version);
 }

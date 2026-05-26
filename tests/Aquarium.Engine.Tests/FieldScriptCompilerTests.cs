@@ -127,4 +127,24 @@ public sealed class FieldScriptCompilerTests
         Assert.Equal(ramp.ResourceKey, lowering.RampResourceKey);
         Assert.Equal(ramp.SourceUri, lowering.RampTexturePath);
     }
+
+    [Fact]
+    public void CompileEvidenceDeclaresSurfacePagesAsGpuResources()
+    {
+        var frame = AquariumFieldScriptCompiler.CompileEvidence(
+            """
+            surfacepage id=height key=aquarium:resource:surface-page:heightfield width=128 height=128 format=R16Float version=3
+            """,
+            new Dictionary<string, AquariumFieldResourceDeclaration>(StringComparer.Ordinal));
+
+        var resource = Assert.Single(frame.Resources);
+        Assert.Equal("aquarium:resource:surface-page:heightfield", resource.ResourceKey);
+        Assert.Equal(AquariumFieldResourceKind.SurfacePage, resource.Kind);
+        Assert.Equal(AquariumFieldResourceResidency.GpuResident, resource.Residency);
+        Assert.Equal(AquariumFieldShaderAccess.ShaderResource, resource.Access);
+        Assert.Equal(128, resource.Width);
+        Assert.Equal(128, resource.Height);
+        Assert.Equal("R16Float", resource.Format);
+        Assert.Equal("fensalir-surface-page", resource.NativeHandleKind);
+    }
 }

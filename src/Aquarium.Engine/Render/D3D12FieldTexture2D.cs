@@ -82,6 +82,44 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
             $"Aquarium D3D12 Field Texture2D {declaration.ResourceKey}");
     }
 
+    public static bool TryCreateEmpty(
+        ID3D12Device device,
+        AquariumFieldResourceDeclaration declaration,
+        out D3D12FieldTexture2D texture)
+    {
+        texture = null!;
+        if (!TryFormat(declaration.Format, out var format))
+        {
+            return false;
+        }
+
+        var width = Math.Max(1, declaration.Width);
+        var height = Math.Max(1, declaration.Height);
+        var resource = device.CreateCommittedResource(
+            HeapType.Default,
+            ResourceDescription.Texture2D(
+                format,
+                (uint)width,
+                (uint)height,
+                1,
+                1,
+                1,
+                0,
+                ResourceFlags.None),
+            ResourceStates.PixelShaderResource,
+            null);
+
+        texture = new D3D12FieldTexture2D(
+            resource,
+            uploadResource: null,
+            width,
+            height,
+            format,
+            $"Aquarium D3D12 Field Texture2D {declaration.ResourceKey}");
+        texture.State = ResourceStates.PixelShaderResource;
+        return true;
+    }
+
     public void CreateShaderResourceView(ID3D12Device device, D3D12DescriptorSlot descriptor)
     {
         device.CreateShaderResourceView(
@@ -218,5 +256,19 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
     private static long Align(long value, long alignment)
     {
         return (value + alignment - 1) & ~(alignment - 1);
+    }
+
+    private static bool TryFormat(string formatName, out Format format)
+    {
+        format = formatName switch
+        {
+            "R8Unorm" or "R8_UNorm" or "R8_UNORM" => Format.R8_UNorm,
+            "R16Float" or "R16_Float" or "R16_FLOAT" => Format.R16_Float,
+            "R32Float" or "R32_Float" or "R32_FLOAT" or "Float32" => Format.R32_Float,
+            "Rgba8Unorm" or "R8G8B8A8_UNorm" or "R8G8B8A8_UNORM" => Format.R8G8B8A8_UNorm,
+            "Rgba16Float" or "R16G16B16A16_Float" or "R16G16B16A16_FLOAT" => Format.R16G16B16A16_Float,
+            _ => Format.Unknown,
+        };
+        return format != Format.Unknown;
     }
 }

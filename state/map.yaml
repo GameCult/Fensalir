@@ -97,7 +97,12 @@ next_actions:
     executes the packet with ExecuteIndirect. The first material is opaque field
     geometry with squared normalized emission, fake Fresnel center-bright/
     edge-dark shaping, and requested/dispatched/truncated/indirect-draw segment
-    reporting. Remaining cuts are mesh/surface-page/volume resolvers.
+    reporting. SurfacePage resources now have a first resolver: contracts and
+    DSL can declare GPU-resident 2D pages with width, height, format, version,
+    and optional local source, and the D3D12 registry allocates/imports them as
+    shader-readable page textures. Remaining cuts are mesh and volume resolvers,
+    plus render lowerings that consume surface pages as height/SDF/material
+    domains.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

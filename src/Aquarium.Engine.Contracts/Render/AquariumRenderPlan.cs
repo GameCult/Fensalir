@@ -503,6 +503,8 @@ public sealed class AquariumSceneState
 
     public AquariumGpuFusionField GpuFusionField { get; init; } = AquariumGpuFusionField.Empty;
 
+    public AquariumFieldEvidenceFrame FieldEvidenceFrame { get; init; } = AquariumFieldEvidenceFrame.Empty;
+
     public AquariumBufferFieldFrame BufferFieldFrame { get; init; } = AquariumBufferFieldFrame.Empty;
 
     public AquariumSplineFrame SplineFrame { get; init; } = AquariumSplineFrame.Empty;

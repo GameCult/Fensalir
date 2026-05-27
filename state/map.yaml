@@ -77,8 +77,9 @@ invariants:
   - Streaming Faust DSP is now an engine audio mechanism. Clients declare a
     profile-keyed `AquariumStreamingDspProgram`; Fensalir compiles it through
     AquaSynth.Faust, keeps a persistent DSP instance, applies matching audio
-    control frames, and can process caller-supplied audio blocks. Device I/O
-    and stem routing remain the next host cut.
+    control frames, and processes profile-keyed `AquariumStreamingAudioBlock`
+    input lanes into DSP output lanes. Optional monitor playback is explicit;
+    durable stem routing and OBS-facing publication remain the next host cut.
 
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.

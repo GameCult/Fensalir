@@ -59,6 +59,21 @@ internal sealed class AquariumSynthHost : IDisposable
             }
         }
 
+        foreach (var block in audio.DrainStreamingAudioBlocks())
+        {
+            if (!streamingDsp.ProcessBlock(block, out var outputs))
+            {
+                if (TraceAudio)
+                {
+                    Console.WriteLine($"Aquarium streaming DSP block skipped: {streamingDsp.LastError}");
+                }
+
+                continue;
+            }
+
+            PlayMonitorOutputs(block, outputs);
+        }
+
         if (!synth.Enabled)
         {
             return;
@@ -89,6 +104,34 @@ internal sealed class AquariumSynthHost : IDisposable
                 Play(runtime, patch, synth.MasterGain);
             }
         }
+    }
+
+    private void PlayMonitorOutputs(AquariumStreamingAudioBlock block, float[][] outputs)
+    {
+        if (block.MonitorLeftChannel < 0 && block.MonitorRightChannel < 0)
+        {
+            return;
+        }
+
+        var left = block.MonitorLeftChannel >= 0 && block.MonitorLeftChannel < outputs.Length
+            ? outputs[block.MonitorLeftChannel]
+            : null;
+        var right = block.MonitorRightChannel >= 0 && block.MonitorRightChannel < outputs.Length
+            ? outputs[block.MonitorRightChannel]
+            : null;
+        if (left is null && right is null)
+        {
+            return;
+        }
+
+        var frameCount = Math.Min(block.FrameCount, Math.Max(left?.Length ?? 0, right?.Length ?? 0));
+        var mono = new float[frameCount];
+        for (var index = 0; index < frameCount; index++)
+        {
+            mono[index] = Math.Clamp(((left?[index] ?? 0.0f) + (right?[index] ?? 0.0f)) * 0.5f, -1.0f, 1.0f);
+        }
+
+        audioDevice.Play(mono, block.SampleRate);
     }
 
     private PatchRuntime GetRuntime(AquariumSynthPatch patch)

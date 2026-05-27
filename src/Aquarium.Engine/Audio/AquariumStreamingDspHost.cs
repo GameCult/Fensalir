@@ -82,6 +82,44 @@ internal sealed class AquariumStreamingDspHost : IDisposable
         return true;
     }
 
+    public bool ProcessBlock(AquariumStreamingAudioBlock block, out float[][] outputs)
+    {
+        outputs = [];
+        if (!programs.TryGetValue(block.ProfileId, out var runtime))
+        {
+            LastError = $"Streaming DSP program `{block.ProfileId}` is not loaded.";
+            return false;
+        }
+
+        var inputCount = runtime.Stream.InputCount;
+        var outputCount = runtime.Stream.OutputCount;
+        var inputs = new float[inputCount][];
+        for (var channel = 0; channel < inputCount; channel++)
+        {
+            inputs[channel] = new float[block.FrameCount];
+        }
+
+        foreach (var channel in block.Channels)
+        {
+            if (channel.ChannelIndex < 0 || channel.ChannelIndex >= inputCount)
+            {
+                continue;
+            }
+
+            Array.Copy(channel.Samples, 0, inputs[channel.ChannelIndex], 0, Math.Min(block.FrameCount, channel.Samples.Length));
+        }
+
+        outputs = new float[outputCount][];
+        for (var channel = 0; channel < outputCount; channel++)
+        {
+            outputs[channel] = new float[block.FrameCount];
+        }
+
+        runtime.Stream.ProcessBlock(inputs, outputs, block.FrameCount);
+        LastError = null;
+        return true;
+    }
+
     public void Dispose()
     {
         foreach (var runtime in programs.Values)

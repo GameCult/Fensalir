@@ -39,6 +39,27 @@ public sealed class SynthPlaybackTests
     }
 
     [Fact]
+    public void AquariumAudioDocumentDrainsStreamingAudioBlocks()
+    {
+        var document = new AquariumAudioDocument();
+        document.EnqueueStreamingAudioBlock(new AquariumStreamingAudioBlock(
+            "six-source-faust-fractional-delay",
+            [
+                new AquariumStreamingAudioChannel(0, "mic-0", [0.25f, 0.5f])
+            ],
+            FrameCount: 2,
+            SampleRate: 48_000,
+            Sequence: 3));
+
+        var drained = document.DrainStreamingAudioBlocks();
+
+        Assert.Single(drained);
+        Assert.Equal(2, drained[0].FrameCount);
+        Assert.Equal("mic-0", drained[0].Channels[0].SourceId);
+        Assert.Empty(document.DrainStreamingAudioBlocks());
+    }
+
+    [Fact]
     public void StreamingDspHostProcessesControlDrivenInputBlocksWhenToolchainIsAvailable()
     {
         const string source = """
@@ -86,6 +107,61 @@ public sealed class SynthPlaybackTests
 
         Assert.True(host.ProcessBlock(program.ProfileId, input, output, 128));
         Assert.All(output[0], sample => Assert.InRange(sample, 0.124f, 0.126f));
+    }
+
+    [Fact]
+    public void StreamingDspHostProcessesDeclaredAudioBlocksWhenToolchainIsAvailable()
+    {
+        const string source = """
+            import("stdfaust.lib");
+            gain = hslider("source0/gain", 1.0, 0.0, 2.0, 0.001);
+            process = _ * gain;
+            """;
+        using var host = new AquariumStreamingDspHost();
+        var program = new AquariumStreamingDspProgram(
+            "six-source-faust-fractional-delay",
+            "mimir_alignment_block_smoke",
+            source,
+            Revision: 1);
+
+        if (!host.UpsertProgram(program))
+        {
+            if (host.LastError?.Contains("Faust toolchain not found", StringComparison.OrdinalIgnoreCase) == true ||
+                host.LastError?.Contains("Faust DLL not found", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                return;
+            }
+
+            Assert.Fail($"Streaming DSP compile failed: {host.LastError}");
+        }
+
+        Assert.True(host.ApplyControls(new AquariumAudioControlFrame(
+            program.ProfileId,
+            "loopback-scarlett-speakers",
+            0.0,
+            [
+                new AquariumAudioControlCommand(
+                    "scarlett-host-mic",
+                    0.0,
+                    1.0,
+                    1.0,
+                    new Dictionary<string, float>
+                    {
+                        ["source0/gain"] = 0.5f
+                    })
+            ],
+            TruncatedSourceCount: 0,
+            Sequence: 1)));
+
+        Assert.True(host.ProcessBlock(new AquariumStreamingAudioBlock(
+            program.ProfileId,
+            [
+                new AquariumStreamingAudioChannel(0, "scarlett-host-mic", Enumerable.Repeat(0.25f, 128).ToArray())
+            ],
+            FrameCount: 128,
+            SampleRate: 48_000,
+            Sequence: 2), out var outputs));
+        Assert.All(outputs[0], sample => Assert.InRange(sample, 0.124f, 0.126f));
     }
 
     [Fact]

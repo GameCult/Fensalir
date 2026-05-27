@@ -308,10 +308,13 @@ public sealed class AquariumFieldResourceUpload
 
     public ulong Version { get; init; }
 
+    public int ElementOffset { get; init; }
+
     public IReadOnlyList<float> Float32Data { get; init; } = [];
 
     public bool IsValid =>
         !string.IsNullOrWhiteSpace(ResourceKey) &&
+        ElementOffset >= 0 &&
         Float32Data.Count > 0;
 }
 
@@ -703,9 +706,10 @@ public static class AquariumFieldEvidenceValidator
                 }
 
                 var capacity = Math.Max(1, resource.DepthOrCount > 0 ? resource.DepthOrCount : resource.Width);
-                if (upload.Float32Data.Count > capacity)
+                if (upload.ElementOffset >= capacity ||
+                    upload.Float32Data.Count > capacity - upload.ElementOffset)
                 {
-                    issues.Add(Error(upload.ResourceKey, $"Field resource upload has {upload.Float32Data.Count} Float32 values but resource capacity is {capacity}."));
+                    issues.Add(Error(upload.ResourceKey, $"Field resource upload writes {upload.Float32Data.Count} Float32 values at offset {upload.ElementOffset}, exceeding resource capacity {capacity}."));
                 }
             }
         }

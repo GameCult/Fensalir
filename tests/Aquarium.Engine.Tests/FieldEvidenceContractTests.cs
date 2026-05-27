@@ -207,6 +207,7 @@ public sealed class FieldEvidenceContractTests
                 {
                     ResourceKey = frame.Resources[0].ResourceKey,
                     Version = frame.Resources[0].Version,
+                    ElementOffset = 1,
                     Float32Data = [0.0f, 0.25f, 0.5f, 1.0f],
                 },
             ],
@@ -222,6 +223,37 @@ public sealed class FieldEvidenceContractTests
         var report = AquariumFieldEvidenceValidator.Validate(frame);
 
         Assert.False(report.HasErrors);
+    }
+
+    [Fact]
+    public void ValidatorRejectsOutOfRangeFieldResourceUploadOffsets()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+        frame = new AquariumFieldEvidenceFrame
+        {
+            Resources = [frame.Resources[0] with { DepthOrCount = 4, Width = 4, Format = "Float32", StrideBytes = 4 }],
+            ResourceUploads =
+            [
+                new AquariumFieldResourceUpload
+                {
+                    ResourceKey = frame.Resources[0].ResourceKey,
+                    ElementOffset = 3,
+                    Float32Data = [0.0f, 0.5f],
+                },
+            ],
+            Domains = frame.Domains,
+            Claims = frame.Claims,
+            Candidates = frame.Candidates,
+            BackendPackets = frame.BackendPackets,
+            TubeSplineLowerings = frame.TubeSplineLowerings,
+            AccumulationWindowSeconds = frame.AccumulationWindowSeconds,
+            PresentationDelaySeconds = frame.PresentationDelaySeconds,
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.True(report.HasErrors);
+        Assert.Contains(report.Issues, issue => issue.Key == "mimir:resource:native-ring:asio-ch0");
     }
 
     [Fact]

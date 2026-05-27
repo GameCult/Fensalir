@@ -2477,11 +2477,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
             if (upload.Float32Data is float[] array)
             {
-                buffer.UploadPartial<float>(activeCommandList, frameResources.UploadRing, array);
+                buffer.UploadPartial<float>(activeCommandList, frameResources.UploadRing, array, upload.ElementOffset);
             }
             else
             {
-                buffer.UploadPartial<float>(activeCommandList, frameResources.UploadRing, upload.Float32Data.ToArray());
+                buffer.UploadPartial<float>(activeCommandList, frameResources.UploadRing, upload.Float32Data.ToArray(), upload.ElementOffset);
             }
 
             activeFieldResourceUploadCount++;

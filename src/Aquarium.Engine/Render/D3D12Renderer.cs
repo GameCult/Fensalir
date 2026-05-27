@@ -14,6 +14,7 @@ using Vortice.Direct3D12;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 using System.Diagnostics;
+using System.Globalization;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using ID3D11Device = Vortice.Direct3D11.ID3D11Device;
@@ -53,8 +54,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const string ProgramOutputEnabledEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_D3D12";
     private const string ProgramOutputSharedNameEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_NAME";
     private const string ProgramOutputFenceNameEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_FENCE_NAME";
+    private const string ProgramOutputRingCountEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_RING_COUNT";
     private const string DefaultProgramOutputSharedName = "Global\\MimirFensalirProgramTexture";
     private const string DefaultProgramOutputFenceName = "Global\\MimirFensalirProgramFence";
+    private const int MaxProgramOutputRingCount = 4;
     private const int RootFrameConstants = 0;
     private const int RootSourceTexture = 1;
     private const int RootHeightFieldBrushes = 2;
@@ -223,12 +226,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly List<D3D12TubeFieldDrawBatch> tubeFieldDrawBatches = [];
     private readonly Dictionary<string, D3D12ExternalSensorTexture> externalSensorTextures = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ExternalProducerFenceSlot> externalProducerFences = new(StringComparer.Ordinal);
-    private D3D12TrackedResource? programOutputTexture;
-    private IntPtr programOutputSharedHandle;
+    private readonly List<D3D12TrackedResource> programOutputTextures = [];
+    private readonly List<IntPtr> programOutputSharedHandles = [];
     private IntPtr programOutputFenceSharedHandle;
     private readonly bool programOutputEnabled;
     private readonly string programOutputSharedName;
     private readonly string programOutputFenceName;
+    private readonly int programOutputRingCount;
     private readonly D3D12CubeTexture studioPmremTexture;
     private readonly D3D12CubeTexture studioIrradianceTexture;
     private readonly AquariumSdfLight[] sdfLights = new AquariumSdfLight[MaxSdfLightCount];
@@ -324,6 +328,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         programOutputFenceName = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ProgramOutputFenceNameEnvironmentVariable))
             ? DefaultProgramOutputFenceName
             : Environment.GetEnvironmentVariable(ProgramOutputFenceNameEnvironmentVariable)!.Trim();
+        programOutputRingCount = ResolveProgramOutputRingCount();
         var activeRenderPlan = renderPlan ?? new AquariumRenderPlan();
         renderGraph = D3D12RenderGraphCompiler.Compile(activeRenderPlan);
         shaderSourceRoot = ResolveShaderSourceRoot(shaderPath, activeRenderPlan.Shaders);
@@ -1395,6 +1400,24 @@ public sealed class D3D12Renderer : IAquariumRenderer
         externalProducerFences.Clear();
     }
 
+    private int ResolveProgramOutputRingCount()
+    {
+        var value = Environment.GetEnvironmentVariable(ProgramOutputRingCountEnvironmentVariable);
+        if (!int.TryParse(value, CultureInfo.InvariantCulture, out var count))
+        {
+            return 1;
+        }
+
+        return Math.Clamp(count, 1, MaxProgramOutputRingCount);
+    }
+
+    private string GetProgramOutputTextureName(int slot)
+    {
+        return programOutputRingCount <= 1
+            ? programOutputSharedName
+            : string.Create(CultureInfo.InvariantCulture, $"{programOutputSharedName}.{slot}");
+    }
+
     private void CreateProgramOutputTexture()
     {
         if (!programOutputEnabled)
@@ -1403,30 +1426,36 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         DisposeProgramOutputTexture();
-        var resource = device.CreateCommittedResource(
-            HeapType.Default,
-            HeapFlags.Shared,
-            ResourceDescription.Texture2D(
-                Format.B8G8R8A8_UNorm,
-                (uint)width,
-                (uint)height,
-                1,
-                1,
-                1,
-                0,
-                Vortice.Direct3D12.ResourceFlags.None),
-            ResourceStates.CopyDest,
-            null);
-        programOutputTexture = new D3D12TrackedResource(
-            resource,
-            ResourceStates.CopyDest,
-            "Aquarium D3D12 Shared Program Output",
-            ownsResource: true);
-        programOutputSharedHandle = device.CreateSharedHandle(
-            resource,
-            null,
-            programOutputSharedName);
-        Console.WriteLine($"D3D12 program output shared texture: name={programOutputSharedName} size={width}x{height}");
+        for (var slot = 0; slot < programOutputRingCount; slot++)
+        {
+            var slotName = GetProgramOutputTextureName(slot);
+            var resource = device.CreateCommittedResource(
+                HeapType.Default,
+                HeapFlags.Shared,
+                ResourceDescription.Texture2D(
+                    Format.B8G8R8A8_UNorm,
+                    (uint)width,
+                    (uint)height,
+                    1,
+                    1,
+                    1,
+                    0,
+                    Vortice.Direct3D12.ResourceFlags.None),
+                ResourceStates.CopyDest,
+                null);
+            var tracked = new D3D12TrackedResource(
+                resource,
+                ResourceStates.CopyDest,
+                $"Aquarium D3D12 Shared Program Output {slot}",
+                ownsResource: true);
+            var sharedHandle = device.CreateSharedHandle(
+                resource,
+                null,
+                slotName);
+            programOutputTextures.Add(tracked);
+            programOutputSharedHandles.Add(sharedHandle);
+            Console.WriteLine($"D3D12 program output shared texture: name={slotName} slot={slot}/{programOutputRingCount} size={width}x{height}");
+        }
     }
 
     private void CreateProgramOutputFenceHandle()
@@ -1446,11 +1475,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private void CopyProgramOutputBackBuffer(ID3D12GraphicsCommandList activeCommandList, D3D12TrackedResource backBuffer)
     {
-        if (programOutputTexture is null)
+        if (programOutputTextures.Count == 0)
         {
             return;
         }
 
+        var publishedFenceValue = fenceValue + 1;
+        var slot = (int)(publishedFenceValue % (ulong)programOutputTextures.Count);
+        var programOutputTexture = programOutputTextures[slot];
         backBuffer.Transition(activeCommandList, ResourceStates.CopySource);
         programOutputTexture.Transition(activeCommandList, ResourceStates.CopyDest);
         activeCommandList.CopyResource(programOutputTexture.Resource, backBuffer.Resource);
@@ -1459,14 +1491,21 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private void DisposeProgramOutputTexture()
     {
-        if (programOutputSharedHandle != IntPtr.Zero)
+        foreach (var sharedHandle in programOutputSharedHandles)
         {
-            CloseHandle(programOutputSharedHandle);
-            programOutputSharedHandle = IntPtr.Zero;
+            if (sharedHandle != IntPtr.Zero)
+            {
+                CloseHandle(sharedHandle);
+            }
         }
 
-        programOutputTexture?.Dispose();
-        programOutputTexture = null;
+        programOutputSharedHandles.Clear();
+        foreach (var texture in programOutputTextures)
+        {
+            texture.Dispose();
+        }
+
+        programOutputTextures.Clear();
     }
 
     private void DisposeProgramOutputFenceHandle()

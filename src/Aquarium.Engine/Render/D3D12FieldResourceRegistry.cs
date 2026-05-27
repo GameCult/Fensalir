@@ -189,6 +189,60 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         return false;
     }
 
+    public void MarkStructuredBufferUpload(string resourceKey, int elementOffset, int elementCount)
+    {
+        if (!structuredBuffers.TryGetValue(resourceKey, out var slot) ||
+            elementOffset < 0 ||
+            elementCount <= 0)
+        {
+            return;
+        }
+
+        var firstFullColumn = (elementOffset + slot.Width - 1) / slot.Width;
+        var endFullColumn = (elementOffset + elementCount) / slot.Width;
+        if (endFullColumn <= firstFullColumn)
+        {
+            return;
+        }
+
+        var validColumns = slot.ValidColumns;
+        for (var column = Math.Max(0, firstFullColumn); column < Math.Min(validColumns.Length, endFullColumn); column++)
+        {
+            validColumns[column] = true;
+        }
+    }
+
+    public int CountContiguousValidColumns(AquariumFieldTubeSplineLowering lowering)
+    {
+        if (!structuredBuffers.TryGetValue(lowering.ResourceKey, out var slot))
+        {
+            return 0;
+        }
+
+        var normalized = lowering.Normalized();
+        var validCount = 0;
+        for (var logicalColumn = 0; logicalColumn < normalized.ColumnCount; logicalColumn++)
+        {
+            var physicalColumn = normalized.FirstColumn + logicalColumn * normalized.ColumnStride;
+            if (normalized.RollingModulo > 0)
+            {
+                physicalColumn = PositiveModulo(physicalColumn + normalized.RollingOffset, normalized.RollingModulo);
+            }
+
+            physicalColumn = Math.Min(physicalColumn, slot.ValidColumns.Length - 1);
+            if (physicalColumn < 0 ||
+                physicalColumn >= slot.ValidColumns.Length ||
+                !slot.ValidColumns[physicalColumn])
+            {
+                break;
+            }
+
+            validCount++;
+        }
+
+        return validCount;
+    }
+
     public bool TryGetTexture2D(string resourceKey, out D3D12FieldTexture2D texture)
     {
         if (textures.TryGetValue(resourceKey, out var slot))
@@ -384,9 +438,12 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         var allowUnorderedAccess = declaration.Access == AquariumFieldShaderAccess.UnorderedAccess;
 
         var hasExisting = structuredBuffers.TryGetValue(declaration.ResourceKey, out var existing);
+        var width = Math.Max(1, declaration.Width);
+        var columnCount = Math.Max(1, (elementCount + width - 1) / width);
         if (hasExisting && existing is not null &&
             existing.ElementCount == elementCount &&
             existing.StrideBytes == strideBytes &&
+            existing.Width == width &&
             existing.AllowUnorderedAccess == allowUnorderedAccess)
         {
             structuredBuffers[declaration.ResourceKey] = existing with { Version = declaration.Version };
@@ -418,6 +475,8 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         structuredBuffers[declaration.ResourceKey] = new StructuredBufferSlot(
             buffer,
             elementCount,
+            width,
+            new bool[columnCount],
             strideBytes,
             allowUnorderedAccess,
             declaration.Version);
@@ -625,6 +684,12 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
 
     private static string RegistryKey(string resourceKey) => RegistryPrefix + resourceKey;
 
+    private static int PositiveModulo(int value, int modulo)
+    {
+        var remainder = value % modulo;
+        return remainder < 0 ? remainder + modulo : remainder;
+    }
+
     private static D3D12StructuredBuffer? OpenSharedStructuredBuffer(
         ID3D12Device device,
         AquariumFieldResourceDeclaration declaration,
@@ -659,6 +724,8 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
     private sealed record StructuredBufferSlot(
         D3D12StructuredBuffer Buffer,
         int ElementCount,
+        int Width,
+        bool[] ValidColumns,
         int StrideBytes,
         bool AllowUnorderedAccess,
         ulong Version);

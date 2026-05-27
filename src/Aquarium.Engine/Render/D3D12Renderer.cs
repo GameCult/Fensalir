@@ -256,6 +256,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private int activeTubeFieldIndirectDrawCount;
     private int activeTubeFieldSkippedDrawBatches;
     private int activeTubeFieldUnplannedLowerings;
+    private int activeTubeFieldInvalidColumns;
     private int activeFieldResourceUploadCount;
     private int activeFieldResourceUploadSkippedCount;
     private Viewport viewport;
@@ -553,7 +554,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             $"candidates {activeFieldEvidenceFrame.Candidates.Count} / packets {activeFieldEvidenceFrame.BackendPackets.Count} / " +
             $"planned {activeFieldLoweringPlan.Packets.Count} / deferred {activeFieldLoweringPlan.DeferredRequests.Count} / errors {errorCount}" +
             (activeFieldEvidenceFrame.TubeSplineLowerings.Count > 0
-                ? $" / tube requested {activeTubeFieldRequestedSegments} dispatched {activeTubeFieldDispatchedSegments} truncated {activeTubeFieldTruncatedSegments} uploads {activeFieldResourceUploadCount} skipped {activeFieldResourceUploadSkippedCount} unplanned {activeTubeFieldUnplannedLowerings}"
+                ? $" / tube requested {activeTubeFieldRequestedSegments} dispatched {activeTubeFieldDispatchedSegments} truncated {activeTubeFieldTruncatedSegments} invalid {activeTubeFieldInvalidColumns} uploads {activeFieldResourceUploadCount} skipped {activeFieldResourceUploadSkippedCount} unplanned {activeTubeFieldUnplannedLowerings}"
                 : string.Empty);
     }
 
@@ -2344,6 +2345,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeTubeFieldIndirectDrawCount = 0;
         activeTubeFieldSkippedDrawBatches = 0;
         activeTubeFieldUnplannedLowerings = 0;
+        activeTubeFieldInvalidColumns = 0;
         activeFieldResourceUploadCount = 0;
         activeFieldResourceUploadSkippedCount = 0;
         tubeFieldDrawBatches.Clear();
@@ -2383,6 +2385,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
             }
 
             var normalized = lowering.Normalized();
+            var validColumnCount = fieldResourceRegistry.CountContiguousValidColumns(normalized);
+            activeTubeFieldInvalidColumns += Math.Max(0, normalized.ColumnCount - validColumnCount);
+            if (validColumnCount <= 0)
+            {
+                continue;
+            }
+
+            normalized = normalized with { ColumnCount = validColumnCount };
             var requestedSegments = checked(Math.Max(0, normalized.Width - 1) * Math.Max(1, normalized.CatmullRomSubdivisions) * Math.Max(1, normalized.ColumnCount));
             activeTubeFieldRequestedSegments += requestedSegments;
             var remainingSegments = MaxTubeFieldSegments - segmentBase;
@@ -2485,6 +2495,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             }
 
             activeFieldResourceUploadCount++;
+            fieldResourceRegistry.MarkStructuredBufferUpload(upload.ResourceKey, upload.ElementOffset, upload.Float32Data.Count);
         }
     }
 
@@ -3137,6 +3148,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 $"indirect draws {activeTubeFieldIndirectDrawCount:N0}; " +
                 $"skipped draw batches {activeTubeFieldSkippedDrawBatches:N0}; " +
                 $"unplanned lowerings {activeTubeFieldUnplannedLowerings:N0}; " +
+                $"invalid columns {activeTubeFieldInvalidColumns:N0}; " +
                 $"resource uploads {activeFieldResourceUploadCount:N0}; " +
                 $"skipped uploads {activeFieldResourceUploadSkippedCount:N0}; " +
                 $"index draw count {activeTubeFieldDrawIndexCount:N0}; " +

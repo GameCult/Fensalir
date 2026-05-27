@@ -138,7 +138,11 @@ next_actions:
     structured buffers before TubeField compute reads them, so a Fensalir-owned
     GPU resource can be live data rather than paperwork. Resource uploads carry
     an explicit element offset, validation rejects out-of-range writes, and
-    D3D12 copies partial uploads into the declared buffer offset. Structured buffer
+    D3D12 copies partial uploads into the declared buffer offset. Fensalir now
+    tracks uploaded structured-buffer columns beside the resolved resource and
+    clamps TubeField dispatch to the contiguous valid logical history range, so
+    stale or never-uploaded rolling slots cannot reach the TubeField shader as
+    geometry after allocation, reset, or partial update. Structured buffer
     declaration version is content freshness, not buffer-shape authority:
     D3D12FieldResourceRegistry now reuses an existing structured buffer when
     element count, stride, and access are unchanged, updating the recorded

@@ -77,6 +77,15 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             if (declaration.Kind == AquariumFieldResourceKind.Texture2D)
             {
                 textureCount++;
+                if (ResolveTexture2D(device, declaration))
+                {
+                    resolved++;
+                }
+                else if (!declaration.HasSourceAsset)
+                {
+                    unsupported++;
+                }
+
                 continue;
             }
 
@@ -299,16 +308,30 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
     {
         texture = null!;
         if (declaration.Kind != AquariumFieldResourceKind.Texture2D ||
-            declaration.Residency != AquariumFieldResourceResidency.GpuResident ||
-            declaration.Access != AquariumFieldShaderAccess.ShaderResource ||
+            declaration.Access != AquariumFieldShaderAccess.ShaderResource)
+        {
+            return false;
+        }
+
+        if (declaration.Residency == AquariumFieldResourceResidency.SharedGpu &&
+            !declaration.HasSourceAsset)
+        {
+            return ResolveTexture2D(device, declaration) &&
+                TryGetTexture2D(declaration.ResourceKey, out texture);
+        }
+
+        if (declaration.Residency != AquariumFieldResourceResidency.GpuResident ||
             !declaration.HasSourceAsset)
         {
             return false;
         }
 
         if (textures.TryGetValue(declaration.ResourceKey, out var existing) &&
+            existing.Kind == AquariumFieldResourceKind.Texture2D &&
             existing.Version == declaration.Version &&
-            string.Equals(existing.SourceUri, declaration.SourceUri, StringComparison.Ordinal))
+            existing.NativeHandle == declaration.NativeHandle &&
+            string.Equals(existing.SourceUri, declaration.SourceUri, StringComparison.Ordinal) &&
+            string.Equals(existing.NativeHandleKind, declaration.NativeHandleKind, StringComparison.Ordinal))
         {
             texture = existing.Texture;
             return true;
@@ -323,7 +346,13 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         try
         {
             texture = D3D12FieldTexture2D.LoadLocalAsset(device, commandList, declaration);
-            textures[declaration.ResourceKey] = new Texture2DSlot(texture, declaration.Kind, declaration.SourceUri, declaration.Version);
+            textures[declaration.ResourceKey] = new Texture2DSlot(
+                texture,
+                declaration.Kind,
+                declaration.SourceUri,
+                declaration.NativeHandle,
+                declaration.NativeHandleKind,
+                declaration.Version);
             return true;
         }
         catch (IOException)
@@ -398,6 +427,8 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
                 surfacePage,
                 AquariumFieldResourceKind.SurfacePage,
                 declaration.SourceUri,
+                declaration.NativeHandle,
+                declaration.NativeHandleKind,
                 declaration.Version);
             return true;
         }
@@ -516,6 +547,50 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             surfacePage,
             AquariumFieldResourceKind.SurfacePage,
             declaration.SourceUri,
+            declaration.NativeHandle,
+            declaration.NativeHandleKind,
+            declaration.Version);
+        return true;
+    }
+
+    private bool ResolveTexture2D(
+        ID3D12Device device,
+        AquariumFieldResourceDeclaration declaration)
+    {
+        if (declaration.Residency != AquariumFieldResourceResidency.SharedGpu ||
+            declaration.Access != AquariumFieldShaderAccess.ShaderResource ||
+            declaration.NativeHandle == IntPtr.Zero ||
+            declaration.HasSourceAsset)
+        {
+            return false;
+        }
+
+        if (textures.TryGetValue(declaration.ResourceKey, out var existing) &&
+            existing.Kind == AquariumFieldResourceKind.Texture2D &&
+            existing.Version == declaration.Version &&
+            existing.NativeHandle == declaration.NativeHandle &&
+            string.Equals(existing.NativeHandleKind, declaration.NativeHandleKind, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (existing is not null)
+        {
+            existing.Texture.Dispose();
+            textures.Remove(declaration.ResourceKey);
+        }
+
+        if (!D3D12FieldTexture2D.TryOpenShared(device, declaration, out var texture))
+        {
+            return false;
+        }
+
+        textures[declaration.ResourceKey] = new Texture2DSlot(
+            texture,
+            AquariumFieldResourceKind.Texture2D,
+            declaration.SourceUri,
+            declaration.NativeHandle,
+            declaration.NativeHandleKind,
             declaration.Version);
         return true;
     }
@@ -734,6 +809,8 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         D3D12FieldTexture2D Texture,
         AquariumFieldResourceKind Kind,
         string SourceUri,
+        IntPtr NativeHandle,
+        string NativeHandleKind,
         ulong Version);
 
     private sealed record VolumeTextureSlot(

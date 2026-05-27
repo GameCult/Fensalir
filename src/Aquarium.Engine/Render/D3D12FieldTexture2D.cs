@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using SharpGen.Runtime;
 using Vortice.Direct3D12;
 using Vortice.DXGI;
 
@@ -118,6 +119,43 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
             $"Aquarium D3D12 Field Texture2D {declaration.ResourceKey}");
         texture.State = ResourceStates.PixelShaderResource;
         return true;
+    }
+
+    public static bool TryOpenShared(
+        ID3D12Device device,
+        AquariumFieldResourceDeclaration declaration,
+        out D3D12FieldTexture2D texture)
+    {
+        texture = null!;
+        if (declaration.NativeHandle == IntPtr.Zero ||
+            declaration.Width <= 0 ||
+            declaration.Height <= 0 ||
+            !D3D12FieldTextureFormat.TryFormat(declaration.Format, out var format))
+        {
+            return false;
+        }
+
+        try
+        {
+            var resource = device.OpenSharedHandle<ID3D12Resource>(declaration.NativeHandle);
+            texture = new D3D12FieldTexture2D(
+                resource,
+                uploadResource: null,
+                declaration.Width,
+                declaration.Height,
+                format,
+                $"Aquarium D3D12 Shared Field Texture2D {declaration.ResourceKey}");
+            texture.State = ResourceStates.PixelShaderResource;
+            return true;
+        }
+        catch (SharpGenException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     public void CreateShaderResourceView(ID3D12Device device, D3D12DescriptorSlot descriptor)

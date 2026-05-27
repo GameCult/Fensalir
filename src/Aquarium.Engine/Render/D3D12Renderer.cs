@@ -52,7 +52,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const string StudioIrradianceRelativePath = "Assets/Textures/studio3_irradiance.dds";
     private const string ProgramOutputEnabledEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_D3D12";
     private const string ProgramOutputSharedNameEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_NAME";
+    private const string ProgramOutputFenceNameEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_FENCE_NAME";
     private const string DefaultProgramOutputSharedName = "Global\\MimirFensalirProgramTexture";
+    private const string DefaultProgramOutputFenceName = "Global\\MimirFensalirProgramFence";
     private const int RootFrameConstants = 0;
     private const int RootSourceTexture = 1;
     private const int RootHeightFieldBrushes = 2;
@@ -223,8 +225,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly Dictionary<string, ExternalProducerFenceSlot> externalProducerFences = new(StringComparer.Ordinal);
     private D3D12TrackedResource? programOutputTexture;
     private IntPtr programOutputSharedHandle;
+    private IntPtr programOutputFenceSharedHandle;
     private readonly bool programOutputEnabled;
     private readonly string programOutputSharedName;
+    private readonly string programOutputFenceName;
     private readonly D3D12CubeTexture studioPmremTexture;
     private readonly D3D12CubeTexture studioIrradianceTexture;
     private readonly AquariumSdfLight[] sdfLights = new AquariumSdfLight[MaxSdfLightCount];
@@ -317,6 +321,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         programOutputSharedName = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ProgramOutputSharedNameEnvironmentVariable))
             ? DefaultProgramOutputSharedName
             : Environment.GetEnvironmentVariable(ProgramOutputSharedNameEnvironmentVariable)!.Trim();
+        programOutputFenceName = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ProgramOutputFenceNameEnvironmentVariable))
+            ? DefaultProgramOutputFenceName
+            : Environment.GetEnvironmentVariable(ProgramOutputFenceNameEnvironmentVariable)!.Trim();
         var activeRenderPlan = renderPlan ?? new AquariumRenderPlan();
         renderGraph = D3D12RenderGraphCompiler.Compile(activeRenderPlan);
         shaderSourceRoot = ResolveShaderSourceRoot(shaderPath, activeRenderPlan.Shaders);
@@ -393,8 +400,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         commandList = device.CreateCommandList<ID3D12GraphicsCommandList>(0, CommandListType.Direct, frames[frameIndex].CommandAllocator, null);
         commandList.Name = "Aquarium D3D12 Graphics Command List";
         commandList.Close();
-        fence = device.CreateFence(0);
+        fence = device.CreateFence(0, programOutputEnabled ? FenceFlags.Shared : FenceFlags.None);
         fence.Name = "Aquarium D3D12 Frame Fence";
+        CreateProgramOutputFenceHandle();
         commandQueue.ExecuteCommandList(commandList);
         WaitForGpu();
         ReportStartupProgress(startupProgress, "Loading studio IBL cubemaps");
@@ -1137,6 +1145,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         DisposeHistoryRenderTargets();
         DisposeGraphRenderTargets();
         DisposeProgramOutputTexture();
+        DisposeProgramOutputFenceHandle();
         sceneRenderTarget.Dispose();
         sceneMetadataRenderTarget.Dispose();
         sceneControlRenderTarget.Dispose();
@@ -1420,6 +1429,21 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Console.WriteLine($"D3D12 program output shared texture: name={programOutputSharedName} size={width}x{height}");
     }
 
+    private void CreateProgramOutputFenceHandle()
+    {
+        if (!programOutputEnabled)
+        {
+            return;
+        }
+
+        DisposeProgramOutputFenceHandle();
+        programOutputFenceSharedHandle = device.CreateSharedHandle(
+            fence,
+            null,
+            programOutputFenceName);
+        Console.WriteLine($"D3D12 program output shared fence: name={programOutputFenceName}");
+    }
+
     private void CopyProgramOutputBackBuffer(ID3D12GraphicsCommandList activeCommandList, D3D12TrackedResource backBuffer)
     {
         if (programOutputTexture is null)
@@ -1443,6 +1467,15 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
         programOutputTexture?.Dispose();
         programOutputTexture = null;
+    }
+
+    private void DisposeProgramOutputFenceHandle()
+    {
+        if (programOutputFenceSharedHandle != IntPtr.Zero)
+        {
+            CloseHandle(programOutputFenceSharedHandle);
+            programOutputFenceSharedHandle = IntPtr.Zero;
+        }
     }
 
     private D3D12CubeTexture LoadStudioPmremTexture()

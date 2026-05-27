@@ -98,8 +98,12 @@ next_actions:
     `AquariumRuntimeServices`: client runtimes can request keyed D3D12
     Texture2D leases, receive shared texture and producer-fence handles, then
     commit producer fence values so the renderer waits before shader sampling.
-    This makes imported handles an edge case, not the primary live camera
-    authority. Missing or unresolved TubeField ramps bind a Fensalir-owned linear fallback ramp.
+    Raw CPU-origin single-plane frames can use the explicit broker upload lane,
+    which copies rows into the leased texture on the D3D12 queue and leaves copy
+    accounting to the client producer. Multi-plane NV12 CPU upload is rejected
+    until a real planar copy path exists; GPU producers can still write NV12
+    leases directly. This makes imported handles an edge case, not the primary
+    live camera authority. Missing or unresolved TubeField ramps bind a Fensalir-owned linear fallback ramp.
     Camera texture claims can therefore resolve resources before a selected
     visual-fusion lowering exists. TubeField compute now
     emits one GPU-resident D3D12 DrawIndexed indirect argument packet per

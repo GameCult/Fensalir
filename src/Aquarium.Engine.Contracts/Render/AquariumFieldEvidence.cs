@@ -525,7 +525,11 @@ public readonly record struct AquariumFieldResourceDeclaration(
             "R8Unorm" or "R8_UNorm" or "R8_UNORM" => 1,
             "R16Float" or "R16_Float" or "R16_FLOAT" => 2,
             "R32Float" or "R32_Float" or "R32_FLOAT" or "Float32" => 4,
+            "Rg8" or "Rg8Unorm" or "R8G8_UNorm" or "R8G8_UNORM" or "Yuy2" or "YUY2" or "LeapStereoIr" or "LeapPackedMap" => 2,
+            "Bayer8" or "Gray8" or "R8" => 1,
+            "Bgra8" or "Bgra8Unorm" or "B8G8R8A8_UNorm" or "B8G8R8A8_UNORM" or "Rgba8Unorm" or "R8G8B8A8_UNorm" or "R8G8B8A8_UNORM" => 4,
             "Rgba16Float" or "R16G16B16A16_Float" or "R16G16B16A16_FLOAT" => 8,
+            "Nv12" or "NV12" => 1,
             _ => 4,
         };
 }

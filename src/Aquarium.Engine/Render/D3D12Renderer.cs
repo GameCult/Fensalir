@@ -198,6 +198,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly D3D12RenderTarget[] bloomRenderTargets = new D3D12RenderTarget[BloomLevelCount];
     private readonly D3D12RenderTarget[] bloomScratchTargets = new D3D12RenderTarget[BloomLevelCount];
     private readonly Dictionary<string, SharedTextureLeaseSlot> sharedTextureLeases = new(StringComparer.Ordinal);
+    private readonly object sharedTextureUploadLock = new();
     private readonly D3D12StructuredBuffer sdfLightBuffer;
     private readonly D3D12StructuredBuffer sdfObjectBuffer;
     private readonly D3D12StructuredBuffer gpuSensorCameraBuffer;
@@ -730,6 +731,24 @@ public sealed class D3D12Renderer : IAquariumRenderer
         return true;
     }
 
+    public bool UploadTexture2D(AquariumTexture2DUpload upload)
+    {
+        if (!upload.IsValid ||
+            !sharedTextureLeases.TryGetValue(upload.ResourceKey, out var slot) ||
+            slot.Width != upload.Width ||
+            slot.Height != upload.Height ||
+            !D3D12FieldTextureFormat.TryFormat(upload.Format, out var format) ||
+            slot.Format != format)
+        {
+            return false;
+        }
+
+        lock (sharedTextureUploadLock)
+        {
+            return UploadTexture2DLocked(upload, slot);
+        }
+    }
+
     public void Render(AquariumFrame frame, int width, int height)
     {
         var frameCpuStart = Stopwatch.GetTimestamp();
@@ -1174,6 +1193,110 @@ public sealed class D3D12Renderer : IAquariumRenderer
             slot.ProducerFenceHandle,
             request.Version,
             true);
+    }
+
+    private bool UploadTexture2DLocked(AquariumTexture2DUpload upload, SharedTextureLeaseSlot slot)
+    {
+        ID3D12CommandAllocator? uploadAllocator = null;
+        ID3D12GraphicsCommandList? uploadList = null;
+        ID3D12Resource? uploadResource = null;
+        try
+        {
+            if (string.Equals(upload.Format.Trim(), "NV12", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var rowBytes = RowBytes(upload.Format, upload.Width);
+            if (rowBytes <= 0 || upload.SourceStrideBytes < rowBytes)
+            {
+                return false;
+            }
+
+            var rowPitch = AlignTo(rowBytes, D3D12.TextureDataPitchAlignment);
+            var uploadBytes = checked(rowPitch * upload.Height);
+            uploadResource = device.CreateCommittedResource(
+                HeapType.Upload,
+                ResourceDescription.Buffer((ulong)uploadBytes),
+                ResourceStates.GenericRead,
+                null);
+            uploadResource.Name = $"Aquarium D3D12 Texture2D Lease Upload {upload.ResourceKey}";
+
+            unsafe
+            {
+                var mapped = uploadResource.Map<byte>(0);
+                try
+                {
+                    var sourceBytes = upload.Data.Span;
+                    for (var row = 0; row < upload.Height; row++)
+                    {
+                        sourceBytes.Slice(row * upload.SourceStrideBytes, rowBytes)
+                            .CopyTo(new Span<byte>(mapped + (row * rowPitch), rowBytes));
+                    }
+                }
+                finally
+                {
+                    uploadResource.Unmap(0, null);
+                }
+            }
+
+            uploadAllocator = device.CreateCommandAllocator(CommandListType.Direct);
+            uploadList = device.CreateCommandList<ID3D12GraphicsCommandList>(0, CommandListType.Direct, uploadAllocator, null);
+            var source = new TextureCopyLocation(
+                uploadResource,
+                new PlacedSubresourceFootPrint
+                {
+                    Offset = 0,
+                    Footprint = new SubresourceFootPrint(slot.Format, (uint)upload.Width, (uint)upload.Height, 1, (uint)rowPitch),
+                });
+            var destination = new TextureCopyLocation(slot.Resource, 0);
+            uploadList.ResourceBarrier(ResourceBarrier.BarrierTransition(
+                slot.Resource,
+                ResourceStates.PixelShaderResource,
+                ResourceStates.CopyDest));
+            uploadList.CopyTextureRegion(destination, 0, 0, 0, source, null);
+            uploadList.ResourceBarrier(ResourceBarrier.BarrierTransition(
+                slot.Resource,
+                ResourceStates.CopyDest,
+                ResourceStates.PixelShaderResource));
+            uploadList.Close();
+            commandQueue.ExecuteCommandList(uploadList);
+            var signalValue = ++fenceValue;
+            commandQueue.Signal(fence, signalValue).CheckError();
+            if (fence.CompletedValue < signalValue)
+            {
+                fence.SetEventOnCompletion(signalValue, fenceEvent.SafeWaitHandle.DangerousGetHandle()).CheckError();
+                fenceEvent.WaitOne();
+            }
+
+            slot.CommittedProducerFenceValue = 0;
+            slot.WaitedProducerFenceValue = 0;
+            return true;
+        }
+        catch (SharpGenException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        finally
+        {
+            uploadList?.Dispose();
+            uploadAllocator?.Dispose();
+            uploadResource?.Dispose();
+        }
+    }
+
+    private static int RowBytes(string format, int width)
+    {
+        var stride = AquariumFieldResourceDeclaration.FormatStrideBytes(format);
+        return format.Trim().ToUpperInvariant() switch
+        {
+            "NV12" => width,
+            _ => checked(Math.Max(1, width) * Math.Max(1, stride)),
+        };
     }
 
     private void WaitForCommittedFieldResourceLeases(AquariumFieldEvidenceFrame fieldEvidenceFrame)

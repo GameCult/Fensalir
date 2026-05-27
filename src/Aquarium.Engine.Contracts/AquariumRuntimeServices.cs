@@ -25,4 +25,6 @@ internal sealed class AquariumNullFieldResourceBroker : IAquariumFieldResourceBr
     public AquariumFieldResourceLease LeaseTexture2D(AquariumTexture2DLeaseRequest request) => AquariumFieldResourceLease.Invalid;
 
     public bool CommitLeaseVersion(string resourceKey, ulong version, ulong producerFenceValue) => false;
+
+    public bool UploadTexture2D(AquariumTexture2DUpload upload) => false;
 }

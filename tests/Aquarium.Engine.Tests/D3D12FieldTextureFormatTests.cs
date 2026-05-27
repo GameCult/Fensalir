@@ -10,7 +10,8 @@ public sealed class D3D12FieldTextureFormatTests
     [InlineData("Gray8", Format.R8_UNorm)]
     [InlineData("R8", Format.R8_UNorm)]
     [InlineData("Rg8", Format.R8G8_UNorm)]
-    [InlineData("LeapStereoIr", Format.B8G8R8A8_UNorm)]
+    [InlineData("LeapStereoIr", Format.R8G8_UNorm)]
+    [InlineData("Yuy2", Format.YUY2)]
     [InlineData("Nv12", Format.NV12)]
     public void FormatParserAcceptsMimirVideoResourceFormats(string sourceFormat, Format expected)
     {

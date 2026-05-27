@@ -68,6 +68,14 @@ public sealed class D3D12SharedTextureInteropTests
             Assert.Equal(16, resolved.Width);
             Assert.Equal(8, resolved.Height);
             Assert.Equal(Format.B8G8R8A8_UNorm, resolved.Format);
+
+            var nextFrameStats = registry.Resolve(d3d12, resources, [declaration with { Version = 2 }]);
+
+            Assert.Equal(1, nextFrameStats.Resolved);
+            Assert.Equal(0, nextFrameStats.Unsupported);
+            Assert.Equal(0, nextFrameStats.StaleRemoved);
+            Assert.True(registry.TryGetTexture2D(declaration.ResourceKey, out var nextFrameResolved));
+            Assert.Same(resolved, nextFrameResolved);
         }
         finally
         {

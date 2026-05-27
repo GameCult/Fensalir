@@ -96,7 +96,9 @@ next_actions:
     Bgra8, Gray8, Rg8, Nv12, and LeapStereoIr as DXGI format input. The direct
     Mimir MF shape is now proven at resolver level: a D3D11 NT shared
     keyed-mutex BGRA texture can be opened by Fensalir's D3D12 registry as a
-    shader-readable Texture2D. Fensalir
+    shader-readable Texture2D. Shared Texture2D version is content freshness,
+    not import identity; the registry reuses an opened shared texture when
+    handle, handle kind, dimensions, and format are unchanged. Fensalir
     also exposes the first engine-owned texture lease broker through
     `AquariumRuntimeServices`: client runtimes can request keyed D3D12
     Texture2D leases, receive shared texture and producer-fence handles, then

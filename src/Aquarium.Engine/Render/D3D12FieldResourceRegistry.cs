@@ -565,12 +565,20 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             return false;
         }
 
+        if (!D3D12FieldTextureFormat.TryFormat(declaration.Format, out var format))
+        {
+            return false;
+        }
+
         if (textures.TryGetValue(declaration.ResourceKey, out var existing) &&
             existing.Kind == AquariumFieldResourceKind.Texture2D &&
-            existing.Version == declaration.Version &&
             existing.NativeHandle == declaration.NativeHandle &&
+            existing.Texture.Width == declaration.Width &&
+            existing.Texture.Height == declaration.Height &&
+            existing.Texture.Format == format &&
             string.Equals(existing.NativeHandleKind, declaration.NativeHandleKind, StringComparison.Ordinal))
         {
+            textures[declaration.ResourceKey] = existing with { Version = declaration.Version };
             return true;
         }
 

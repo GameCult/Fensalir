@@ -6,6 +6,7 @@ public sealed class AquariumAudioDocument
 {
     private readonly ConcurrentQueue<AquariumPcmAudioChunk> pcmChunks = new();
     private readonly ConcurrentQueue<AquariumAudioControlFrame> controlFrames = new();
+    private readonly ConcurrentQueue<AquariumStreamingDspProgram> streamingDspPrograms = new();
 
     public static AquariumAudioDocument Empty { get; } = new();
 
@@ -85,6 +86,29 @@ public sealed class AquariumAudioDocument
 
         return drained;
     }
+
+    public void EnqueueStreamingDspProgram(AquariumStreamingDspProgram program)
+    {
+        if (string.IsNullOrWhiteSpace(program.ProfileId) ||
+            string.IsNullOrWhiteSpace(program.FaustName) ||
+            string.IsNullOrWhiteSpace(program.FaustSource))
+        {
+            return;
+        }
+
+        streamingDspPrograms.Enqueue(program);
+    }
+
+    public IReadOnlyList<AquariumStreamingDspProgram> DrainStreamingDspPrograms(int maxPrograms = 4)
+    {
+        var drained = new List<AquariumStreamingDspProgram>();
+        while (drained.Count < maxPrograms && streamingDspPrograms.TryDequeue(out var program))
+        {
+            drained.Add(program);
+        }
+
+        return drained;
+    }
 }
 
 public sealed record AquariumPcmAudioChunk(float[] MonoSamples, int SampleRate, float LeftGain = 1.0f, float RightGain = 1.0f);
@@ -103,3 +127,10 @@ public sealed record AquariumAudioControlCommand(
     double ResampleRatio,
     double Confidence,
     IReadOnlyDictionary<string, float> Controls);
+
+public sealed record AquariumStreamingDspProgram(
+    string ProfileId,
+    string FaustName,
+    string FaustSource,
+    int Revision,
+    float ProbeDurationSeconds = 0.05f);

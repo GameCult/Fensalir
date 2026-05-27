@@ -74,6 +74,11 @@ invariants:
     audio host may retain the latest frame, but Faust/native streaming DSP must
     own the hot fractional-delay/resampling path before any aligned-audio claim
     is true.
+  - Streaming Faust DSP is now an engine audio mechanism. Clients declare a
+    profile-keyed `AquariumStreamingDspProgram`; Fensalir compiles it through
+    AquaSynth.Faust, keeps a persistent DSP instance, applies matching audio
+    control frames, and can process caller-supplied audio blocks. Device I/O
+    and stem routing remain the next host cut.
 
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.

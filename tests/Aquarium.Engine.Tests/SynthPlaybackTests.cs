@@ -39,6 +39,56 @@ public sealed class SynthPlaybackTests
     }
 
     [Fact]
+    public void StreamingDspHostProcessesControlDrivenInputBlocksWhenToolchainIsAvailable()
+    {
+        const string source = """
+            import("stdfaust.lib");
+            gain = hslider("source0/gain", 1.0, 0.0, 2.0, 0.001);
+            process = _ * gain;
+            """;
+        using var host = new AquariumStreamingDspHost();
+        var program = new AquariumStreamingDspProgram(
+            "six-source-faust-fractional-delay",
+            "mimir_alignment_smoke",
+            source,
+            Revision: 1);
+
+        if (!host.UpsertProgram(program))
+        {
+            if (host.LastError?.Contains("Faust toolchain not found", StringComparison.OrdinalIgnoreCase) == true ||
+                host.LastError?.Contains("Faust DLL not found", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                return;
+            }
+
+            Assert.Fail($"Streaming DSP compile failed: {host.LastError}");
+        }
+
+        Assert.True(host.ApplyControls(new AquariumAudioControlFrame(
+            program.ProfileId,
+            "loopback-scarlett-speakers",
+            0.0,
+            [
+                new AquariumAudioControlCommand(
+                    "scarlett-host-mic",
+                    0.0,
+                    1.0,
+                    1.0,
+                    new Dictionary<string, float>
+                    {
+                        ["source0/gain"] = 0.5f
+                    })
+            ],
+            TruncatedSourceCount: 0,
+            Sequence: 1)));
+        var input = new[] { Enumerable.Repeat(0.25f, 128).ToArray() };
+        var output = new[] { new float[128] };
+
+        Assert.True(host.ProcessBlock(program.ProfileId, input, output, 128));
+        Assert.All(output[0], sample => Assert.InRange(sample, 0.124f, 0.126f));
+    }
+
+    [Fact]
     public void AquaSynthPatchCompilerCanRenderAudiblePatchForEnginePlayback()
     {
         const string script = """

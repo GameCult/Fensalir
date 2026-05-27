@@ -9,6 +9,7 @@ internal sealed class AquariumSynthHost : IDisposable
 
     private readonly Dictionary<string, PatchRuntime> patches = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AquariumAudioControlFrame> latestControlFrames = new(StringComparer.Ordinal);
+    private readonly AquariumStreamingDspHost streamingDsp = new();
     private readonly WasapiAudioDevice audioDevice = new();
     private readonly AquaSynthPatchCompiler patchCompiler = new(new AquaSynthNativeOptions(DspSourceDirectory: Path.Combine(AppContext.BaseDirectory, "Synth")));
     private float timeSeconds;
@@ -27,9 +28,30 @@ internal sealed class AquariumSynthHost : IDisposable
             audioDevice.Play(chunk.MonoSamples, chunk.SampleRate, chunk.LeftGain, chunk.RightGain);
         }
 
+        foreach (var program in audio.DrainStreamingDspPrograms())
+        {
+            if (streamingDsp.UpsertProgram(program))
+            {
+                if (TraceAudio)
+                {
+                    Console.WriteLine(
+                        $"Aquarium streaming DSP loaded: profile={program.ProfileId} faust={program.FaustName} revision={program.Revision}");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Aquarium streaming DSP `{program.ProfileId}` compile failed: {streamingDsp.LastError}");
+            }
+        }
+
         foreach (var controlFrame in audio.DrainControlFrames())
         {
             latestControlFrames[controlFrame.ProfileId] = controlFrame;
+            if (!streamingDsp.ApplyControls(controlFrame) && TraceAudio)
+            {
+                Console.WriteLine($"Aquarium audio control pending: {streamingDsp.LastError}");
+            }
+
             if (TraceAudio)
             {
                 Console.WriteLine(
@@ -259,6 +281,7 @@ internal sealed class AquariumSynthHost : IDisposable
             runtime.Compiled?.Dispose();
         }
 
+        streamingDsp.Dispose();
         audioDevice.Dispose();
         patchCompiler.Dispose();
     }

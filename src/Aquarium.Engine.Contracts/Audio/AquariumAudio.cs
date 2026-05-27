@@ -155,7 +155,14 @@ public sealed record AquariumStreamingDspProgram(
     string FaustName,
     string FaustSource,
     int Revision,
-    float ProbeDurationSeconds = 0.05f);
+    float ProbeDurationSeconds = 0.05f,
+    IReadOnlyList<AquariumStreamingDspOutputStem>? OutputStems = null);
+
+public sealed record AquariumStreamingDspOutputStem(
+    int ChannelIndex,
+    string StemId,
+    string DisplayName = "",
+    string SourceId = "");
 
 public sealed record AquariumStreamingAudioBlock(
     string ProfileId,
@@ -170,3 +177,26 @@ public sealed record AquariumStreamingAudioChannel(
     int ChannelIndex,
     string SourceId,
     float[] Samples);
+
+public sealed record AquariumAudioStemFrame(
+    string ProfileId,
+    IReadOnlyList<AquariumAudioStemChannel> Channels,
+    int FrameCount,
+    int SampleRate,
+    long Sequence);
+
+public sealed record AquariumAudioStemChannel(
+    int ChannelIndex,
+    string StemId,
+    string DisplayName,
+    string SourceId,
+    float[] Samples);
+
+public interface IAquariumAudioStemBus
+{
+    void Publish(AquariumAudioStemFrame frame);
+
+    IReadOnlyList<AquariumAudioStemFrame> DrainPublishedFrames(int maxFrames = 64);
+
+    AquariumAudioStemFrame? LatestFrame(string profileId);
+}

@@ -122,7 +122,8 @@ public sealed class SynthPlaybackTests
             "six-source-faust-fractional-delay",
             "mimir_alignment_block_smoke",
             source,
-            Revision: 1);
+            Revision: 1,
+            OutputStems: [new AquariumStreamingDspOutputStem(0, "host_voice", "Host voice")]);
 
         if (!host.UpsertProgram(program))
         {
@@ -160,8 +161,33 @@ public sealed class SynthPlaybackTests
             ],
             FrameCount: 128,
             SampleRate: 48_000,
-            Sequence: 2), out var outputs));
-        Assert.All(outputs[0], sample => Assert.InRange(sample, 0.124f, 0.126f));
+            Sequence: 2), out var stemFrame));
+        Assert.Equal(program.ProfileId, stemFrame.ProfileId);
+        Assert.Single(stemFrame.Channels);
+        Assert.Equal("host_voice", stemFrame.Channels[0].StemId);
+        Assert.Equal("Host voice", stemFrame.Channels[0].DisplayName);
+        Assert.Equal("scarlett-host-mic", stemFrame.Channels[0].SourceId);
+        Assert.All(stemFrame.Channels[0].Samples, sample => Assert.InRange(sample, 0.124f, 0.126f));
+    }
+
+    [Fact]
+    public void AudioStemBusPublishesAndDrainsLatestFrames()
+    {
+        var bus = new AquariumAudioStemBus();
+        var frame = new AquariumAudioStemFrame(
+            "six-source-faust-fractional-delay",
+            [new AquariumAudioStemChannel(0, "host_voice", "Host voice", "scarlett-host-mic", [0.1f, 0.2f])],
+            FrameCount: 2,
+            SampleRate: 48_000,
+            Sequence: 4);
+
+        bus.Publish(frame);
+
+        Assert.Same(frame, bus.LatestFrame(frame.ProfileId));
+        var drained = bus.DrainPublishedFrames();
+        Assert.Single(drained);
+        Assert.Equal("host_voice", drained[0].Channels[0].StemId);
+        Assert.Empty(bus.DrainPublishedFrames());
     }
 
     [Fact]

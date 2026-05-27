@@ -10,9 +10,15 @@ internal sealed class AquariumSynthHost : IDisposable
     private readonly Dictionary<string, PatchRuntime> patches = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AquariumAudioControlFrame> latestControlFrames = new(StringComparer.Ordinal);
     private readonly AquariumStreamingDspHost streamingDsp = new();
+    private readonly IAquariumAudioStemBus audioStemBus;
     private readonly WasapiAudioDevice audioDevice = new();
     private readonly AquaSynthPatchCompiler patchCompiler = new(new AquaSynthNativeOptions(DspSourceDirectory: Path.Combine(AppContext.BaseDirectory, "Synth")));
     private float timeSeconds;
+
+    public AquariumSynthHost(IAquariumAudioStemBus? audioStemBus = null)
+    {
+        this.audioStemBus = audioStemBus ?? AquariumRuntimeServices.Empty.AudioStems;
+    }
 
     public void Update(AquariumSynthDocument synth, AquariumAudioDocument audio, float deltaSeconds)
     {
@@ -61,7 +67,7 @@ internal sealed class AquariumSynthHost : IDisposable
 
         foreach (var block in audio.DrainStreamingAudioBlocks())
         {
-            if (!streamingDsp.ProcessBlock(block, out var outputs))
+            if (!streamingDsp.ProcessBlock(block, out var stemFrame))
             {
                 if (TraceAudio)
                 {
@@ -71,7 +77,8 @@ internal sealed class AquariumSynthHost : IDisposable
                 continue;
             }
 
-            PlayMonitorOutputs(block, outputs);
+            audioStemBus.Publish(stemFrame);
+            PlayMonitorOutputs(block, stemFrame);
         }
 
         if (!synth.Enabled)
@@ -106,29 +113,38 @@ internal sealed class AquariumSynthHost : IDisposable
         }
     }
 
-    private void PlayMonitorOutputs(AquariumStreamingAudioBlock block, float[][] outputs)
+    private void PlayMonitorOutputs(AquariumStreamingAudioBlock block, AquariumAudioStemFrame stemFrame)
     {
         if (block.MonitorLeftChannel < 0 && block.MonitorRightChannel < 0)
         {
             return;
         }
 
-        var left = block.MonitorLeftChannel >= 0 && block.MonitorLeftChannel < outputs.Length
-            ? outputs[block.MonitorLeftChannel]
-            : null;
-        var right = block.MonitorRightChannel >= 0 && block.MonitorRightChannel < outputs.Length
-            ? outputs[block.MonitorRightChannel]
-            : null;
-        if (left is null && right is null)
+        var outputs = stemFrame.Channels;
+        var left = outputs.FirstOrDefault(channel => channel.ChannelIndex == block.MonitorLeftChannel)?.Samples;
+        var right = outputs.FirstOrDefault(channel => channel.ChannelIndex == block.MonitorRightChannel)?.Samples;
+        if (left is null && block.MonitorLeftChannel >= 0 && block.MonitorLeftChannel < outputs.Count)
+        {
+            left = outputs[block.MonitorLeftChannel].Samples;
+        }
+
+        if (right is null && block.MonitorRightChannel >= 0 && block.MonitorRightChannel < outputs.Count)
+        {
+            right = outputs[block.MonitorRightChannel].Samples;
+        }
+
+        var leftSamples = left;
+        var rightSamples = right;
+        if (leftSamples is null && rightSamples is null)
         {
             return;
         }
 
-        var frameCount = Math.Min(block.FrameCount, Math.Max(left?.Length ?? 0, right?.Length ?? 0));
+        var frameCount = Math.Min(block.FrameCount, Math.Max(leftSamples?.Length ?? 0, rightSamples?.Length ?? 0));
         var mono = new float[frameCount];
         for (var index = 0; index < frameCount; index++)
         {
-            mono[index] = Math.Clamp(((left?[index] ?? 0.0f) + (right?[index] ?? 0.0f)) * 0.5f, -1.0f, 1.0f);
+            mono[index] = Math.Clamp(((leftSamples?[index] ?? 0.0f) + (rightSamples?[index] ?? 0.0f)) * 0.5f, -1.0f, 1.0f);
         }
 
         audioDevice.Play(mono, block.SampleRate);

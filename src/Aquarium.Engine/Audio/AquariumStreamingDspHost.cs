@@ -47,7 +47,7 @@ internal sealed class AquariumStreamingDspHost : IDisposable
             old.Dispose();
         }
 
-        programs[program.ProfileId] = new StreamingProgramRuntime(program.Revision, patch, stream);
+        programs[program.ProfileId] = new StreamingProgramRuntime(program.Revision, patch, stream, program.OutputStems ?? []);
         LastError = null;
         return true;
     }
@@ -82,9 +82,9 @@ internal sealed class AquariumStreamingDspHost : IDisposable
         return true;
     }
 
-    public bool ProcessBlock(AquariumStreamingAudioBlock block, out float[][] outputs)
+    public bool ProcessBlock(AquariumStreamingAudioBlock block, out AquariumAudioStemFrame stemFrame)
     {
-        outputs = [];
+        stemFrame = new AquariumAudioStemFrame(block.ProfileId, [], block.FrameCount, block.SampleRate, block.Sequence);
         if (!programs.TryGetValue(block.ProfileId, out var runtime))
         {
             LastError = $"Streaming DSP program `{block.ProfileId}` is not loaded.";
@@ -109,15 +109,47 @@ internal sealed class AquariumStreamingDspHost : IDisposable
             Array.Copy(channel.Samples, 0, inputs[channel.ChannelIndex], 0, Math.Min(block.FrameCount, channel.Samples.Length));
         }
 
-        outputs = new float[outputCount][];
+        var outputs = new float[outputCount][];
         for (var channel = 0; channel < outputCount; channel++)
         {
             outputs[channel] = new float[block.FrameCount];
         }
 
         runtime.Stream.ProcessBlock(inputs, outputs, block.FrameCount);
+        stemFrame = new AquariumAudioStemFrame(
+            block.ProfileId,
+            BuildOutputChannels(runtime.OutputStems, outputs, block.Channels),
+            block.FrameCount,
+            block.SampleRate,
+            block.Sequence);
         LastError = null;
         return true;
+    }
+
+    private static IReadOnlyList<AquariumAudioStemChannel> BuildOutputChannels(
+        IReadOnlyList<AquariumStreamingDspOutputStem> declaredStems,
+        float[][] outputs,
+        IReadOnlyList<AquariumStreamingAudioChannel> inputs)
+    {
+        var channels = new List<AquariumAudioStemChannel>(outputs.Length);
+        for (var outputIndex = 0; outputIndex < outputs.Length; outputIndex++)
+        {
+            var declaration = declaredStems.FirstOrDefault(stem => stem.ChannelIndex == outputIndex);
+            var inputSource = inputs.FirstOrDefault(input => input.ChannelIndex == outputIndex)?.SourceId ?? "";
+            var stemId = string.IsNullOrWhiteSpace(declaration?.StemId)
+                ? $"output{outputIndex}"
+                : declaration!.StemId;
+            var displayName = string.IsNullOrWhiteSpace(declaration?.DisplayName)
+                ? stemId
+                : declaration!.DisplayName;
+            var sourceId = string.IsNullOrWhiteSpace(declaration?.SourceId)
+                ? inputSource
+                : declaration!.SourceId;
+
+            channels.Add(new AquariumAudioStemChannel(outputIndex, stemId, displayName, sourceId, outputs[outputIndex]));
+        }
+
+        return channels;
     }
 
     public void Dispose()
@@ -134,7 +166,8 @@ internal sealed class AquariumStreamingDspHost : IDisposable
     private sealed class StreamingProgramRuntime(
         int revision,
         AquaSynthCompiledPatch patch,
-        AquaSynthStreamingPatch stream)
+        AquaSynthStreamingPatch stream,
+        IReadOnlyList<AquariumStreamingDspOutputStem> outputStems)
         : IDisposable
     {
         public int Revision { get; } = revision;
@@ -142,6 +175,8 @@ internal sealed class AquariumStreamingDspHost : IDisposable
         public AquaSynthCompiledPatch Patch { get; } = patch;
 
         public AquaSynthStreamingPatch Stream { get; } = stream;
+
+        public IReadOnlyList<AquariumStreamingDspOutputStem> OutputStems { get; } = outputStems;
 
         public void Dispose()
         {

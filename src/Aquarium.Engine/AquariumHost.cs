@@ -30,6 +30,7 @@ public static class AquariumHost
         using var window = Win32Window.Create("Fensalir", width, height, input, iconPath, splashPath, visible: !runtime.Options.Headless);
         window.PaintSplash("Fensalir", "Preparing runtime state");
         AquariumSynthHost? synthHost = null;
+        var audioStemBus = new AquariumAudioStemBus();
         using var renderer = CreateRenderer(
             window.Handle,
             window.ClientWidth,
@@ -38,7 +39,7 @@ public static class AquariumHost
             runtime.RenderPlan,
             runtime.GraphicsSettings,
             message => window.PaintSplash("Fensalir", message));
-        AttachRuntimeServices(runtimeLoader.Runtime, renderer);
+        AttachRuntimeServices(runtimeLoader.Runtime, renderer, audioStemBus);
         renderer.DebugUiVisible = !runtime.Options.Headless && ParseDebugUiVisible(args);
         var settingsRuntime = runtimeLoader.Runtime;
 
@@ -83,7 +84,7 @@ public static class AquariumHost
                 if (!ReferenceEquals(settingsRuntime, runtimeLoader.Runtime))
                 {
                     settingsRuntime = runtimeLoader.Runtime;
-                    AttachRuntimeServices(settingsRuntime, renderer);
+                    AttachRuntimeServices(settingsRuntime, renderer, audioStemBus);
                     renderer.ApplyGraphicsSettings(settingsRuntime.GraphicsSettings);
                 }
 
@@ -105,7 +106,7 @@ public static class AquariumHost
                     {
                         activeRuntime.OnSceneReady();
                         sceneReadyRuntime = activeRuntime;
-                        synthHost ??= new AquariumSynthHost();
+                        synthHost ??= new AquariumSynthHost(audioStemBus);
                         lastFrame = frameClock.Elapsed;
                     }
                 }
@@ -297,11 +298,14 @@ public static class AquariumHost
         return new D3D12Renderer(windowHandle, width, height, shaderPath, renderPlan, graphicsSettings, startupProgress);
     }
 
-    private static void AttachRuntimeServices(IAquariumRuntime runtime, IAquariumRenderer renderer)
+    private static void AttachRuntimeServices(
+        IAquariumRuntime runtime,
+        IAquariumRenderer renderer,
+        IAquariumAudioStemBus audioStemBus)
     {
         if (runtime is IAquariumRuntimeServicesReceiver receiver)
         {
-            receiver.AttachServices(new AquariumRuntimeServices(renderer));
+            receiver.AttachServices(new AquariumRuntimeServices(renderer, audioStemBus));
         }
     }
 

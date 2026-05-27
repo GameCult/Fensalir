@@ -113,8 +113,10 @@ next_actions:
     until a real planar copy path exists; GPU producers can still write NV12
     leases directly. This makes imported handles an edge case, not the primary
     live camera authority. Missing or unresolved TubeField ramps bind a Fensalir-owned linear fallback ramp.
-    Camera texture claims can therefore resolve resources before a selected
-    visual-fusion lowering exists. TubeField compute now
+    Camera texture claims can therefore resolve resources, but their first
+    visual use stays debug-view-only for now; production visual-fusion and
+    feature-extraction lowerings are deferred until the renderer and audio work
+    are fixed. TubeField compute now
     emits one GPU-resident D3D12 DrawIndexed indirect argument packet per
     material/resource batch, and render binds the batch source/ramp state then
     executes the packet with ExecuteIndirect. The first material is opaque field

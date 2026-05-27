@@ -159,8 +159,8 @@ TubeFieldVertex MakeTubeVertex(float3 position, float3 previous, float3 start, f
     vertex.shapeData = float4(side, endpointT, capSign, 0.0);
     vertex.radiusData = float4(radius, radius, tubeMaterial.w, 0.0);
     vertex.color = float4(rampColor, tubeMaterial.z);
-    vertex.material = float4(max(value * value * tubeDispatch.x, 0.0), tubeMaterial.z, 0.55, 0.55);
-    vertex.tubeData = float4((float)logicalColumn, x0, x1, tubeDispatch.x);
+    vertex.material = float4(max(tubeDispatch.x, 0.0), tubeMaterial.z, 0.55, 0.55);
+    vertex.tubeData = float4((float)logicalColumn, x0, x1, tubeDraw.z);
     return vertex;
 }
 
@@ -472,13 +472,13 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
         discard;
     }
 
-    float emission = value * value * max(input.tubeData.w, 0.0);
+    float emission = value * value * max(input.material.x, 0.0);
     float3 color = rampColor * emission * glowFacing * claimCoverage;
     float travel = lerp(input.segmentTravel.x, input.segmentTravel.y, closestT);
 
     SceneOut output;
     output.colorTravel = float4(color, min(travel, farDistance + 1.0));
-    output.metadata = float4(5100.0, sampleX, sdf, radiusPx);
+    output.metadata = float4(input.tubeData.w, sampleX, sdf, radiusPx);
     output.control = float4(claimCoverage, coverage, saturate(radiusPx / 32.0), value);
     output.reservoirGuide = float4(claimCoverage, 0.0, coverage, value);
     output.depth = saturate(travel / max(farDistance, 0.0001));

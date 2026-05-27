@@ -2410,13 +2410,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
             activeTubeFieldTruncatedSegments += requestedSegments - dispatchSegments;
             var startIndex = segmentBase * 6;
+            var fieldId = StableFieldId(lowering.ClaimKey, 5100.0f, 4096);
             var constants = new D3D12TubeFieldConstants(
                 new Vector4(normalized.Width, normalized.Height, normalized.StrideBytes, normalized.FirstColumn),
                 new Vector4(normalized.ColumnCount, normalized.ColumnStride, normalized.RollingModulo, normalized.RollingOffset),
                 new Vector4(normalized.AmplitudePower, normalized.AmplitudeScale, normalized.NormalizeMin, normalized.NormalizeMax),
                 new Vector4(normalized.BaseRadius, normalized.RadiusScale, normalized.Alpha, normalized.Feather),
                 new Vector4(normalized.EmissionScale, normalized.CatmullRomSubdivisions, segmentBase, dispatchSegments),
-                new Vector4(tubeFieldDrawBatches.Count * GeneratedMeshDrawArgumentUIntCount, startIndex, 0.0f, 0.0f),
+                new Vector4(tubeFieldDrawBatches.Count * GeneratedMeshDrawArgumentUIntCount, startIndex, fieldId, 0.0f),
                 normalized.Origin,
                 0.0f,
                 normalized.AxisStep,
@@ -3038,6 +3039,18 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
         var result = value % modulus;
         return result < 0 ? result + modulus : result;
+    }
+
+    private static float StableFieldId(string key, float familyBase, int familyRange)
+    {
+        var hash = 2166136261u;
+        foreach (var character in key)
+        {
+            hash ^= character;
+            hash *= 16777619u;
+        }
+
+        return familyBase + hash % (uint)Math.Max(1, familyRange);
     }
 
     private static float[] FlattenTextureSamples(AquariumBufferFieldFrame frame)

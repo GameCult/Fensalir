@@ -4,8 +4,8 @@
   "repoPath": "E:\\Projects\\Fensalir",
   "artifactDir": "E:\\Projects\\Fensalir\\.voidbot\\birth",
   "logPath": "E:\\Projects\\Fensalir\\.voidbot\\logs\\voidbot-face-birth.log",
-  "error": "cargo exited with 101",
-  "startedAt": "2026-05-26T20:24:39.491Z",
-  "failedAt": "2026-05-26T20:24:39.676Z",
-  "updatedAt": "2026-05-26T20:24:39.676Z"
+  "error": "cargo exited with 1",
+  "startedAt": "2026-05-27T17:50:48.712Z",
+  "failedAt": "2026-05-27T17:50:51.745Z",
+  "updatedAt": "2026-05-27T17:50:51.745Z"
 }

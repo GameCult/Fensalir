@@ -551,7 +551,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
             $"domains {activeFieldEvidenceFrame.Domains.Count} / claims {activeFieldEvidenceFrame.Claims.Count} / " +
             $"resources {activeFieldEvidenceFrame.Resources.Count} resolved {activeFieldResourceStats.Resolved} unsupported {activeFieldResourceStats.Unsupported} / " +
             $"candidates {activeFieldEvidenceFrame.Candidates.Count} / packets {activeFieldEvidenceFrame.BackendPackets.Count} / " +
-            $"planned {activeFieldLoweringPlan.Packets.Count} / deferred {activeFieldLoweringPlan.DeferredRequests.Count} / errors {errorCount}";
+            $"planned {activeFieldLoweringPlan.Packets.Count} / deferred {activeFieldLoweringPlan.DeferredRequests.Count} / errors {errorCount}" +
+            (activeFieldEvidenceFrame.TubeSplineLowerings.Count > 0
+                ? $" / tube requested {activeTubeFieldRequestedSegments} dispatched {activeTubeFieldDispatchedSegments} truncated {activeTubeFieldTruncatedSegments} uploads {activeFieldResourceUploadCount} skipped {activeFieldResourceUploadSkippedCount} unplanned {activeTubeFieldUnplannedLowerings}"
+                : string.Empty);
     }
 
     private void UpdateTerminalInputFromDisplay(string value)

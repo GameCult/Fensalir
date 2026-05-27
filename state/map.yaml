@@ -97,8 +97,12 @@ next_actions:
     executes the packet with ExecuteIndirect. The first material is opaque field
     geometry with squared normalized emission, fake Fresnel center-bright/
     edge-dark shaping, and requested/dispatched/truncated/indirect-draw segment
-    reporting. SurfacePage resources now have a first resolver: contracts and
-    DSL can declare GPU-resident 2D pages with width, height, format, version,
+    reporting. The debug field-evidence summary exposes TubeField requested,
+    dispatched, truncated, upload, skipped-upload, and unplanned-lowering
+    counts so client-side subdivision budgets can be tuned from the live
+    renderer result instead of guessed. SurfacePage resources now have a first
+    resolver: contracts and DSL can declare GPU-resident 2D pages with width,
+    height, format, version,
     and optional local source, and the D3D12 registry allocates/imports them as
     shader-readable page textures. VolumeTexture resources now have the same
     first resolver shape: contracts and DSL can declare GPU-resident 3D

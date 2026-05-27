@@ -93,7 +93,10 @@ next_actions:
     D3D12 upload, SRV binding, and TubeField ramp lookup by resource key;
     shared GPU Texture2D declarations with native D3D12 handles resolve through
     the same field resource registry, using Mimir video format names such as
-    Bgra8, Gray8, Rg8, Nv12, and LeapStereoIr as DXGI format input. Fensalir
+    Bgra8, Gray8, Rg8, Nv12, and LeapStereoIr as DXGI format input. The direct
+    Mimir MF shape is now proven at resolver level: a D3D11 NT shared
+    keyed-mutex BGRA texture can be opened by Fensalir's D3D12 registry as a
+    shader-readable Texture2D. Fensalir
     also exposes the first engine-owned texture lease broker through
     `AquariumRuntimeServices`: client runtimes can request keyed D3D12
     Texture2D leases, receive shared texture and producer-fence handles, then

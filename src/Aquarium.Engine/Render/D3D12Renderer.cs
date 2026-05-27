@@ -1430,6 +1430,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         backBuffer.Transition(activeCommandList, ResourceStates.CopySource);
         programOutputTexture.Transition(activeCommandList, ResourceStates.CopyDest);
         activeCommandList.CopyResource(programOutputTexture.Resource, backBuffer.Resource);
+        programOutputTexture.Transition(activeCommandList, ResourceStates.Common);
     }
 
     private void DisposeProgramOutputTexture()

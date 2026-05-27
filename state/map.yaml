@@ -82,6 +82,11 @@ invariants:
     owns an `IAquariumAudioStemBus` service for published processed stems,
     optional monitor playback is explicit, and OBS-facing publication remains
     a later host cut.
+  - The named D3D12 program-output texture is an external publication surface.
+    After copying the completed backbuffer into it, the renderer must leave the
+    resource in `Common` so OBS/EVE/native consumers can transition it for
+    GPU-side reads without inheriting Fensalir's internal copy-destination
+    state.
 
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.

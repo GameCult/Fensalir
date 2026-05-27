@@ -228,7 +228,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly Dictionary<string, ExternalProducerFenceSlot> externalProducerFences = new(StringComparer.Ordinal);
     private readonly List<D3D12TrackedResource> programOutputTextures = [];
     private readonly List<IntPtr> programOutputSharedHandles = [];
+    private ID3D12Fence? programOutputFence;
     private IntPtr programOutputFenceSharedHandle;
+    private ulong programOutputFenceValue;
+    private ulong pendingProgramOutputFenceValue;
     private readonly bool programOutputEnabled;
     private readonly string programOutputSharedName;
     private readonly string programOutputFenceName;
@@ -405,8 +408,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
         commandList = device.CreateCommandList<ID3D12GraphicsCommandList>(0, CommandListType.Direct, frames[frameIndex].CommandAllocator, null);
         commandList.Name = "Aquarium D3D12 Graphics Command List";
         commandList.Close();
-        fence = device.CreateFence(0, programOutputEnabled ? FenceFlags.Shared : FenceFlags.None);
+        fence = device.CreateFence(0);
         fence.Name = "Aquarium D3D12 Frame Fence";
+        if (programOutputEnabled)
+        {
+            programOutputFence = device.CreateFence(0, FenceFlags.Shared);
+            programOutputFence.Name = "Aquarium D3D12 Program Output Fence";
+        }
+
         CreateProgramOutputFenceHandle();
         commandQueue.ExecuteCommandList(commandList);
         WaitForGpu();
@@ -945,6 +954,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var recordCpuMilliseconds = ElapsedMilliseconds(recordCpuStart);
 
         commandQueue.ExecuteCommandList(commandList);
+        SignalProgramOutputPublication();
         var overlayCpuStart = Stopwatch.GetTimestamp();
         RenderOverlay(frame, frameResources);
         var overlayCpuMilliseconds = ElapsedMilliseconds(overlayCpuStart);
@@ -1150,7 +1160,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         DisposeHistoryRenderTargets();
         DisposeGraphRenderTargets();
         DisposeProgramOutputTexture();
-        DisposeProgramOutputFenceHandle();
+        DisposeProgramOutputFence();
         sceneRenderTarget.Dispose();
         sceneMetadataRenderTarget.Dispose();
         sceneControlRenderTarget.Dispose();
@@ -1466,8 +1476,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         DisposeProgramOutputFenceHandle();
+        if (programOutputFence is null)
+        {
+            return;
+        }
+
         programOutputFenceSharedHandle = device.CreateSharedHandle(
-            fence,
+            programOutputFence,
             null,
             programOutputFenceName);
         Console.WriteLine($"D3D12 program output shared fence: name={programOutputFenceName}");
@@ -1480,13 +1495,26 @@ public sealed class D3D12Renderer : IAquariumRenderer
             return;
         }
 
-        var publishedFenceValue = fenceValue + 1;
+        var publishedFenceValue = programOutputFenceValue + 1;
         var slot = (int)(publishedFenceValue % (ulong)programOutputTextures.Count);
         var programOutputTexture = programOutputTextures[slot];
         backBuffer.Transition(activeCommandList, ResourceStates.CopySource);
         programOutputTexture.Transition(activeCommandList, ResourceStates.CopyDest);
         activeCommandList.CopyResource(programOutputTexture.Resource, backBuffer.Resource);
         programOutputTexture.Transition(activeCommandList, ResourceStates.Common);
+        pendingProgramOutputFenceValue = publishedFenceValue;
+    }
+
+    private void SignalProgramOutputPublication()
+    {
+        if (programOutputFence is null || pendingProgramOutputFenceValue == 0)
+        {
+            return;
+        }
+
+        commandQueue.Signal(programOutputFence, pendingProgramOutputFenceValue).CheckError();
+        programOutputFenceValue = pendingProgramOutputFenceValue;
+        pendingProgramOutputFenceValue = 0;
     }
 
     private void DisposeProgramOutputTexture()
@@ -1515,6 +1543,15 @@ public sealed class D3D12Renderer : IAquariumRenderer
             CloseHandle(programOutputFenceSharedHandle);
             programOutputFenceSharedHandle = IntPtr.Zero;
         }
+    }
+
+    private void DisposeProgramOutputFence()
+    {
+        DisposeProgramOutputFenceHandle();
+        programOutputFence?.Dispose();
+        programOutputFence = null;
+        programOutputFenceValue = 0;
+        pendingProgramOutputFenceValue = 0;
     }
 
     private D3D12CubeTexture LoadStudioPmremTexture()

@@ -132,7 +132,11 @@ next_actions:
     Field evidence now carries explicit Float32 resource uploads separate from
     resource declarations. D3D12 uploads those frame samples into resolved
     structured buffers before TubeField compute reads them, so a Fensalir-owned
-    GPU resource can be live data rather than paperwork.
+    GPU resource can be live data rather than paperwork. Structured buffer
+    declaration version is content freshness, not buffer-shape authority:
+    D3D12FieldResourceRegistry now reuses an existing structured buffer when
+    element count, stride, and access are unchanged, updating the recorded
+    version without reallocating GPU memory every frame.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

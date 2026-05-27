@@ -387,9 +387,9 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         if (hasExisting && existing is not null &&
             existing.ElementCount == elementCount &&
             existing.StrideBytes == strideBytes &&
-            existing.AllowUnorderedAccess == allowUnorderedAccess &&
-            existing.Version == declaration.Version)
+            existing.AllowUnorderedAccess == allowUnorderedAccess)
         {
+            structuredBuffers[declaration.ResourceKey] = existing with { Version = declaration.Version };
             return true;
         }
 

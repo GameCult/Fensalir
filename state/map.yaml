@@ -93,8 +93,13 @@ next_actions:
     D3D12 upload, SRV binding, and TubeField ramp lookup by resource key;
     shared GPU Texture2D declarations with native D3D12 handles resolve through
     the same field resource registry, using Mimir video format names such as
-    Bgra8, Gray8, Rg8, Nv12, and LeapStereoIr as DXGI format input. Missing or
-    unresolved TubeField ramps bind a Fensalir-owned linear fallback ramp.
+    Bgra8, Gray8, Rg8, Nv12, and LeapStereoIr as DXGI format input. Fensalir
+    also exposes the first engine-owned texture lease broker through
+    `AquariumRuntimeServices`: client runtimes can request keyed D3D12
+    Texture2D leases, receive shared texture and producer-fence handles, then
+    commit producer fence values so the renderer waits before shader sampling.
+    This makes imported handles an edge case, not the primary live camera
+    authority. Missing or unresolved TubeField ramps bind a Fensalir-owned linear fallback ramp.
     Camera texture claims can therefore resolve resources before a selected
     visual-fusion lowering exists. TubeField compute now
     emits one GPU-resident D3D12 DrawIndexed indirect argument packet per

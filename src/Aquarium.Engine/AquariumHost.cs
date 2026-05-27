@@ -38,6 +38,7 @@ public static class AquariumHost
             runtime.RenderPlan,
             runtime.GraphicsSettings,
             message => window.PaintSplash("Fensalir", message));
+        AttachRuntimeServices(runtimeLoader.Runtime, renderer);
         renderer.DebugUiVisible = !runtime.Options.Headless && ParseDebugUiVisible(args);
         var settingsRuntime = runtimeLoader.Runtime;
 
@@ -82,6 +83,7 @@ public static class AquariumHost
                 if (!ReferenceEquals(settingsRuntime, runtimeLoader.Runtime))
                 {
                     settingsRuntime = runtimeLoader.Runtime;
+                    AttachRuntimeServices(settingsRuntime, renderer);
                     renderer.ApplyGraphicsSettings(settingsRuntime.GraphicsSettings);
                 }
 
@@ -293,6 +295,14 @@ public static class AquariumHost
         Action<string>? startupProgress)
     {
         return new D3D12Renderer(windowHandle, width, height, shaderPath, renderPlan, graphicsSettings, startupProgress);
+    }
+
+    private static void AttachRuntimeServices(IAquariumRuntime runtime, IAquariumRenderer renderer)
+    {
+        if (runtime is IAquariumRuntimeServicesReceiver receiver)
+        {
+            receiver.AttachServices(new AquariumRuntimeServices(renderer));
+        }
     }
 
     private static void SyncRendererSettingsToRuntime(IAquariumRenderer renderer, IAquariumRuntime runtime)

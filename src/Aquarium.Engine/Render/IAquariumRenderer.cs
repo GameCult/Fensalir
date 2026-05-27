@@ -4,7 +4,7 @@ using Aquarium.Engine.Ui;
 
 namespace Aquarium.Engine.Render;
 
-public interface IAquariumRenderer : IDisposable
+public interface IAquariumRenderer : IAquariumFieldResourceBroker, IDisposable
 {
     int RenderDebugMode { get; set; }
 

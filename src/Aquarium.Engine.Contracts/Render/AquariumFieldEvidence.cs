@@ -519,7 +519,7 @@ public readonly record struct AquariumFieldResourceDeclaration(
             SourceUri: "",
             Mesh: mesh);
 
-    private static int FormatStrideBytes(string format) =>
+    public static int FormatStrideBytes(string format) =>
         format switch
         {
             "R8Unorm" or "R8_UNorm" or "R8_UNORM" => 1,

@@ -197,6 +197,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly D3D12RenderTarget[] historyReservoirGuideRenderTargets = new D3D12RenderTarget[2];
     private readonly D3D12RenderTarget[] bloomRenderTargets = new D3D12RenderTarget[BloomLevelCount];
     private readonly D3D12RenderTarget[] bloomScratchTargets = new D3D12RenderTarget[BloomLevelCount];
+    private readonly Dictionary<string, SharedTextureLeaseSlot> sharedTextureLeases = new(StringComparer.Ordinal);
     private readonly D3D12StructuredBuffer sdfLightBuffer;
     private readonly D3D12StructuredBuffer sdfObjectBuffer;
     private readonly D3D12StructuredBuffer gpuSensorCameraBuffer;
@@ -638,6 +639,97 @@ public sealed class D3D12Renderer : IAquariumRenderer
         synthPlaygroundScript = SynthPresets[synthPlaygroundPreset].Script;
     }
 
+    public AquariumFieldResourceLease LeaseTexture2D(AquariumTexture2DLeaseRequest request)
+    {
+        if (!request.IsValid ||
+            !D3D12FieldTextureFormat.TryFormat(request.Format, out var format))
+        {
+            return AquariumFieldResourceLease.Invalid;
+        }
+
+        var width = Math.Max(1, request.Width);
+        var height = Math.Max(1, request.Height);
+        var resourceFlags = request.ProducerAccess == AquariumFieldShaderAccess.UnorderedAccess
+            ? Vortice.Direct3D12.ResourceFlags.AllowUnorderedAccess
+            : Vortice.Direct3D12.ResourceFlags.None;
+
+        if (sharedTextureLeases.TryGetValue(request.ResourceKey, out var existing) &&
+            existing.Width == width &&
+            existing.Height == height &&
+            existing.Format == format &&
+            existing.ProducerAccess == request.ProducerAccess)
+        {
+            sharedTextureLeases[request.ResourceKey] = existing with { Version = request.Version };
+            return CreateLease(request, existing);
+        }
+
+        if (existing is not null)
+        {
+            existing.Dispose();
+            sharedTextureLeases.Remove(request.ResourceKey);
+        }
+
+        try
+        {
+            var resource = device.CreateCommittedResource(
+                HeapType.Default,
+                HeapFlags.Shared,
+                ResourceDescription.Texture2D(
+                    format,
+                    (uint)width,
+                    (uint)height,
+                    1,
+                    1,
+                    1,
+                    0,
+                    resourceFlags),
+                ResourceStates.PixelShaderResource,
+                null);
+            resource.Name = $"Aquarium D3D12 Field Texture2D Lease {request.ResourceKey}";
+            var nativeHandle = device.CreateSharedHandle(resource, null, null!);
+            var producerFence = device.CreateFence(0);
+            producerFence.Name = $"Aquarium D3D12 Field Texture2D Producer Fence {request.ResourceKey}";
+            var producerFenceHandle = device.CreateSharedHandle(producerFence, null, null!);
+            var slot = new SharedTextureLeaseSlot(
+                resource,
+                producerFence,
+                nativeHandle,
+                producerFenceHandle,
+                width,
+                height,
+                format,
+                request.ProducerAccess,
+                request.Version);
+            sharedTextureLeases[request.ResourceKey] = slot;
+            return CreateLease(request, slot);
+        }
+        catch (SharpGenException)
+        {
+            return AquariumFieldResourceLease.Invalid;
+        }
+        catch (InvalidOperationException)
+        {
+            return AquariumFieldResourceLease.Invalid;
+        }
+    }
+
+    public bool CommitLeaseVersion(string resourceKey, ulong version, ulong producerFenceValue)
+    {
+        if (string.IsNullOrWhiteSpace(resourceKey) ||
+            producerFenceValue == 0 ||
+            !sharedTextureLeases.TryGetValue(resourceKey, out var slot))
+        {
+            return false;
+        }
+
+        sharedTextureLeases[resourceKey] = slot with
+        {
+            Version = version,
+            CommittedProducerFenceValue = Math.Max(slot.CommittedProducerFenceValue, producerFenceValue),
+        };
+        return true;
+    }
+
     public void Render(AquariumFrame frame, int width, int height)
     {
         var frameCpuStart = Stopwatch.GetTimestamp();
@@ -669,6 +761,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             previousJitterPixels = jitterPixels;
         }
 
+        WaitForCommittedFieldResourceLeases(frame.Scene.FieldEvidenceFrame);
         CopySceneState(frame.Scene);
         activeCameraPosition = frame.CameraPosition;
         activeCameraTarget = frame.CameraTarget;
@@ -997,6 +1090,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldFallbackRampTexture?.Dispose();
         studioIrradianceTexture.Dispose();
         studioPmremTexture.Dispose();
+        DisposeSharedTextureLeases();
         fieldResourceRegistry.Dispose();
         DisposeFractalReservoirBuffers();
         bufferFieldTextureSplineProgramBuffer?.Dispose();
@@ -1052,6 +1146,65 @@ public sealed class D3D12Renderer : IAquariumRenderer
             frames[index].BackBufferRenderTargetView = renderTargetViewArena.Allocate();
             device.CreateRenderTargetView(frames[index].BackBuffer.Resource, null, frames[index].BackBufferRenderTargetView.Cpu);
         }
+    }
+
+    private static AquariumFieldResourceLease CreateLease(
+        AquariumTexture2DLeaseRequest request,
+        SharedTextureLeaseSlot slot)
+    {
+        var declaration = new AquariumFieldResourceDeclaration(
+            ResourceKey: request.ResourceKey,
+            Kind: AquariumFieldResourceKind.Texture2D,
+            Residency: AquariumFieldResourceResidency.SharedGpu,
+            Access: AquariumFieldShaderAccess.ShaderResource,
+            Format: request.Format,
+            Width: slot.Width,
+            Height: slot.Height,
+            DepthOrCount: 1,
+            StrideBytes: AquariumFieldResourceDeclaration.FormatStrideBytes(request.Format),
+            ValidFromNs: request.ValidFromNs,
+            ValidUntilNs: request.ValidUntilNs,
+            Version: request.Version,
+            NativeHandle: slot.NativeHandle,
+            NativeHandleKind: "fensalir-owned-d3d12-texture2d");
+        return new AquariumFieldResourceLease(
+            declaration,
+            slot.NativeHandle,
+            "fensalir-owned-d3d12-texture2d",
+            slot.ProducerFenceHandle,
+            request.Version,
+            true);
+    }
+
+    private void WaitForCommittedFieldResourceLeases(AquariumFieldEvidenceFrame fieldEvidenceFrame)
+    {
+        if (!fieldEvidenceFrame.HasInput || sharedTextureLeases.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var resource in fieldEvidenceFrame.Resources)
+        {
+            if (!sharedTextureLeases.TryGetValue(resource.ResourceKey, out var slot) ||
+                slot.CommittedProducerFenceValue == 0 ||
+                slot.WaitedProducerFenceValue >= slot.CommittedProducerFenceValue)
+            {
+                continue;
+            }
+
+            commandQueue.Wait(slot.ProducerFence, slot.CommittedProducerFenceValue).CheckError();
+            slot.WaitedProducerFenceValue = slot.CommittedProducerFenceValue;
+        }
+    }
+
+    private void DisposeSharedTextureLeases()
+    {
+        foreach (var slot in sharedTextureLeases.Values)
+        {
+            slot.Dispose();
+        }
+
+        sharedTextureLeases.Clear();
     }
 
     private void CreateProgramOutputTexture()
@@ -4355,6 +4508,38 @@ public sealed class D3D12Renderer : IAquariumRenderer
             Scene.Dispose();
             HeightFieldBrush.Dispose();
             HeightFieldBase.Dispose();
+        }
+    }
+
+    private sealed record SharedTextureLeaseSlot(
+        ID3D12Resource Resource,
+        ID3D12Fence ProducerFence,
+        IntPtr NativeHandle,
+        IntPtr ProducerFenceHandle,
+        int Width,
+        int Height,
+        Format Format,
+        AquariumFieldShaderAccess ProducerAccess,
+        ulong Version) : IDisposable
+    {
+        public ulong CommittedProducerFenceValue { get; set; }
+
+        public ulong WaitedProducerFenceValue { get; set; }
+
+        public void Dispose()
+        {
+            if (ProducerFenceHandle != IntPtr.Zero)
+            {
+                CloseHandle(ProducerFenceHandle);
+            }
+
+            if (NativeHandle != IntPtr.Zero)
+            {
+                CloseHandle(NativeHandle);
+            }
+
+            ProducerFence.Dispose();
+            Resource.Dispose();
         }
     }
 

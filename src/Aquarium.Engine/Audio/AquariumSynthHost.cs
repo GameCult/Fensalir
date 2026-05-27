@@ -8,6 +8,7 @@ internal sealed class AquariumSynthHost : IDisposable
     private static readonly bool TraceAudio = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("AQUARIUM_AUDIO_TRACE"));
 
     private readonly Dictionary<string, PatchRuntime> patches = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AquariumAudioControlFrame> latestControlFrames = new(StringComparer.Ordinal);
     private readonly WasapiAudioDevice audioDevice = new();
     private readonly AquaSynthPatchCompiler patchCompiler = new(new AquaSynthNativeOptions(DspSourceDirectory: Path.Combine(AppContext.BaseDirectory, "Synth")));
     private float timeSeconds;
@@ -24,6 +25,16 @@ internal sealed class AquariumSynthHost : IDisposable
             }
 
             audioDevice.Play(chunk.MonoSamples, chunk.SampleRate, chunk.LeftGain, chunk.RightGain);
+        }
+
+        foreach (var controlFrame in audio.DrainControlFrames())
+        {
+            latestControlFrames[controlFrame.ProfileId] = controlFrame;
+            if (TraceAudio)
+            {
+                Console.WriteLine(
+                    $"Aquarium audio control: profile={controlFrame.ProfileId} reference={controlFrame.ReferenceSourceId} refHold={controlFrame.ReferenceHoldbackSamples:0.###} commands={controlFrame.Commands.Count} truncated={controlFrame.TruncatedSourceCount} seq={controlFrame.Sequence}");
+            }
         }
 
         if (!synth.Enabled)

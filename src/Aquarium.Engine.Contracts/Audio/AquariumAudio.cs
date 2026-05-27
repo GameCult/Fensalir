@@ -5,6 +5,7 @@ namespace Aquarium.Engine.Audio;
 public sealed class AquariumAudioDocument
 {
     private readonly ConcurrentQueue<AquariumPcmAudioChunk> pcmChunks = new();
+    private readonly ConcurrentQueue<AquariumAudioControlFrame> controlFrames = new();
 
     public static AquariumAudioDocument Empty { get; } = new();
 
@@ -63,6 +64,42 @@ public sealed class AquariumAudioDocument
 
         return drained;
     }
+
+    public void EnqueueControlFrame(AquariumAudioControlFrame frame)
+    {
+        if (string.IsNullOrWhiteSpace(frame.ProfileId) || frame.Commands.Count == 0)
+        {
+            return;
+        }
+
+        controlFrames.Enqueue(frame);
+    }
+
+    public IReadOnlyList<AquariumAudioControlFrame> DrainControlFrames(int maxFrames = 16)
+    {
+        var drained = new List<AquariumAudioControlFrame>();
+        while (drained.Count < maxFrames && controlFrames.TryDequeue(out var frame))
+        {
+            drained.Add(frame);
+        }
+
+        return drained;
+    }
 }
 
 public sealed record AquariumPcmAudioChunk(float[] MonoSamples, int SampleRate, float LeftGain = 1.0f, float RightGain = 1.0f);
+
+public sealed record AquariumAudioControlFrame(
+    string ProfileId,
+    string ReferenceSourceId,
+    double ReferenceHoldbackSamples,
+    IReadOnlyList<AquariumAudioControlCommand> Commands,
+    int TruncatedSourceCount,
+    long Sequence);
+
+public sealed record AquariumAudioControlCommand(
+    string SourceId,
+    double TargetDelaySamples,
+    double ResampleRatio,
+    double Confidence,
+    IReadOnlyDictionary<string, float> Controls);

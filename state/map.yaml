@@ -69,6 +69,11 @@ invariants:
     and stay there. Fensalir must pass GPU resource handles/SRVs/UAVs between
     compute and render lowerings; CPU readback or CPU tessellation is a
     diagnostic-only escape hatch, not the live TubeField path.
+  - Audio control frames are contracts, not sample movement. Client runtimes
+    may publish DSP targets through `AquariumAudioDocument`, and the engine
+    audio host may retain the latest frame, but Faust/native streaming DSP must
+    own the hot fractional-delay/resampling path before any aligned-audio claim
+    is true.
 
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.

@@ -397,7 +397,9 @@ public readonly record struct AquariumFieldResourceDeclaration(
     IntPtr NativeHandle,
     string NativeHandleKind,
     string SourceUri = "",
-    AquariumFieldMeshResource Mesh = default)
+    AquariumFieldMeshResource Mesh = default,
+    IntPtr ProducerFenceHandle = default,
+    ulong ProducerFenceValue = 0)
 {
     public bool HasIdentity => !string.IsNullOrWhiteSpace(ResourceKey);
 

@@ -98,7 +98,11 @@ next_actions:
     keyed-mutex BGRA texture can be opened by Fensalir's D3D12 registry as a
     shader-readable Texture2D. Shared Texture2D version is content freshness,
     not import identity; the registry reuses an opened shared texture when
-    handle, handle kind, dimensions, and format are unchanged. Fensalir
+    handle, handle kind, dimensions, and format are unchanged. Imported field
+    resources may now carry an external producer fence handle/value; the D3D12
+    renderer opens and waits that fence before resource resolution and shader
+    sampling, giving Mimir's D3D11 MF producer a direct synchronized path.
+    Fensalir
     also exposes the first engine-owned texture lease broker through
     `AquariumRuntimeServices`: client runtimes can request keyed D3D12
     Texture2D leases, receive shared texture and producer-fence handles, then

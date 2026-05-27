@@ -220,6 +220,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly D3D12StructuredBuffer tubeFieldDrawArgumentBuffer;
     private readonly List<D3D12TubeFieldDrawBatch> tubeFieldDrawBatches = [];
     private readonly Dictionary<string, D3D12ExternalSensorTexture> externalSensorTextures = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ExternalProducerFenceSlot> externalProducerFences = new(StringComparer.Ordinal);
     private D3D12TrackedResource? programOutputTexture;
     private IntPtr programOutputSharedHandle;
     private readonly bool programOutputEnabled;
@@ -780,7 +781,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             previousJitterPixels = jitterPixels;
         }
 
-        WaitForCommittedFieldResourceLeases(frame.Scene.FieldEvidenceFrame);
+        WaitForFieldResourceProducerFences(frame.Scene.FieldEvidenceFrame);
         CopySceneState(frame.Scene);
         activeCameraPosition = frame.CameraPosition;
         activeCameraTarget = frame.CameraTarget;
@@ -1110,6 +1111,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         studioIrradianceTexture.Dispose();
         studioPmremTexture.Dispose();
         DisposeSharedTextureLeases();
+        DisposeExternalProducerFences();
         fieldResourceRegistry.Dispose();
         DisposeFractalReservoirBuffers();
         bufferFieldTextureSplineProgramBuffer?.Dispose();
@@ -1299,25 +1301,69 @@ public sealed class D3D12Renderer : IAquariumRenderer
         };
     }
 
-    private void WaitForCommittedFieldResourceLeases(AquariumFieldEvidenceFrame fieldEvidenceFrame)
+    private void WaitForFieldResourceProducerFences(AquariumFieldEvidenceFrame fieldEvidenceFrame)
     {
-        if (!fieldEvidenceFrame.HasInput || sharedTextureLeases.Count == 0)
+        if (!fieldEvidenceFrame.HasInput)
         {
             return;
         }
 
         foreach (var resource in fieldEvidenceFrame.Resources)
         {
-            if (!sharedTextureLeases.TryGetValue(resource.ResourceKey, out var slot) ||
-                slot.CommittedProducerFenceValue == 0 ||
-                slot.WaitedProducerFenceValue >= slot.CommittedProducerFenceValue)
+            if (sharedTextureLeases.TryGetValue(resource.ResourceKey, out var slot) &&
+                slot.CommittedProducerFenceValue > 0 &&
+                slot.WaitedProducerFenceValue < slot.CommittedProducerFenceValue)
             {
-                continue;
+                commandQueue.Wait(slot.ProducerFence, slot.CommittedProducerFenceValue).CheckError();
+                slot.WaitedProducerFenceValue = slot.CommittedProducerFenceValue;
             }
 
-            commandQueue.Wait(slot.ProducerFence, slot.CommittedProducerFenceValue).CheckError();
-            slot.WaitedProducerFenceValue = slot.CommittedProducerFenceValue;
+            WaitForExternalProducerFence(resource);
         }
+    }
+
+    private void WaitForExternalProducerFence(AquariumFieldResourceDeclaration resource)
+    {
+        if (resource.ProducerFenceHandle == IntPtr.Zero ||
+            resource.ProducerFenceValue == 0)
+        {
+            return;
+        }
+
+        if (externalProducerFences.TryGetValue(resource.ResourceKey, out var slot) &&
+            slot.Handle != resource.ProducerFenceHandle)
+        {
+            slot.Dispose();
+            externalProducerFences.Remove(resource.ResourceKey);
+            slot = null;
+        }
+
+        if (slot is null)
+        {
+            try
+            {
+                slot = new ExternalProducerFenceSlot(
+                    device.OpenSharedHandle<ID3D12Fence>(resource.ProducerFenceHandle),
+                    resource.ProducerFenceHandle);
+                externalProducerFences[resource.ResourceKey] = slot;
+            }
+            catch (SharpGenException)
+            {
+                return;
+            }
+            catch (InvalidOperationException)
+            {
+                return;
+            }
+        }
+
+        if (slot.WaitedValue >= resource.ProducerFenceValue)
+        {
+            return;
+        }
+
+        commandQueue.Wait(slot.Fence, resource.ProducerFenceValue).CheckError();
+        slot.WaitedValue = resource.ProducerFenceValue;
     }
 
     private void DisposeSharedTextureLeases()
@@ -1328,6 +1374,16 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         sharedTextureLeases.Clear();
+    }
+
+    private void DisposeExternalProducerFences()
+    {
+        foreach (var slot in externalProducerFences.Values)
+        {
+            slot.Dispose();
+        }
+
+        externalProducerFences.Clear();
     }
 
     private void CreateProgramOutputTexture()
@@ -4663,6 +4719,20 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
             ProducerFence.Dispose();
             Resource.Dispose();
+        }
+    }
+
+    private sealed class ExternalProducerFenceSlot(ID3D12Fence fence, IntPtr handle) : IDisposable
+    {
+        public ID3D12Fence Fence { get; } = fence;
+
+        public IntPtr Handle { get; } = handle;
+
+        public ulong WaitedValue { get; set; }
+
+        public void Dispose()
+        {
+            Fence.Dispose();
         }
     }
 

@@ -54,6 +54,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const string ProgramOutputEnabledEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_D3D12";
     private const string ProgramOutputSharedNameEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_NAME";
     private const string ProgramOutputFenceNameEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_FENCE_NAME";
+    private const string ProgramOutputConsumerFenceNameEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_CONSUMER_FENCE_NAME";
     private const string ProgramOutputRingCountEnvironmentVariable = "FENSALIR_PROGRAM_OUTPUT_RING_COUNT";
     private const string DefaultProgramOutputSharedName = "Global\\MimirFensalirProgramTexture";
     private const string DefaultProgramOutputFenceName = "Global\\MimirFensalirProgramFence";
@@ -228,13 +229,17 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly Dictionary<string, ExternalProducerFenceSlot> externalProducerFences = new(StringComparer.Ordinal);
     private readonly List<D3D12TrackedResource> programOutputTextures = [];
     private readonly List<IntPtr> programOutputSharedHandles = [];
+    private readonly List<ulong> programOutputTextureFenceValues = [];
     private ID3D12Fence? programOutputFence;
+    private ID3D12Fence? programOutputConsumerFence;
     private IntPtr programOutputFenceSharedHandle;
     private ulong programOutputFenceValue;
     private ulong pendingProgramOutputFenceValue;
+    private long nextProgramOutputConsumerFenceRetryTimestamp;
     private readonly bool programOutputEnabled;
     private readonly string programOutputSharedName;
     private readonly string programOutputFenceName;
+    private readonly string programOutputConsumerFenceName;
     private readonly int programOutputRingCount;
     private readonly D3D12CubeTexture studioPmremTexture;
     private readonly D3D12CubeTexture studioIrradianceTexture;
@@ -331,6 +336,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         programOutputFenceName = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ProgramOutputFenceNameEnvironmentVariable))
             ? DefaultProgramOutputFenceName
             : Environment.GetEnvironmentVariable(ProgramOutputFenceNameEnvironmentVariable)!.Trim();
+        programOutputConsumerFenceName = Environment.GetEnvironmentVariable(ProgramOutputConsumerFenceNameEnvironmentVariable)?.Trim() ?? string.Empty;
         programOutputRingCount = ResolveProgramOutputRingCount();
         var activeRenderPlan = renderPlan ?? new AquariumRenderPlan();
         renderGraph = D3D12RenderGraphCompiler.Compile(activeRenderPlan);
@@ -1428,6 +1434,67 @@ public sealed class D3D12Renderer : IAquariumRenderer
             : string.Create(CultureInfo.InvariantCulture, $"{programOutputSharedName}.{slot}");
     }
 
+    private void TryOpenProgramOutputConsumerFence()
+    {
+        if (programOutputConsumerFence is not null || string.IsNullOrWhiteSpace(programOutputConsumerFenceName))
+        {
+            return;
+        }
+
+        var now = Stopwatch.GetTimestamp();
+        if (now < nextProgramOutputConsumerFenceRetryTimestamp)
+        {
+            return;
+        }
+
+        nextProgramOutputConsumerFenceRetryTimestamp = now + Stopwatch.Frequency;
+        try
+        {
+            var sharedHandle = device.OpenSharedHandleByName(programOutputConsumerFenceName);
+            try
+            {
+                programOutputConsumerFence = device.OpenSharedHandle<ID3D12Fence>(sharedHandle);
+                programOutputConsumerFence.Name = "Aquarium D3D12 Program Output Consumer Fence";
+                Console.WriteLine($"D3D12 program output consumer fence opened: name={programOutputConsumerFenceName}");
+            }
+            finally
+            {
+                CloseHandle(sharedHandle);
+            }
+        }
+        catch (SharpGenException)
+        {
+            // OBS may start after Fensalir. Retry quietly; the fence is an optional
+            // overwrite-prevention contract, not a startup dependency.
+        }
+    }
+
+    private bool TrySelectProgramOutputSlot(ulong publishedFenceValue, out int slot)
+    {
+        slot = (int)(publishedFenceValue % (ulong)programOutputTextures.Count);
+        if (programOutputConsumerFence is null)
+        {
+            return true;
+        }
+
+        var consumerCompletedValue = programOutputConsumerFence.CompletedValue;
+        if (programOutputTextureFenceValues[slot] <= consumerCompletedValue)
+        {
+            return true;
+        }
+
+        for (var candidate = 0; candidate < programOutputTextureFenceValues.Count; candidate++)
+        {
+            if (programOutputTextureFenceValues[candidate] <= consumerCompletedValue)
+            {
+                slot = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void CreateProgramOutputTexture()
     {
         if (!programOutputEnabled)
@@ -1464,6 +1531,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 slotName);
             programOutputTextures.Add(tracked);
             programOutputSharedHandles.Add(sharedHandle);
+            programOutputTextureFenceValues.Add(0);
             Console.WriteLine($"D3D12 program output shared texture: name={slotName} slot={slot}/{programOutputRingCount} size={width}x{height}");
         }
     }
@@ -1496,13 +1564,19 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         var publishedFenceValue = programOutputFenceValue + 1;
-        var slot = (int)(publishedFenceValue % (ulong)programOutputTextures.Count);
+        TryOpenProgramOutputConsumerFence();
+        if (!TrySelectProgramOutputSlot(publishedFenceValue, out var slot))
+        {
+            return;
+        }
+
         var programOutputTexture = programOutputTextures[slot];
         backBuffer.Transition(activeCommandList, ResourceStates.CopySource);
         programOutputTexture.Transition(activeCommandList, ResourceStates.CopyDest);
         activeCommandList.CopyResource(programOutputTexture.Resource, backBuffer.Resource);
         programOutputTexture.Transition(activeCommandList, ResourceStates.Common);
         pendingProgramOutputFenceValue = publishedFenceValue;
+        programOutputTextureFenceValues[slot] = publishedFenceValue;
     }
 
     private void SignalProgramOutputPublication()
@@ -1534,6 +1608,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         programOutputTextures.Clear();
+        programOutputTextureFenceValues.Clear();
     }
 
     private void DisposeProgramOutputFenceHandle()
@@ -1550,8 +1625,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
         DisposeProgramOutputFenceHandle();
         programOutputFence?.Dispose();
         programOutputFence = null;
+        programOutputConsumerFence?.Dispose();
+        programOutputConsumerFence = null;
         programOutputFenceValue = 0;
         pendingProgramOutputFenceValue = 0;
+        nextProgramOutputConsumerFenceRetryTimestamp = 0;
     }
 
     private D3D12CubeTexture LoadStudioPmremTexture()

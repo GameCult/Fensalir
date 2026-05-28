@@ -64,6 +64,7 @@ struct FieldReservoirCandidate
 StructuredBuffer<FieldReservoirCandidate> fieldReservoirCandidates : register(t45);
 StructuredBuffer<FieldReservoirCandidate> reservoirHistoryRead : register(t51);
 RWStructuredBuffer<FieldReservoirCandidate> reservoirHistoryWrite : register(u22);
+RWTexture2D<float4> reservoirResolvedTexture : register(u23);
 
 static const uint FieldReservoirSlotsPerPixel = 4u;
 
@@ -641,22 +642,23 @@ FieldReservoirResolveOut D3D12FieldReservoirResolvePS(VertexOut input)
     return output;
 }
 
-// Reservoir presentation resolve owns temporal reconstruction. The history
-// textures below are cache lines for validated reservoir evidence, not a
-// separate final-pixel TAA authority.
-ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
+[numthreads(8, 8, 1)]
+void D3D12ReservoirHistoryUpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
-    float2 screenUv = float2(input.uv.x, 1.0 - input.uv.y);
-    float2 pixel = screenUv * resolution;
     uint2 dimensions = (uint2)max(resolution, float2(1.0, 1.0));
-    uint2 currentPixel = min((uint2)max(pixel, float2(0.0, 0.0)), dimensions - 1u);
+    if (dispatchThreadId.x >= dimensions.x || dispatchThreadId.y >= dimensions.y)
+    {
+        return;
+    }
+
+    uint2 currentPixel = dispatchThreadId.xy;
+    float2 uv = (float2(currentPixel) + 0.5) / float2(dimensions);
+    float2 pixel = float2(currentPixel);
     uint pixelIndex = currentPixel.y * dimensions.x + currentPixel.x;
     uint baseIndex = pixelIndex * FieldReservoirSlotsPerPixel;
-    FieldReservoirCandidate sceneCandidate = sceneFieldReservoirCandidate(input.uv);
+    FieldReservoirCandidate sceneCandidate = sceneFieldReservoirCandidate(uv);
     FieldReservoirCandidate bestResolved = emptyFieldReservoirCandidate();
     float bestPriority = 1.0e20;
-    float combinedHistoryWeight = 0.0;
-    float combinedHistoryAge = 0.0;
     bool hasSharedCandidate = false;
 
     [unroll]
@@ -679,7 +681,7 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
         FieldReservoirCandidate resolvedCandidate = resolveReservoirHistoryCandidate(
             currentCandidate,
             pixel,
-            input.uv,
+            uv,
             slotHistoryWeight,
             slotHistoryAge);
         reservoirHistoryWrite[baseIndex + slot] = resolvedCandidate;
@@ -692,8 +694,6 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
         {
             bestResolved = resolvedCandidate;
             bestPriority = priority;
-            combinedHistoryWeight = slotHistoryWeight;
-            combinedHistoryAge = slotHistoryAge;
         }
     }
 
@@ -702,33 +702,39 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
         bestResolved = sceneCandidate;
     }
 
-    float3 rawCurrentColor = sceneCandidate.colorTravel.rgb;
-    float3 currentColor = bestResolved.colorTravel.rgb;
-    float currentCoverage = saturate(bestResolved.control.x);
-    float currentStepRatio = saturate(bestResolved.control.y);
-    float currentTemporalDetail = saturate(bestResolved.control.z);
-    float currentFieldId = bestResolved.metadata.x;
-    float currentReservoirConfidence = reservoirCandidateConfidence(bestResolved);
-    float reservoirSampleAge = max(bestResolved.reservoirGuide.y, 0.0);
-    float currentReservoirDomainValidity = reservoirCandidateDomainValidity(bestResolved);
-    float3 resolved = bestResolved.colorTravel.rgb;
-    float bloomStability = saturate((luminance(resolved) + 0.25) / max(luminance(currentColor) + 0.25, 0.0001));
-    float3 finalColor = presentColor(resolved, input.uv, bloomStability);
+    reservoirResolvedTexture[currentPixel] = bestResolved.colorTravel;
+}
+
+ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
+{
+    float4 resolvedSample = sourceTexture.SampleLevel(sourceSampler, input.uv, 0.0);
+    float4 currentMetadata = loadCurrentMetadata(input.uv);
+    float4 currentControl = loadCurrentControl(input.uv);
+    float4 currentReservoirGuide = loadCurrentReservoirGuide(input.uv);
+    float currentCoverage = saturate(currentControl.x);
+    float currentStepRatio = saturate(currentControl.y);
+    float currentTemporalDetail = saturate(currentControl.z);
+    float currentFieldId = currentMetadata.x;
+    float currentReservoirConfidence = currentReservoirGuide.x > 0.0 ? saturate(currentReservoirGuide.x) : 1.0;
+    float reservoirSampleAge = max(currentReservoirGuide.y, 0.0);
+    float currentReservoirDomainValidity = currentReservoirGuide.z > 0.0 ? saturate(currentReservoirGuide.z) : 1.0;
+    float3 resolved = resolvedSample.rgb;
+    float3 finalColor = presentColor(resolved, input.uv, 1.0);
     if (renderDebugMode > 0.5 && renderDebugMode < 1.5)
     {
-        finalColor = aces(rawCurrentColor * max(exposure, 0.001));
+        finalColor = aces(resolved * max(exposure, 0.001));
     }
     else if (renderDebugMode >= 1.5 && renderDebugMode < 2.5)
     {
-        finalColor = aces(bestResolved.colorTravel.rgb * max(exposure, 0.001));
+        finalColor = aces(resolved * max(exposure, 0.001));
     }
     else if (renderDebugMode >= 2.5 && renderDebugMode < 3.5)
     {
-        finalColor = (combinedHistoryAge / MAX_HISTORY_AGE).xxx;
+        finalColor = saturate(reservoirSampleAge / MAX_HISTORY_AGE).xxx;
     }
     else if (renderDebugMode >= 3.5 && renderDebugMode < 4.5)
     {
-        finalColor = combinedHistoryWeight.xxx;
+        finalColor = currentReservoirConfidence.xxx;
     }
     else if (renderDebugMode >= 4.5 && renderDebugMode < 5.5)
     {
@@ -745,7 +751,7 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
     }
     else if (renderDebugMode >= 7.5 && renderDebugMode < 8.5)
     {
-        float luma = luminance(currentColor * max(exposure, 0.001));
+        float luma = luminance(resolved * max(exposure, 0.001));
         finalColor = luma.xxx;
     }
     else if (renderDebugMode >= 8.5 && renderDebugMode < 9.5)

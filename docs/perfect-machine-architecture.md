@@ -576,10 +576,12 @@ w: invalidation code
 ```
 
 Current state: SDF, temporal Gaussian, and TubeField producers write current
-scene reservoir guide data and shared candidate rows. Reservoir presentation
-resolve reads current candidates plus ping-ponged structured reservoir-history
-rows, folds confidence and domain validity into validation, and writes the next
-structured history rows. Pixel-history MRTs are no longer the temporal owner.
+scene reservoir guide data and shared candidate rows. The shared reservoir
+history update compute pass reads current candidates plus ping-ponged structured
+reservoir-history rows, folds confidence and domain validity into validation,
+writes the next structured history rows, and emits the resolved HDR field
+texture consumed by bloom and presentation. Pixel-history MRTs and the
+presentation shader are no longer temporal owners.
 
 ### Phase C: Fractal Probe Pipeline
 

@@ -64,10 +64,11 @@ invariants:
     direct SDF proxies, meshes, volumes, fractal probes, and Mimir sensor
     observations must publish bounded Form/Appearance/Transport field claims
     before they can participate in reusable field evidence.
-  - Final composition reads canonical scene targets produced by reservoir
-    resolve. TubeField render lowerings inject opaque SDF candidates into the
-    shared field reservoir; they must not regain private final-visibility
-    authority through blend order, proxy depth, or a TubeField-local K-buffer.
+  - Final composition reads the resolved HDR field texture produced by the
+    shared reservoir history update pass. TubeField render lowerings inject
+    opaque SDF candidates into the shared field reservoir; they must not regain
+    private final-visibility authority through blend order, proxy depth, a
+    presentation-shader history writer, or a TubeField-local K-buffer.
   - Field packet payload handles are not authority. Resource-backed claims and
     packets must reference declared AquariumFieldResourceDeclaration rows with
     kind, GPU residency, shader access, format, shape, validity, version, and
@@ -203,11 +204,14 @@ next_actions:
     distinguish source-lane claims while preserving the TubeField family range.
     D3D12 now has the first shared field-reservoir resolve cut: legacy/direct
     scene contributors render into scene-candidate MRTs, TubeField injects
-    two-slot-per-pixel opaque SDF candidates into a shared UAV, and a fullscreen
-    resolve writes canonical scene color/travel/metadata/control/reservoir-guide
-    before temporal resolve, bloom, and presentation. The remaining coherence
-    cut is to make every non-debug contributor inject explicit field candidates
-    instead of entering as the single legacy scene-candidate input.
+    four-slot-per-pixel opaque SDF candidates into a shared UAV, and a
+    fullscreen resolve writes canonical scene color/travel/metadata/control/
+    reservoir-guide lanes. A shared compute pass then updates ping-ponged
+    structured reservoir history, emits the resolved HDR field texture, and
+    bloom/presentation consume that texture without owning history. The
+    remaining coherence cut is to make every non-debug contributor inject
+    explicit field candidates instead of entering as the single legacy
+    scene-candidate input.
     TubeField reservoir ownership has been rebuilt into the first ReSTIR-shaped
     compute path: TubeField expansion emits reusable segment records with baked
     material endpoints, segments are binned into screen tiles once per frame,

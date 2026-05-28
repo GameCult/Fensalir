@@ -292,13 +292,14 @@ w: invalidation code
 ```
 
 The first live producers are SDF surfaces, temporal Gaussian splats, and
-TubeField candidates, but the schema is not surface-only. Resolve reads current
-candidate rows and previous structured reservoir-history rows, folds confidence
-and domain validity into validation, then writes the next structured reservoir
-history. This resolve is the first reservoir resolve implementation, not an
-independent TAA owner. Future ReSTIR/GRIS passes should extend the producer side
-of this schema with explicit Form/Appearance/Transport fields rather than
-packing more reservoir folklore into scene-control channels.
+TubeField candidates, but the schema is not surface-only. The shared reservoir
+history update compute pass reads current candidate rows and previous structured
+reservoir-history rows, folds confidence and domain validity into validation,
+writes the next structured reservoir history, and emits the resolved HDR field
+texture. Presentation samples that resolved texture; it does not write reservoir
+history. Future ReSTIR/GRIS passes should extend the producer side of this
+schema with explicit Form/Appearance/Transport fields rather than packing more
+reservoir folklore into scene-control channels.
 
 ## Implementation Roadmap
 
@@ -318,8 +319,9 @@ packing more reservoir folklore into scene-control channels.
 7. Weave reservoir confidence and temporal detail into structured reservoir
    history rows so reservoir resolve can distinguish stable reused evidence
    from fresh stochastic noise. The current implementation keeps four
-   resolver-owned rows per pixel and no longer stores previous reservoir
-   validity in pixel-history MRTs.
+   resolver-owned rows per pixel, updates them in a shared compute pass, emits
+   a resolved HDR field texture for bloom/presentation, and no longer stores
+   previous reservoir validity in pixel-history MRTs.
 8. Add Mimir-facing candidate adapters only after the fractal path proves the
    contract: modality features are candidates, not a second reservoir system.
 9. Port the pure core to HLSL and add CPU/GPU parity fixtures.

@@ -513,6 +513,72 @@ public sealed class FieldEvidenceContractTests
     }
 
     [Fact]
+    public void LoweringPlannerSelectsAudioPathPhaseConfidenceAsDebugOverlay()
+    {
+        var support = new AquariumFieldSupport(
+            Center: Vector3.Zero,
+            Radius: new Vector3(0.01f, 0.01f, 0.0005f),
+            LocalFrame: Matrix4x4.Identity,
+            ConservativeRadius: 0.01f,
+            ProjectedError: 0.0005f,
+            Curvature: 0.0f,
+            TemporalUncertainty: 0.0005f);
+        var proposal = new AquariumFieldProposalPolicy(
+            AquariumFieldProposalKind.CalibrationConstraint,
+            1.0f,
+            0.72f,
+            1,
+            42u);
+        var frame = new AquariumFieldEvidenceFrame
+        {
+            Domains =
+            [
+                new AquariumFieldDomain(
+                    "mimir:calibration:loopback->mic:complex-contour",
+                    "",
+                    AquariumFieldDomainKind.AudioPath,
+                    Matrix4x4.Identity,
+                    Matrix4x4.Identity,
+                    Vector3.Zero,
+                    Vector3.One,
+                    Vector3.Zero,
+                    "Mimir.Runtime")
+            ],
+            Claims =
+            [
+                new AquariumFieldClaim(
+                    "calibration:loopback->mic:complex-contour",
+                    "mimir:calibration:loopback->mic:complex-contour",
+                    "loopback->mic",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Confidence,
+                    support,
+                    proposal,
+                    "direct-path",
+                    0,
+                    0.72f)
+            ],
+            Candidates =
+            [
+                new AquariumFieldCandidate(
+                    "calibration:loopback->mic:complex-contour:candidate",
+                    "calibration:loopback->mic:complex-contour",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Confidence,
+                    proposal,
+                    AquariumFieldGuide.Valid(0.72f))
+            ],
+        };
+
+        var plan = AquariumFieldLoweringPlanner.Plan(frame);
+
+        Assert.Single(plan.Packets);
+        Assert.Empty(plan.DeferredRequests);
+        Assert.Equal(AquariumFieldBackendKind.DebugOverlay, plan.Packets[0].Backend);
+        Assert.Equal(AquariumFieldEncoding.Confidence, plan.Packets[0].Encoding);
+    }
+
+    [Fact]
     public void FieldDslBindsDeclaredResourcesBeforePlanningTubePackets()
     {
         var resource = new AquariumFieldResourceDeclaration(

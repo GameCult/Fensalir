@@ -918,6 +918,7 @@ public static class AquariumFieldLoweringPlanner
 
         var packets = new List<AquariumFieldBackendPacket>(requests.Count);
         var deferred = new List<AquariumFieldLoweringRequest>();
+        var domains = frame.Domains.ToDictionary(static domain => domain.DomainKey, StringComparer.Ordinal);
         foreach (var request in requests)
         {
             if (RequiresResource(request.Encoding) && !LooksLikeResourceKey(request.PayloadHandle))
@@ -934,7 +935,10 @@ public static class AquariumFieldLoweringPlanner
                 continue;
             }
 
-            if (!TrySelectBackend(request, out var backend))
+            var domainKind = domains.TryGetValue(request.DomainKey, out var domain)
+                ? domain.Kind
+                : AquariumFieldDomainKind.Unknown;
+            if (!TrySelectBackend(request, domainKind, out var backend))
             {
                 deferred.Add(request);
                 continue;
@@ -957,6 +961,14 @@ public static class AquariumFieldLoweringPlanner
 
     public static bool TrySelectBackend(AquariumFieldLoweringRequest request, out AquariumFieldBackendKind backend)
     {
+        return TrySelectBackend(request, AquariumFieldDomainKind.Unknown, out backend);
+    }
+
+    private static bool TrySelectBackend(
+        AquariumFieldLoweringRequest request,
+        AquariumFieldDomainKind domainKind,
+        out AquariumFieldBackendKind backend)
+    {
         backend = request.Encoding switch
         {
             AquariumFieldEncoding.Height or AquariumFieldEncoding.Sdf2D => AquariumFieldBackendKind.SurfacePage,
@@ -964,6 +976,8 @@ public static class AquariumFieldLoweringPlanner
             AquariumFieldEncoding.Density or AquariumFieldEncoding.Extinction => AquariumFieldBackendKind.VolumeSplat,
             AquariumFieldEncoding.Tube => AquariumFieldBackendKind.TubeField,
             AquariumFieldEncoding.Mesh => AquariumFieldBackendKind.Mesh,
+            AquariumFieldEncoding.Phase or AquariumFieldEncoding.Confidence
+                when domainKind == AquariumFieldDomainKind.AudioPath => AquariumFieldBackendKind.DebugOverlay,
             _ => AquariumFieldBackendKind.Unknown,
         };
 

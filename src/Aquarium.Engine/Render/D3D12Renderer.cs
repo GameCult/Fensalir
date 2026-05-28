@@ -552,7 +552,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
             var floatingPanels = clientUi.Panels.Where(panel => panel.FadeWhenMouseDistant).ToArray();
             debugTabTitles = ["Aquarium", "Terminal", "Synth", .. debugPanels.Select(panel => panel.Title)];
             activeDebugTab = Math.Clamp(activeDebugTab, 0, debugTabTitles.Length - 1);
+            var debugUiVisible = debugUi.IsVisible;
             debugUi = CreateDebugUi(debugPanels);
+            debugUi.IsVisible = debugUiVisible;
             clientUiPanels = floatingPanels.Select(DebugUi.FromContract).ToArray();
         }
 

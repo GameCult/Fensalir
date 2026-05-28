@@ -79,7 +79,7 @@ internal sealed class DebugUi
 
     public string Title { get; }
 
-    public bool IsVisible { get; set; } = true;
+    public bool IsVisible { get; set; }
 
     public bool WantsMouse { get; private set; }
 

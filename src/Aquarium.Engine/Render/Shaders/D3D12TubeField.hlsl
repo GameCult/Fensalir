@@ -113,8 +113,7 @@ float FilteredSample(uint logicalColumn, float x)
 float NormalizedSample(uint logicalColumn, float x)
 {
     float value = FilteredSample(logicalColumn, x);
-    float normalized = saturate((value - tubeAmplitude.z) / max(tubeAmplitude.w - tubeAmplitude.z, 0.0001));
-    return pow(normalized, max(tubeAmplitude.x, 0.0001));
+    return saturate((value - tubeAmplitude.z) / max(tubeAmplitude.w - tubeAmplitude.z, 0.0001));
 }
 
 float Catmull(float p0, float p1, float p2, float p3, float t)
@@ -138,9 +137,14 @@ float SampleCurve(uint logicalColumn, float x)
     return saturate(Catmull(p0, p1, p2, p3, t));
 }
 
+float SampleAmplitudeCurve(uint logicalColumn, float x)
+{
+    return pow(SampleCurve(logicalColumn, x), max(tubeAmplitude.x, 0.0001));
+}
+
 float3 TubePoint(uint logicalColumn, float x)
 {
-    float value = SampleCurve(logicalColumn, x);
+    float value = SampleAmplitudeCurve(logicalColumn, x);
     return tubeOrigin +
         tubeAxisStep * x +
         tubeColumnStep * (float)logicalColumn +

@@ -579,6 +579,72 @@ public sealed class FieldEvidenceContractTests
     }
 
     [Fact]
+    public void LoweringPlannerSelectsDeterministicCameraFeatureAsDebugOverlay()
+    {
+        var support = new AquariumFieldSupport(
+            Center: new Vector3(0.0f, 1.2f, 2.5f),
+            Radius: new Vector3(0.05f),
+            LocalFrame: Matrix4x4.Identity,
+            ConservativeRadius: 0.05f,
+            ProjectedError: 0.02f,
+            Curvature: 0.0f,
+            TemporalUncertainty: 0.0f);
+        var proposal = new AquariumFieldProposalPolicy(
+            AquariumFieldProposalKind.DeterministicStructural,
+            1.0f,
+            0.88f,
+            2,
+            123u);
+        var frame = new AquariumFieldEvidenceFrame
+        {
+            Domains =
+            [
+                new AquariumFieldDomain(
+                    "mimir:marker:synthetic-board:marker-a",
+                    "",
+                    AquariumFieldDomainKind.CameraSensor,
+                    Matrix4x4.Identity,
+                    Matrix4x4.Identity,
+                    new Vector3(-0.05f, 1.15f, 2.45f),
+                    new Vector3(0.05f, 1.25f, 2.55f),
+                    Vector3.Zero,
+                    "Mimir.Runtime")
+            ],
+            Claims =
+            [
+                new AquariumFieldClaim(
+                    "visual-marker:synthetic-board:marker-a",
+                    "mimir:marker:synthetic-board:marker-a",
+                    "mimir-marker-fusion",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Feature,
+                    support,
+                    proposal,
+                    "synthetic-board",
+                    10_000_000,
+                    0.88f)
+            ],
+            Candidates =
+            [
+                new AquariumFieldCandidate(
+                    "visual-marker:synthetic-board:marker-a:candidate",
+                    "visual-marker:synthetic-board:marker-a",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Feature,
+                    proposal,
+                    AquariumFieldGuide.Valid(0.88f))
+            ],
+        };
+
+        var plan = AquariumFieldLoweringPlanner.Plan(frame);
+
+        Assert.Single(plan.Packets);
+        Assert.Empty(plan.DeferredRequests);
+        Assert.Equal(AquariumFieldBackendKind.DebugOverlay, plan.Packets[0].Backend);
+        Assert.Equal(AquariumFieldEncoding.Feature, plan.Packets[0].Encoding);
+    }
+
+    [Fact]
     public void FieldDslBindsDeclaredResourcesBeforePlanningTubePackets()
     {
         var resource = new AquariumFieldResourceDeclaration(

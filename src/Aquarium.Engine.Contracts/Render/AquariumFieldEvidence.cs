@@ -579,6 +579,7 @@ public readonly record struct AquariumFieldLoweringRequest(
     string DomainKey,
     AquariumFieldLayer Layer,
     AquariumFieldEncoding Encoding,
+    AquariumFieldProposalKind ProposalKind,
     AquariumFieldSupport Support,
     AquariumFieldGuide Guide,
     string PayloadHandle)
@@ -589,6 +590,7 @@ public readonly record struct AquariumFieldLoweringRequest(
         !string.IsNullOrWhiteSpace(DomainKey) &&
         Layer != AquariumFieldLayer.Unknown &&
         Encoding != AquariumFieldEncoding.Unknown &&
+        ProposalKind != AquariumFieldProposalKind.Unknown &&
         Support.HasSupport &&
         Guide.IsReusable;
 }
@@ -889,6 +891,7 @@ public static class AquariumFieldEvidenceNormalizer
                 DomainKey: claim.DomainKey,
                 Layer: claim.Layer,
                 Encoding: claim.Encoding,
+                ProposalKind: claim.Proposal.Kind,
                 Support: claim.Support,
                 Guide: candidate.Guide,
                 PayloadHandle: claim.PayloadHandle));
@@ -978,6 +981,9 @@ public static class AquariumFieldLoweringPlanner
             AquariumFieldEncoding.Mesh => AquariumFieldBackendKind.Mesh,
             AquariumFieldEncoding.Phase or AquariumFieldEncoding.Confidence
                 when domainKind == AquariumFieldDomainKind.AudioPath => AquariumFieldBackendKind.DebugOverlay,
+            AquariumFieldEncoding.Feature
+                when domainKind == AquariumFieldDomainKind.CameraSensor &&
+                     request.ProposalKind == AquariumFieldProposalKind.DeterministicStructural => AquariumFieldBackendKind.DebugOverlay,
             _ => AquariumFieldBackendKind.Unknown,
         };
 

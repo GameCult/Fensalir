@@ -47,7 +47,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int GeneratedMeshDrawArgumentBytes = GeneratedMeshDrawArgumentUIntCount * sizeof(uint);
     private const float SurfaceTransparentMinZ = -1.85f;
     private const float SurfaceTransparentMaxZ = 0.45f;
-    private const int BloomLevelCount = 3;
+    private const int BloomLevelCount = 8;
     private const Format SceneHdrFormat = Format.R16G16B16A16_Float;
     private const string StudioPmremRelativePath = "Assets/Textures/studio3_pmrem.dds";
     private const string StudioIrradianceRelativePath = "Assets/Textures/studio3_irradiance.dds";
@@ -3610,6 +3610,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
             flags |= 2;
         }
 
+        if (scene.UseStudioBackground)
+        {
+            flags |= 4;
+        }
+
         return flags;
     }
 
@@ -4033,7 +4038,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var bloomRange = new DescriptorRange(
             DescriptorRangeType.ShaderResourceView,
             BloomLevelCount,
-            9,
+            29,
             0,
             D3D12.DescriptorRangeOffsetAppend);
         var currentSceneMetadataRange = new DescriptorRange(
@@ -4838,7 +4843,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 shaderPath(manifest.SdfProxyInclude),
                 manifest.SdfShaderPaths.Select(shaderPath).ToArray(),
                 shaderPath(manifest.SdfMathInclude),
-                includes.Select(shaderPath).ToArray(),
+                [.. includes.Select(shaderPath), shaderPath("D3D12Aces2.hlsl")],
                 shaderPath(manifest.PostShader));
         }
     }

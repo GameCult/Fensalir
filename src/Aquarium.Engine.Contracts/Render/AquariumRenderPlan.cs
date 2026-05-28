@@ -483,6 +483,8 @@ public sealed class AquariumSceneState
 
     public bool TraceHeightFieldSurface { get; init; } = true;
 
+    public bool UseStudioBackground { get; init; } = true;
+
     public bool UseStarfieldBackground { get; init; }
 
     public IReadOnlyList<AquariumHeightFieldBrush> HeightFieldBrushes { get; init; } = [];

@@ -11,9 +11,9 @@ public readonly record struct GraphicsSettings(
     public const float MinSceneExposure = 0.02f;
     public const float MaxSceneExposure = 1.2f;
     public const float MinBloomIntensity = 0.0f;
-    public const float MaxBloomIntensity = 0.24f;
+    public const float MaxBloomIntensity = 0.8f;
     public const float MinBloomVeilIntensity = 0.0f;
-    public const float MaxBloomVeilIntensity = 0.08f;
+    public const float MaxBloomVeilIntensity = 0.35f;
 
     public static GraphicsSettings Default { get; } = new(
         RenderDebugMode: 0,

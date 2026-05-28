@@ -33,12 +33,19 @@ Texture2D<float4> currentSceneMetadataTexture : register(t5);
 Texture2D<float4> historyMetadataTexture : register(t6);
 Texture2D<float4> currentSceneControlTexture : register(t7);
 Texture2D<float4> historyControlTexture : register(t8);
-Texture2D<float4> bloomTexture0 : register(t9);
-Texture2D<float4> bloomTexture1 : register(t10);
-Texture2D<float4> bloomTexture2 : register(t11);
+Texture2D<float4> bloomTexture0 : register(t29);
+Texture2D<float4> bloomTexture1 : register(t30);
+Texture2D<float4> bloomTexture2 : register(t31);
+Texture2D<float4> bloomTexture3 : register(t32);
+Texture2D<float4> bloomTexture4 : register(t33);
+Texture2D<float4> bloomTexture5 : register(t34);
+Texture2D<float4> bloomTexture6 : register(t35);
+Texture2D<float4> bloomTexture7 : register(t36);
 Texture2D<float4> currentReservoirGuideTexture : register(t26);
 Texture2D<float4> historyReservoirGuideTexture : register(t27);
 SamplerState sourceSampler : register(s0);
+
+#include "D3D12Aces2.hlsl"
 
 struct SdfObject
 {
@@ -84,12 +91,7 @@ float luminance(float3 color)
 
 float3 aces(float3 color)
 {
-    const float a = 2.51;
-    const float b = 0.03;
-    const float c = 2.43;
-    const float d = 0.59;
-    const float e = 0.14;
-    return saturate((color * (a * color + b)) / (color * (c * color + d) + e));
+    return saturate(OcioAces2(float4(max(color, 0.0), 1.0)).rgb);
 }
 
 float3 debugFieldIdColor(float fieldId)
@@ -231,16 +233,42 @@ void currentNeighborhood(float2 uv, out float3 neighborhoodMin, out float3 neigh
 
 float3 bloomColorAt(float2 uv)
 {
-    return bloomTexture0.SampleLevel(sourceSampler, uv, 0.0).rgb * 0.42 +
-        bloomTexture1.SampleLevel(sourceSampler, uv, 0.0).rgb * 0.34 +
-        bloomTexture2.SampleLevel(sourceSampler, uv, 0.0).rgb * 0.24;
+    // Sonic Ether-style octave bloom: normalize weighted mip octaves so scatter shape changes
+    // the radius of bloom without silently becoming an exposure control.
+    const float scatterPower = 1.25;
+    float weights[8] =
+    {
+        pow(1.0, scatterPower),
+        pow(2.0, scatterPower),
+        pow(3.0, scatterPower),
+        pow(4.0, scatterPower),
+        pow(5.0, scatterPower),
+        pow(6.0, scatterPower),
+        pow(7.0, scatterPower),
+        pow(8.0, scatterPower)
+    };
+    float inverseWeightSum = rcp(
+        weights[0] + weights[1] + weights[2] + weights[3] +
+        weights[4] + weights[5] + weights[6] + weights[7]);
+    float3 bloom =
+        bloomTexture0.SampleLevel(sourceSampler, uv, 0.0).rgb * weights[0] +
+        bloomTexture1.SampleLevel(sourceSampler, uv, 0.0).rgb * weights[1] +
+        bloomTexture2.SampleLevel(sourceSampler, uv, 0.0).rgb * weights[2] +
+        bloomTexture3.SampleLevel(sourceSampler, uv, 0.0).rgb * weights[3] +
+        bloomTexture4.SampleLevel(sourceSampler, uv, 0.0).rgb * weights[4] +
+        bloomTexture5.SampleLevel(sourceSampler, uv, 0.0).rgb * weights[5] +
+        bloomTexture6.SampleLevel(sourceSampler, uv, 0.0).rgb * weights[6] +
+        bloomTexture7.SampleLevel(sourceSampler, uv, 0.0).rgb * weights[7];
+    return bloom * inverseWeightSum;
 }
 
 float3 presentColor(float3 scene, float2 uv, float bloomScale)
 {
     float3 bloom = bloomColorAt(uv) * bloomScale;
     float3 exposedScene = scene * max(exposure, 0.001);
-    return aces(exposedScene + bloom * bloomIntensity + luminance(bloom) * bloomVeilIntensity);
+    float corePreservation = 1.0 - smoothstep(0.7, 2.4, luminance(exposedScene));
+    float3 bloomContribution = bloom * (bloomIntensity + bloomVeilIntensity) * corePreservation;
+    return aces(exposedScene + bloomContribution);
 }
 
 float3 clampBloomFirefly(float2 uv, float3 centerColor)
@@ -453,7 +481,7 @@ ResolveOut D3D12ResolvePS(VertexOut input)
     else if (renderDebugMode >= 6.5 && renderDebugMode < 7.5)
     {
         float3 bloom = bloomColorAt(input.uv);
-        finalColor = aces(bloom * bloomIntensity + luminance(bloom) * bloomVeilIntensity);
+        finalColor = aces(bloom * bloomIntensity + bloom * bloomVeilIntensity);
     }
     else if (renderDebugMode >= 7.5 && renderDebugMode < 8.5)
     {

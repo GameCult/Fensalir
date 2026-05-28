@@ -345,8 +345,16 @@ float3 surfaceMirrorRadiance(float3 p, float3 direction, out float3 normal)
 
 float3 backgroundRadiance(float3 direction)
 {
+    uint flags = (uint)round(sceneFlags);
+    bool useStudioBackground = (flags & 4u) != 0u;
+    if (!useStudioBackground)
+    {
+        return 0.0;
+    }
+
     float3 studio = studioPmremConeSample(direction, BACKGROUND_PMREM_LOD, BACKGROUND_PMREM_CONE) * 0.22;
-    if (sceneFlags < 1.5)
+    bool useStarfieldBackground = (flags & 2u) != 0u;
+    if (!useStarfieldBackground)
     {
         return studio;
     }
@@ -371,7 +379,8 @@ RayMarchResult traverseRay(float3 origin, float3 direction)
 
     float3 surfacePosition;
     float surfaceTravel;
-    bool traceHeightField = fmod(sceneFlags, 2.0) >= 1.0;
+    uint flags = (uint)round(sceneFlags);
+    bool traceHeightField = (flags & 1u) != 0u;
     bool surfaceHit = traceHeightField && traceHeightFieldSurfaceDirect(origin, direction, 0.0, farDistance, surfacePosition, surfaceTravel);
     if (surfaceHit)
     {

@@ -112,7 +112,7 @@ RWStructuredBuffer<FieldReservoirCandidate> RestirFieldReservoirCandidates : reg
 static const uint TubeFieldRestirTileSize = 16u;
 static const uint TubeFieldRestirMaxTileSegments = 128u;
 static const uint TubeFieldRestirSpatialTileLanes = 16u;
-static const uint TubeFieldRestirDepthLanesPerSpatialLane = 4u;
+static const uint TubeFieldRestirDepthLanesPerSpatialLane = 1u;
 static const uint TubeFieldRestirResidentTileCandidates = TubeFieldRestirSpatialTileLanes * TubeFieldRestirDepthLanesPerSpatialLane;
 static const uint TubeFieldRestirInitialCandidateCount = TubeFieldRestirResidentTileCandidates;
 static const uint TubeFieldRestirSpatialCandidateCount = 4u;

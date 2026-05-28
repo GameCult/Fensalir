@@ -43,6 +43,7 @@ Texture2D<float4> bloomTexture6 : register(t35);
 Texture2D<float4> bloomTexture7 : register(t36);
 Texture2D<float4> currentReservoirGuideTexture : register(t26);
 Texture2D<float4> historyReservoirGuideTexture : register(t27);
+Texture2D<float> blueNoiseTexture : register(t28);
 SamplerState sourceSampler : register(s0);
 
 #include "D3D12Aces2.hlsl"
@@ -271,6 +272,33 @@ float3 presentColor(float3 scene, float2 uv, float bloomScale)
     return aces(exposedScene + bloomContribution);
 }
 
+float blueNoiseAt(float2 uv, uint salt)
+{
+    uint width;
+    uint height;
+    blueNoiseTexture.GetDimensions(width, height);
+    uint2 dimensions = max(uint2(width, height), uint2(1, 1));
+    uint2 pixel = (uint2)floor(saturate(uv) * resolution);
+    uint2 offset = uint2((uint)frameIndex * 19u + salt * 53u, (uint)frameIndex * 31u + salt * 97u);
+    return blueNoiseTexture.Load(int3((pixel + offset) % dimensions, 0));
+}
+
+float3 ditherDisplay(float3 color, float2 uv)
+{
+    float noise = blueNoiseAt(uv, 11u) - 0.5;
+    return saturate(color + noise / 255.0);
+}
+
+float3 bloomBrightPass(float3 exposedColor)
+{
+    float luma = luminance(exposedColor);
+    const float threshold = 1.0;
+    const float knee = 0.35;
+    float soft = saturate((luma - threshold + knee) / max(2.0 * knee, 0.0001));
+    float contribution = max(luma - threshold, 0.0) + soft * soft * knee;
+    return exposedColor * saturate(contribution / max(luma, 0.0001));
+}
+
 float3 clampBloomFirefly(float2 uv, float3 centerColor)
 {
     float2 texel = 1.0 / resolution;
@@ -305,8 +333,8 @@ float3 clampBloomFirefly(float2 uv, float3 centerColor)
 
 float4 D3D12BloomPrefilterPS(VertexOut input) : SV_Target0
 {
-    float3 color = sourceTexture.SampleLevel(sourceSampler, input.uv, 0.0).rgb;
-    return float4(clampBloomFirefly(input.uv, color) * max(exposure, 0.001), 1.0);
+    float3 color = sourceTexture.SampleLevel(sourceSampler, input.uv, 0.0).rgb * max(exposure, 0.001);
+    return float4(bloomBrightPass(clampBloomFirefly(input.uv, color)), 1.0);
 }
 
 float4 D3D12BloomDownsamplePS(VertexOut input) : SV_Target0
@@ -501,7 +529,7 @@ ResolveOut D3D12ResolvePS(VertexOut input)
         finalColor = float3(currentReservoirConfidence, saturate(reservoirSampleAge / MAX_HISTORY_AGE), currentReservoirDomainValidity);
     }
     ResolveOut output;
-    output.finalColor = float4(finalColor, 1.0);
+    output.finalColor = float4(ditherDisplay(finalColor, input.uv), 1.0);
     output.historyColor = float4(resolved, currentTravel);
     output.historyMetadata = currentMetadata;
     output.historyControl = float4(currentControl.xyz, combinedHistoryAge);

@@ -2696,6 +2696,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             context.CommandList.SetGraphicsRootDescriptorTable(RootTemporalGaussians, frameResources.TemporalGaussianDescriptor.Gpu);
             context.CommandList.SetGraphicsRootDescriptorTable(RootCurrentReservoirGuide, frameResources.SceneReservoirGuideDescriptor.Gpu);
             context.CommandList.SetGraphicsRootDescriptorTable(RootHistoryReservoirGuide, frameResources.HistoryReservoirGuideDescriptor.Gpu);
+            context.CommandList.SetGraphicsRootDescriptorTable(RootBlueNoise, frameResources.BlueNoiseDescriptor.Gpu);
 
             context.CommandList.RSSetViewports(viewport);
             context.CommandList.RSSetScissorRects(scissorRect);
@@ -4517,7 +4518,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             false,
             srcBlend: Blend.One,
             destBlend: Blend.One,
-            blendOp: BlendOperation.Max,
+            blendOp: BlendOperation.Add,
             srcBlendAlpha: Blend.One,
             destBlendAlpha: Blend.One,
             blendOpAlpha: BlendOperation.Min,

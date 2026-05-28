@@ -490,7 +490,8 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     float coverage = 1.0 - smoothstep(0.0, aa, sdf);
     float sampleX = lerp(input.tubeData.y, input.tubeData.z, closestT);
     float value = SampleCurve((uint)round(input.tubeData.x), sampleX);
-    float3 rampColor = TubeFieldRamp.SampleLevel(TubeFieldRampSampler, float2(saturate(value), 0.5), 0.0).rgb;
+    float materialValue = saturate(value);
+    float3 rampColor = TubeFieldRamp.SampleLevel(TubeFieldRampSampler, float2(materialValue, 0.5), 0.0).rgb;
     float3 ray = rayDirectionForPixel(baseSamplePx, jitterPixels, cameraPosition, cameraTarget);
     float3 forward;
     float3 right;
@@ -508,9 +509,9 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
         discard;
     }
 
-    bool exactTubeMaterial = input.material.x >= 15.5 && input.material.y >= 0.99;
+    bool exactTubeMaterial = input.tubeData.w < 0.0;
     float3 emissionColor = exactTubeMaterial ? float3(1.0, 0.035560537, 0.0) : rampColor;
-    float emission = exactTubeMaterial ? max(input.material.x, 0.0) : value * value * max(input.material.x, 0.0);
+    float emission = exactTubeMaterial ? max(input.material.x, 0.0) : materialValue * materialValue * max(input.material.x, 0.0);
     float3 color = emissionColor * emission * glowFacing * claimCoverage;
     float travel = lerp(input.segmentTravel.x, input.segmentTravel.y, closestT);
 

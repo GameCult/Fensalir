@@ -113,6 +113,7 @@ static const uint TubeFieldRestirTileSize = 16u;
 static const uint TubeFieldRestirMaxTileSegments = 128u;
 static const uint TubeFieldRestirInitialCandidateCount = TubeFieldRestirMaxTileSegments;
 static const uint TubeFieldRestirSpatialCandidateCount = 4u;
+static const uint FieldReservoirSlotsPerPixel = 4u;
 
 RWStructuredBuffer<FieldReservoirCandidate> FieldReservoirCandidates : register(u14);
 RWByteAddressBuffer FieldReservoirLocks : register(u15);
@@ -475,23 +476,25 @@ void injectFieldReservoirCandidate(FieldReservoirCandidate candidate, float2 pix
         return;
     }
 
-    uint baseIndex = pixelIndex * 2u;
-    FieldReservoirCandidate slot0 = FieldReservoirCandidates[baseIndex + 0u];
-    FieldReservoirCandidate slot1 = FieldReservoirCandidates[baseIndex + 1u];
-    float priority0 = candidatePriority(slot0);
-    float priority1 = candidatePriority(slot1);
+    uint baseIndex = pixelIndex * FieldReservoirSlotsPerPixel;
     float priorityNew = candidatePriority(candidate);
+    float worstPriority = -1.0;
+    uint worstSlot = 0u;
 
-    if (priorityNew < max(priority0, priority1))
+    [unroll]
+    for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
     {
-        if (priority0 >= priority1)
+        float priority = candidatePriority(FieldReservoirCandidates[baseIndex + slot]);
+        if (priority > worstPriority)
         {
-            FieldReservoirCandidates[baseIndex + 0u] = candidate;
+            worstPriority = priority;
+            worstSlot = slot;
         }
-        else
-        {
-            FieldReservoirCandidates[baseIndex + 1u] = candidate;
-        }
+    }
+
+    if (priorityNew < worstPriority)
+    {
+        FieldReservoirCandidates[baseIndex + worstSlot] = candidate;
     }
 
     FieldReservoirLocks.Store(lockAddress, 0u);
@@ -1013,7 +1016,7 @@ void D3D12TubeFieldRestirSpatialResolveCS(uint3 dispatchThreadId : SV_DispatchTh
 
     restirFinalize(reservoir);
     RestirWriteReservoirs[pixelIndex] = reservoir;
-    uint baseIndex = pixelIndex * 2u;
+    uint baseIndex = pixelIndex * FieldReservoirSlotsPerPixel;
     if (restirReservoirValid(reservoir))
     {
         RestirFieldReservoirCandidates[baseIndex + 0u].colorTravel = reservoir.colorTravel;

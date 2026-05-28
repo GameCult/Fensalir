@@ -67,6 +67,8 @@ struct FieldReservoirCandidate
 
 StructuredBuffer<FieldReservoirCandidate> fieldReservoirCandidates : register(t45);
 
+static const uint FieldReservoirSlotsPerPixel = 4u;
+
 struct VertexOut
 {
     float4 position : SV_Position;
@@ -476,21 +478,18 @@ FieldReservoirResolveOut D3D12FieldReservoirResolvePS(VertexOut input)
         bestControl,
         bestReservoirGuide);
 
-    uint baseIndex = pixelIndex * 2u;
-    acceptFieldReservoirCandidate(
-        fieldReservoirCandidates[baseIndex + 0u],
-        bestColorTravel,
-        bestMetadata,
-        bestControl,
-        bestReservoirGuide,
-        bestPriority);
-    acceptFieldReservoirCandidate(
-        fieldReservoirCandidates[baseIndex + 1u],
-        bestColorTravel,
-        bestMetadata,
-        bestControl,
-        bestReservoirGuide,
-        bestPriority);
+    uint baseIndex = pixelIndex * FieldReservoirSlotsPerPixel;
+    [unroll]
+    for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
+    {
+        acceptFieldReservoirCandidate(
+            fieldReservoirCandidates[baseIndex + slot],
+            bestColorTravel,
+            bestMetadata,
+            bestControl,
+            bestReservoirGuide,
+            bestPriority);
+    }
 
     if (bestPriority >= 1.0e19)
     {

@@ -46,7 +46,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int TubeFieldRestirTileSize = 16;
     private const int TubeFieldRestirMaxTileSegments = 128;
     private const int TubeFieldReservoirStrideBytes = 112;
-    private const int FieldReservoirSlotsPerPixel = 2;
+    private const int FieldReservoirSlotsPerPixel = 4;
     private const int FieldReservoirCandidateStrideBytes = 64;
     private const int GeneratedMeshDrawArgumentUIntCount = 5;
     private const int GeneratedMeshDrawArgumentBytes = GeneratedMeshDrawArgumentUIntCount * sizeof(uint);

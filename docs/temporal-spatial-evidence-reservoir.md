@@ -204,6 +204,11 @@ depth where depth participates in validation. The exact producer can be a
 compute pass, a proxy draw, a mesh draw, or a future volume pass. The invariant
 is the evidence contract, not the producer's religion.
 
+The shared field candidate inlet keeps a fixed small candidate budget per pixel.
+That budget is currently four slots. Producers may compete for those slots, but
+the shared resolver owns final priority and presentation reconstruction.
+Payload code must not assume a private single winner path.
+
 When a contributor needs specialized candidate generation, the specialization
 stops at the candidate boundary. `TubeField` is therefore a claim/candidate
 producer for rolling-buffer tube surfaces, not a separate TubeField reservoir

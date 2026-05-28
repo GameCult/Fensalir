@@ -686,23 +686,10 @@ void D3D12ReservoirHistoryUpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         [unroll]
         for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
         {
-            FieldReservoirCandidate carriedCandidate = carryFieldReservoirHistoryCandidate(reservoirHistoryRead[baseIndex + slot]);
-            reservoirHistoryWrite[baseIndex + slot] = carriedCandidate;
-            float priority = fieldReservoirCandidatePriority(
-                carriedCandidate.colorTravel,
-                carriedCandidate.metadata,
-                carriedCandidate.control,
-                carriedCandidate.reservoirGuide);
-            if (priority < bestPriority)
-            {
-                bestResolved = carriedCandidate;
-                bestPriority = priority;
-            }
+            reservoirHistoryWrite[baseIndex + slot] = emptyFieldReservoirCandidate();
         }
 
-        reservoirResolvedTexture[currentPixel] = bestPriority < 1.0e19
-            ? bestResolved.colorTravel
-            : sceneCandidate.colorTravel;
+        reservoirResolvedTexture[currentPixel] = sceneCandidate.colorTravel;
         return;
     }
 

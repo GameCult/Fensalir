@@ -220,7 +220,10 @@ next_actions:
     reservoirs only after re-evaluating the selected segment at the receiving
     pixel. TubeField exports the four best deterministic current pixel
     candidates into the shared field-reservoir candidate rows so opaque primary
-    visibility is not a single stochastic winner. The old TubeField raster path
+    visibility is not a single stochastic winner. The cheap segment model now
+    keeps a consistent start/end radius pair across each generated proxy and
+    stores the true end radius in the compute segment packet, so adjacent
+    capsules agree at joins without a heavier spline-wide SDF search. The old TubeField raster path
     remains compiled as a
     diagnostic/generated-mesh reference, but the live scene path calls the
     compute ReSTIR export instead of letting raster fragments arbitrate

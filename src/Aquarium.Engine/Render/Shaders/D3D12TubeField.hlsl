@@ -203,17 +203,18 @@ float3 TubePoint(uint logicalColumn, float x)
         float3(0.0, value * tubeAmplitude.y, 0.0);
 }
 
-TubeFieldVertex MakeTubeVertex(float3 position, float3 previous, float3 start, float3 end, float3 next, float side, float endpointT, float capSign, float value, float3 rampColor, uint logicalColumn, float x0, float x1)
+TubeFieldVertex MakeTubeVertex(float3 position, float3 previous, float3 start, float3 end, float3 next, float side, float endpointT, float capSign, float v0, float v1, float3 rampColor, uint logicalColumn, float x0, float x1)
 {
     TubeFieldVertex vertex;
-    float radius = max(tubeMaterial.x + value * tubeMaterial.y, 0.0001);
+    float radius0 = max(tubeMaterial.x + v0 * tubeMaterial.y, 0.0001);
+    float radius1 = max(tubeMaterial.x + v1 * tubeMaterial.y, 0.0001);
     vertex.position = position;
     vertex.segmentStart = start;
     vertex.segmentEnd = end;
     vertex.previousPoint = previous;
     vertex.nextPoint = next;
     vertex.shapeData = float4(side, endpointT, capSign, 0.0);
-    vertex.radiusData = float4(radius, radius, tubeMaterial.w, 0.0);
+    vertex.radiusData = float4(radius0, radius1, tubeMaterial.w, 0.0);
     vertex.color = float4(rampColor, tubeMaterial.z);
     vertex.material = float4(max(tubeDispatch.x, 0.0), tubeMaterial.z, 4.0, 0.0001);
     vertex.tubeData = float4((float)logicalColumn, x0, x1, tubeDraw.z);
@@ -227,11 +228,11 @@ TubeFieldSegment MakeTubeSegment(float3 previous, float3 start, float3 end, floa
     float radius1 = max(tubeMaterial.x + v1 * tubeMaterial.y, 0.0001);
     segment.previousRadius = float4(previous, radius0);
     segment.startRadius = float4(start, radius0);
-    segment.endFeather = float4(end, tubeMaterial.w);
-    segment.nextAlpha = float4(next, tubeMaterial.z);
+    segment.endFeather = float4(end, radius1);
+    segment.nextAlpha = float4(next, radius1);
     segment.color0 = float4(rampColor0, v0);
     segment.color1 = float4(rampColor1, v1);
-    segment.material = float4(max(tubeDispatch.x, 0.0), tubeMaterial.z, 4.0, 0.0001);
+    segment.material = float4(max(tubeDispatch.x, 0.0), tubeMaterial.z, 4.0, tubeMaterial.w);
     segment.tubeData = float4((float)logicalColumn, x0, x1, tubeDraw.z);
     return segment;
 }
@@ -282,10 +283,10 @@ void D3D12TubeFieldExpandCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     uint vertexBase = globalSegment * 4u;
     uint indexBase = globalSegment * 6u;
     TubeFieldSegments[globalSegment] = MakeTubeSegment(previous, start, end, next, v0, v1, rampColor0, rampColor1, logicalColumn, x0, x1);
-    TubeFieldVertices[vertexBase + 0u] = MakeTubeVertex(start, previous, start, end, next, -1.0, 0.0, -1.0, v0, rampColor0, logicalColumn, x0, x1);
-    TubeFieldVertices[vertexBase + 1u] = MakeTubeVertex(start, previous, start, end, next, 1.0, 0.0, -1.0, v0, rampColor0, logicalColumn, x0, x1);
-    TubeFieldVertices[vertexBase + 2u] = MakeTubeVertex(end, previous, start, end, next, -1.0, 1.0, 1.0, v1, rampColor1, logicalColumn, x0, x1);
-    TubeFieldVertices[vertexBase + 3u] = MakeTubeVertex(end, previous, start, end, next, 1.0, 1.0, 1.0, v1, rampColor1, logicalColumn, x0, x1);
+    TubeFieldVertices[vertexBase + 0u] = MakeTubeVertex(start, previous, start, end, next, -1.0, 0.0, -1.0, v0, v1, rampColor0, logicalColumn, x0, x1);
+    TubeFieldVertices[vertexBase + 1u] = MakeTubeVertex(start, previous, start, end, next, 1.0, 0.0, -1.0, v0, v1, rampColor0, logicalColumn, x0, x1);
+    TubeFieldVertices[vertexBase + 2u] = MakeTubeVertex(end, previous, start, end, next, -1.0, 1.0, 1.0, v0, v1, rampColor1, logicalColumn, x0, x1);
+    TubeFieldVertices[vertexBase + 3u] = MakeTubeVertex(end, previous, start, end, next, 1.0, 1.0, 1.0, v0, v1, rampColor1, logicalColumn, x0, x1);
     TubeFieldIndices[indexBase + 0u] = vertexBase + 0u;
     TubeFieldIndices[indexBase + 1u] = vertexBase + 1u;
     TubeFieldIndices[indexBase + 2u] = vertexBase + 2u;
@@ -719,9 +720,9 @@ bool evaluateTubeFieldSegmentCandidate(uint segmentIndex, float2 pixel, out Tube
     }
 
     float startRadiusPx = splineRadiusToPixels(segment.startRadius.w, startProjected.w);
-    float endRadiusPx = splineRadiusToPixels(segment.previousRadius.w, endProjected.w);
+    float endRadiusPx = splineRadiusToPixels(segment.endFeather.w, endProjected.w);
     float previousRadiusPx = splineRadiusToPixels(segment.previousRadius.w, previousProjected.w);
-    float nextRadiusPx = splineRadiusToPixels(segment.startRadius.w, nextProjected.w);
+    float nextRadiusPx = splineRadiusToPixels(segment.nextAlpha.w, nextProjected.w);
     if (!finite1(startRadiusPx) || !finite1(endRadiusPx) || !finite1(previousRadiusPx) || !finite1(nextRadiusPx))
     {
         return false;
@@ -758,9 +759,9 @@ bool evaluateTubeFieldSegmentCandidate(uint segmentIndex, float2 pixel, out Tube
         normalPx = nextNormal;
     }
 
-    float aa = max(0.75, radiusPx * max(segment.endFeather.w, 0.0));
+    float aa = max(0.75, radiusPx * max(segment.material.w, 0.0));
     float coverage = 1.0 - smoothstep(0.0, aa, sdf);
-    float alpha = saturate(segment.nextAlpha.w * coverage);
+    float alpha = saturate(segment.material.y * coverage);
     if (!finite1(sdf) || !finite1(radiusPx) || !finite2(normalPx) || alpha <= 0.004)
     {
         return false;
@@ -778,7 +779,7 @@ bool evaluateTubeFieldSegmentCandidate(uint segmentIndex, float2 pixel, out Tube
     float3 tubeNormal = normalize(((right * normalPx.x) - (up * normalPx.y)) * rimBlend - ray * frontBlend);
     float normalFacing = saturate(-dot(ray, tubeNormal));
     float glowFacing = pow(normalFacing, max(segment.material.z, 0.0001));
-    float alphaFacing = pow(normalFacing, max(segment.material.w, 0.0001));
+    float alphaFacing = 1.0;
     float claimCoverage = saturate(alpha * alphaFacing);
     if (claimCoverage <= 0.004)
     {
@@ -962,7 +963,7 @@ void D3D12TubeFieldRestirBinSegmentsCS(uint3 dispatchThreadId : SV_DispatchThrea
 
     float radiusPx = max(
         splineRadiusToPixels(segment.startRadius.w, startProjected.w),
-        splineRadiusToPixels(segment.previousRadius.w, endProjected.w));
+        splineRadiusToPixels(segment.endFeather.w, endProjected.w));
     radiusPx = min(radiusPx, 256.0);
     if (!finite1(radiusPx))
     {

@@ -15,6 +15,7 @@ current_model:
     renderer: src/Aquarium.Engine/Render
     shaders: src/Aquarium.Engine/Render/Shaders
     assets: src/Aquarium.Engine/Assets
+    built_in_field_resources: src/Aquarium.Engine.Contracts/Render/AquariumBuiltInFieldResources.cs
     scripts: scripts
   fractal:
     implementation: src/Aquarium.Engine.Fractal
@@ -40,6 +41,9 @@ invariants:
     Treating a pass as "just drawing pixels" violates the engine invariant
     unless it is explicitly marked as a fallback/debug draw with no authority.
   - Client repos own policy, role names, narrative semantics, app state, and client shaders.
+  - Fensalir may own reusable built-in field resources, such as the blackbody
+    ramp, when the resource is generic engine utility. Clients should reference
+    those through contracts instead of hardcoded project-local asset paths.
   - Epiphany Aquarium depends on Fensalir; Fensalir must not depend on Epiphany.
   - Demo projects inside this repo are allowed to exercise engine features but must not become hidden engine policy.
   - Public `Aquarium.*` assembly names remain for continuity until a deliberate namespace/package migration.

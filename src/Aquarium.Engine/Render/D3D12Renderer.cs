@@ -2805,11 +2805,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCommandList.SetComputeRootConstantBufferView(RootTubeFieldRestirConstants, restirConstantsUpload.GpuVirtualAddress);
         activeCommandList.SetPipelineState(tubeFieldRestirClearTilesPipelineState);
         tubeFieldRestirTileCountBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
-        activeCommandList.Dispatch((uint)((tileCount + 255) / 256), 1, 1);
+        tubeFieldRestirTileSegmentBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+        var tileSegmentSlotCount = checked(tileCount * TubeFieldRestirMaxTileSegments);
+        activeCommandList.Dispatch((uint)((Math.Max(tileCount, tileSegmentSlotCount) + 255) / 256), 1, 1);
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldRestirTileCountBuffer.Resource));
+        activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldRestirTileSegmentBuffer.Resource));
 
         tubeFieldSegmentBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
-        tubeFieldRestirTileSegmentBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         activeCommandList.SetPipelineState(tubeFieldRestirBinSegmentsPipelineState);
         activeCommandList.Dispatch((uint)((activeTubeFieldDispatchedSegments + 255) / 256), 1, 1);
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldRestirTileCountBuffer.Resource));

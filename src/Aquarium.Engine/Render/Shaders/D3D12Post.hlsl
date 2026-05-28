@@ -598,6 +598,20 @@ void acceptFieldReservoirCandidate(
     }
 }
 
+FieldReservoirCandidate carryFieldReservoirHistoryCandidate(FieldReservoirCandidate previousCandidate)
+{
+    if (!fieldReservoirCandidateValid(previousCandidate) || previousCandidate.control.w >= MAX_HISTORY_AGE)
+    {
+        return emptyFieldReservoirCandidate();
+    }
+
+    FieldReservoirCandidate carried = previousCandidate;
+    carried.control.w = min(previousCandidate.control.w + 1.0, MAX_HISTORY_AGE);
+    carried.reservoirGuide.y = min(max(previousCandidate.reservoirGuide.y, 0.0) + 1.0, MAX_HISTORY_AGE);
+    carried.reservoirGuide.w = 0.0;
+    return carried;
+}
+
 FieldReservoirResolveOut D3D12FieldReservoirResolvePS(VertexOut input)
 {
     uint2 pixel = (uint2)pixelFromUv(input.uv);
@@ -665,6 +679,31 @@ void D3D12ReservoirHistoryUpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
     {
         hasSharedCandidate = hasSharedCandidate || fieldReservoirCandidateValid(fieldReservoirCandidates[baseIndex + slot]);
+    }
+
+    if (!hasSharedCandidate && !fieldReservoirCandidateValid(sceneCandidate))
+    {
+        [unroll]
+        for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
+        {
+            FieldReservoirCandidate carriedCandidate = carryFieldReservoirHistoryCandidate(reservoirHistoryRead[baseIndex + slot]);
+            reservoirHistoryWrite[baseIndex + slot] = carriedCandidate;
+            float priority = fieldReservoirCandidatePriority(
+                carriedCandidate.colorTravel,
+                carriedCandidate.metadata,
+                carriedCandidate.control,
+                carriedCandidate.reservoirGuide);
+            if (priority < bestPriority)
+            {
+                bestResolved = carriedCandidate;
+                bestPriority = priority;
+            }
+        }
+
+        reservoirResolvedTexture[currentPixel] = bestPriority < 1.0e19
+            ? bestResolved.colorTravel
+            : sceneCandidate.colorTravel;
+        return;
     }
 
     [unroll]

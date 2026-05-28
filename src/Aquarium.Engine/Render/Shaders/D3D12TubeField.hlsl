@@ -111,8 +111,12 @@ RWStructuredBuffer<FieldReservoirCandidate> RestirFieldReservoirCandidates : reg
 
 static const uint TubeFieldRestirTileSize = 16u;
 static const uint TubeFieldRestirMaxTileSegments = 128u;
-static const uint TubeFieldRestirInitialCandidateCount = TubeFieldRestirMaxTileSegments;
+static const uint TubeFieldRestirSpatialTileLanes = 16u;
+static const uint TubeFieldRestirDepthLanesPerSpatialLane = 1u;
+static const uint TubeFieldRestirResidentTileCandidates = TubeFieldRestirSpatialTileLanes * TubeFieldRestirDepthLanesPerSpatialLane;
+static const uint TubeFieldRestirInitialCandidateCount = TubeFieldRestirResidentTileCandidates;
 static const uint TubeFieldRestirSpatialCandidateCount = 4u;
+static const uint TubeFieldRestirExportCandidateCount = TubeFieldRestirResidentTileCandidates;
 static const uint FieldReservoirSlotsPerPixel = 4u;
 
 RWStructuredBuffer<FieldReservoirCandidate> FieldReservoirCandidates : register(u14);
@@ -563,6 +567,33 @@ float restirRandom01(uint seed)
     return (float)(wangHash(seed) & 0x00ffffffu) / 16777216.0;
 }
 
+uint restirTileCandidateSlot(uint pixelIndex, uint tileIndex, uint count, uint sampleIndex, uint salt)
+{
+    if (count <= 1u)
+    {
+        return 0u;
+    }
+
+    uint seed = pixelIndex * 2246822519u ^
+        tileIndex * 3266489917u ^
+        sampleIndex * 668265263u ^
+        (uint)frameIndex * 374761393u ^
+        salt;
+    return wangHash(seed) % count;
+}
+
+uint packRestirTileSegment(uint segmentIndex, float travel)
+{
+    uint depthKey = (uint)round(saturate(travel / max(farDistance, 0.0001)) * 65534.0);
+    return (depthKey << 16) | (segmentIndex & 0xffffu);
+}
+
+bool unpackRestirTileSegment(uint packed, out uint segmentIndex)
+{
+    segmentIndex = packed & 0xffffu;
+    return packed != 0xffffffffu;
+}
+
 bool finite1(float value)
 {
     return !isnan(value) && !isinf(value);
@@ -925,6 +956,12 @@ void D3D12TubeFieldRestirClearTilesCS(uint3 dispatchThreadId : SV_DispatchThread
     {
         RestirTileCounts[dispatchThreadId.x] = 0u;
     }
+
+    uint tileSegmentCount = tileCount * TubeFieldRestirMaxTileSegments;
+    if (dispatchThreadId.x < tileSegmentCount)
+    {
+        RestirTileSegments[dispatchThreadId.x] = 0xffffffffu;
+    }
 }
 
 [numthreads(256, 1, 1)]
@@ -965,7 +1002,8 @@ void D3D12TubeFieldRestirBinSegmentsCS(uint3 dispatchThreadId : SV_DispatchThrea
         splineRadiusToPixels(segment.startRadius.w, startProjected.w),
         splineRadiusToPixels(segment.endFeather.w, endProjected.w));
     radiusPx = min(radiusPx, 256.0);
-    if (!finite1(radiusPx))
+    float segmentTravel = min(startProjected.w, endProjected.w);
+    if (!finite1(radiusPx) || !finite1(segmentTravel))
     {
         return;
     }
@@ -999,10 +1037,20 @@ void D3D12TubeFieldRestirBinSegmentsCS(uint3 dispatchThreadId : SV_DispatchThrea
             uint tileIndex = tileY * tileDims.x + tileX;
             uint slot;
             InterlockedAdd(RestirTileCounts[tileIndex], 1u, slot);
-            if (slot < TubeFieldRestirMaxTileSegments)
-            {
-                RestirTileSegments[tileIndex * TubeFieldRestirMaxTileSegments + slot] = segmentIndex;
-            }
+            float2 tileOrigin = float2(tileX, tileY) * (float)TubeFieldRestirTileSize;
+            float2 tileCenter = tileOrigin + (float)TubeFieldRestirTileSize * 0.5;
+            float2 segmentPx = endProjected.xy - startProjected.xy;
+            float segmentLength2 = max(dot(segmentPx, segmentPx), 0.0001);
+            float tileT = saturate(dot(tileCenter - startProjected.xy, segmentPx) / segmentLength2);
+            float2 tilePoint = lerp(startProjected.xy, endProjected.xy, tileT);
+            float2 localTilePoint = saturate((tilePoint - tileOrigin) / (float)TubeFieldRestirTileSize);
+            uint laneX = min((uint)floor(localTilePoint.x * 4.0), 3u);
+            uint laneY = min((uint)floor(localTilePoint.y * 4.0), 3u);
+            uint spatialLane = laneY * 4u + laneX;
+            uint depthLane = wangHash(segmentIndex * 1597334677u ^ tileIndex * 3812015801u) % TubeFieldRestirDepthLanesPerSpatialLane;
+            uint residentSlot = spatialLane * TubeFieldRestirDepthLanesPerSpatialLane + depthLane;
+            uint packed = packRestirTileSegment(segmentIndex, segmentTravel);
+            InterlockedMin(RestirTileSegments[tileIndex * TubeFieldRestirMaxTileSegments + residentSlot], packed);
         }
     }
 }
@@ -1021,7 +1069,7 @@ void D3D12TubeFieldRestirInitialCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     uint2 tileDims = restirTileDimensions();
     uint2 tile = min(pixel / TubeFieldRestirTileSize, tileDims - 1u);
     uint tileIndex = tile.y * tileDims.x + tile.x;
-    uint count = min(RestirTileCountsRead[tileIndex], TubeFieldRestirMaxTileSegments);
+    uint count = min(RestirTileCountsRead[tileIndex], TubeFieldRestirResidentTileCandidates);
     TubeFieldReservoir reservoir = RestirInitialReservoirs[pixelIndex];
     float invSourcePdf = count > 0u ? (float)count : 0.0;
     uint proposalCount = min(count, TubeFieldRestirInitialCandidateCount);
@@ -1029,8 +1077,13 @@ void D3D12TubeFieldRestirInitialCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     {
         uint candidateSlot = count <= TubeFieldRestirInitialCandidateCount
             ? index
-            : (uint)floor(restirRandom01(pixelIndex * 2246822519u + index * 3266489917u + (uint)frameIndex * 668265263u) * (float)count);
-        uint segmentIndex = RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + min(candidateSlot, count - 1u)];
+            : restirTileCandidateSlot(pixelIndex, tileIndex, count, index, 0x9e3779b9u);
+        uint segmentIndex;
+        if (!unpackRestirTileSegment(RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + min(candidateSlot, count - 1u)], segmentIndex))
+        {
+            continue;
+        }
+
         TubeFieldReservoir candidate;
         float targetPdf;
         if (evaluateTubeFieldSegmentCandidate(segmentIndex, (float2)pixel + 0.5, candidate, targetPdf))
@@ -1153,10 +1206,19 @@ void D3D12TubeFieldRestirSpatialResolveCS(uint3 dispatchThreadId : SV_DispatchTh
     uint2 tileDims = restirTileDimensions();
     uint2 tile = min(pixel / TubeFieldRestirTileSize, tileDims - 1u);
     uint tileIndex = tile.y * tileDims.x + tile.x;
-    uint count = min(RestirTileCountsRead[tileIndex], TubeFieldRestirMaxTileSegments);
-    for (uint index = 0u; index < count; index++)
+    uint count = min(RestirTileCountsRead[tileIndex], TubeFieldRestirResidentTileCandidates);
+    uint exportProposalCount = min(count, TubeFieldRestirExportCandidateCount);
+    for (uint index = 0u; index < exportProposalCount; index++)
     {
-        uint segmentIndex = RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + index];
+        uint candidateSlot = count <= TubeFieldRestirExportCandidateCount
+            ? index
+            : restirTileCandidateSlot(pixelIndex, tileIndex, count, index, 0x85ebca6bu);
+        uint segmentIndex;
+        if (!unpackRestirTileSegment(RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + min(candidateSlot, count - 1u)], segmentIndex))
+        {
+            continue;
+        }
+
         TubeFieldReservoir candidate;
         float targetPdf;
         if (evaluateTubeFieldSegmentCandidate(segmentIndex, (float2)pixel + 0.5, candidate, targetPdf))

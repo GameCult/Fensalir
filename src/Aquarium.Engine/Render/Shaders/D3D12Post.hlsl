@@ -657,14 +657,21 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
     float bestPriority = 1.0e20;
     float combinedHistoryWeight = 0.0;
     float combinedHistoryAge = 0.0;
+    bool hasSharedCandidate = false;
 
     [unroll]
     for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
     {
-        FieldReservoirCandidate currentCandidate = sceneCandidate;
-        if (slot > 0u)
+        hasSharedCandidate = hasSharedCandidate || fieldReservoirCandidateValid(fieldReservoirCandidates[baseIndex + slot]);
+    }
+
+    [unroll]
+    for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
+    {
+        FieldReservoirCandidate currentCandidate = fieldReservoirCandidates[baseIndex + slot];
+        if (!hasSharedCandidate && slot == 0u)
         {
-            currentCandidate = fieldReservoirCandidates[baseIndex + slot - 1u];
+            currentCandidate = sceneCandidate;
         }
 
         float slotHistoryWeight;

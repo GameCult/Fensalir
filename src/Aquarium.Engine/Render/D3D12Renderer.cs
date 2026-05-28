@@ -4476,21 +4476,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     {
         var vertexShader = CompileShader(path, "D3D12TubeFieldVS", "vs_5_0");
         var pixelShader = CompileShader(path, "D3D12TubeFieldPS", "ps_5_0");
-        var blend = BlendDescription.Opaque;
-        for (var index = 1; index < 8; index++)
-        {
-            blend.RenderTarget[index] = new RenderTargetBlendDescription(
-                false,
-                false,
-                Blend.One,
-                Blend.Zero,
-                BlendOperation.Add,
-                Blend.One,
-                Blend.Zero,
-                BlendOperation.Add,
-                LogicOp.Noop,
-                index < 4 ? ColorWriteEnable.All : ColorWriteEnable.None);
-        }
+        var blend = CreateTubeFieldEvidenceBlend();
 
         var description = new GraphicsPipelineStateDescription
         {
@@ -4520,6 +4506,65 @@ public sealed class D3D12Renderer : IAquariumRenderer
         };
 
         return device.CreateGraphicsPipelineState(description);
+    }
+
+    private static BlendDescription CreateTubeFieldEvidenceBlend()
+    {
+        var blend = BlendDescription.Opaque;
+        blend.IndependentBlendEnable = true;
+        blend.RenderTarget[0] = new RenderTargetBlendDescription(
+            true,
+            false,
+            srcBlend: Blend.One,
+            destBlend: Blend.One,
+            blendOp: BlendOperation.Max,
+            srcBlendAlpha: Blend.One,
+            destBlendAlpha: Blend.One,
+            blendOpAlpha: BlendOperation.Min,
+            logicOp: LogicOp.Noop,
+            renderTargetWriteMask: ColorWriteEnable.All);
+        blend.RenderTarget[1] = new RenderTargetBlendDescription(
+            false,
+            false,
+            Blend.One,
+            Blend.Zero,
+            BlendOperation.Add,
+            Blend.One,
+            Blend.Zero,
+            BlendOperation.Add,
+            LogicOp.Noop,
+            ColorWriteEnable.All);
+        for (var index = 2; index < 4; index++)
+        {
+            blend.RenderTarget[index] = new RenderTargetBlendDescription(
+                true,
+                false,
+                srcBlend: Blend.One,
+                destBlend: Blend.One,
+                blendOp: BlendOperation.Max,
+                srcBlendAlpha: Blend.One,
+                destBlendAlpha: Blend.One,
+                blendOpAlpha: BlendOperation.Max,
+                logicOp: LogicOp.Noop,
+                renderTargetWriteMask: ColorWriteEnable.All);
+        }
+
+        for (var index = 4; index < 8; index++)
+        {
+            blend.RenderTarget[index] = new RenderTargetBlendDescription(
+                false,
+                false,
+                Blend.One,
+                Blend.Zero,
+                BlendOperation.Add,
+                Blend.One,
+                Blend.Zero,
+                BlendOperation.Add,
+                LogicOp.Noop,
+                ColorWriteEnable.None);
+        }
+
+        return blend;
     }
 
     private ID3D12PipelineState CreateBloomPrefilterPipelineState(string path)

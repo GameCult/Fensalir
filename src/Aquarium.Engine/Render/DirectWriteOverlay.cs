@@ -84,9 +84,10 @@ internal sealed class DirectWriteOverlay : IDisposable
         monospaceFormat = CreateTextFormat("Ubuntu Sans Mono", 11.0f, FontWeight.Regular, ParagraphAlignment.Near);
     }
 
-    public void Render(AquariumFrame frame, int renderDebugMode, DebugUi? debugUi, IReadOnlyList<DebugUi> clientUiPanels)
+    public void Render(AquariumFrame frame, int renderDebugMode, DebugUi? debugUi, IReadOnlyList<DebugUi> clientUiPanels, string performanceText)
     {
         renderTarget.BeginDraw();
+        DrawPerformanceCounter(performanceText);
         if (debugUi is not null)
         {
             DrawPanel(debugUi, 1.0f);
@@ -98,6 +99,21 @@ internal sealed class DirectWriteOverlay : IDisposable
         }
 
         renderTarget.EndDraw();
+    }
+
+    private void DrawPerformanceCounter(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var right = width - 12.0f;
+        var top = 12.0f;
+        var bounds = RectFromEdges(Math.Max(12.0f, right - 152.0f), top, right, top + 28.0f);
+        renderTarget.FillRectangle(bounds, panelBrush);
+        renderTarget.DrawRectangle(bounds, outlineBrush, 1.0f);
+        renderTarget.DrawText(text, smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top, bounds.Right - 8.0f, bounds.Bottom), primaryTextBrush, DrawTextOptions.Clip);
     }
 
     private void DrawPanel(DebugUi panel, float opacity)

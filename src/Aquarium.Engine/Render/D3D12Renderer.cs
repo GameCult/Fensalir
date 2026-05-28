@@ -345,6 +345,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private double accumulatedRecordCpuMilliseconds;
     private double accumulatedOverlayCpuMilliseconds;
     private int accumulatedTimingFrames;
+    private long lastVisibleFrameTimestamp;
+    private double smoothedVisibleFrameMilliseconds;
+    private string visibleFrameRateText = "FPS --";
     private readonly string shaderSourceRoot;
     private readonly D3D12ShaderPaths shaderPaths;
     private readonly CompiledRenderGraph renderGraph;
@@ -841,6 +844,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     public void Render(AquariumFrame frame, int width, int height)
     {
         var frameCpuStart = Stopwatch.GetTimestamp();
+        UpdateVisibleFrameRate(frameCpuStart);
         ResizeIfNeeded(width, height);
         ApplyCompletedPipelineBuild();
         TryHotReloadShaders();
@@ -1801,7 +1805,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     {
         var wrappedBackBuffer = overlayWrappedBackBuffers[frameIndex];
         overlayOn12Device.AcquireWrappedResources([wrappedBackBuffer]);
-        overlays[frameIndex].Render(frame, RenderDebugMode, debugUi, clientUiPanels);
+        overlays[frameIndex].Render(frame, RenderDebugMode, debugUi, clientUiPanels, visibleFrameRateText);
         overlayOn12Device.ReleaseWrappedResources([wrappedBackBuffer]);
         overlayContext.Flush();
         frameResources.BackBuffer.MarkState(ResourceStates.Present);
@@ -4067,6 +4071,28 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         return flags;
+    }
+
+    private void UpdateVisibleFrameRate(long frameTimestamp)
+    {
+        if (lastVisibleFrameTimestamp == 0)
+        {
+            lastVisibleFrameTimestamp = frameTimestamp;
+            return;
+        }
+
+        var frameMilliseconds = (frameTimestamp - lastVisibleFrameTimestamp) * 1000.0 / Stopwatch.Frequency;
+        lastVisibleFrameTimestamp = frameTimestamp;
+        if (!double.IsFinite(frameMilliseconds) || frameMilliseconds <= 0.0)
+        {
+            return;
+        }
+
+        smoothedVisibleFrameMilliseconds = smoothedVisibleFrameMilliseconds <= 0.0
+            ? frameMilliseconds
+            : smoothedVisibleFrameMilliseconds * 0.90 + frameMilliseconds * 0.10;
+        var fps = 1000.0 / Math.Max(smoothedVisibleFrameMilliseconds, 0.001);
+        visibleFrameRateText = $"FPS {fps:0.0}  {smoothedVisibleFrameMilliseconds:0.0} ms";
     }
 
     private void SignalFrame(FrameResources frameResources)

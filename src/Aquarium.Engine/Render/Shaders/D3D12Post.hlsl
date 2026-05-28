@@ -28,11 +28,8 @@ cbuffer AquariumFrame : register(b0)
 };
 
 Texture2D<float4> sourceTexture : register(t0);
-Texture2D<float4> historyTexture : register(t4);
 Texture2D<float4> currentSceneMetadataTexture : register(t5);
-Texture2D<float4> historyMetadataTexture : register(t6);
 Texture2D<float4> currentSceneControlTexture : register(t7);
-Texture2D<float4> historyControlTexture : register(t8);
 Texture2D<float4> bloomTexture0 : register(t29);
 Texture2D<float4> bloomTexture1 : register(t30);
 Texture2D<float4> bloomTexture2 : register(t31);
@@ -42,7 +39,6 @@ Texture2D<float4> bloomTexture5 : register(t34);
 Texture2D<float4> bloomTexture6 : register(t35);
 Texture2D<float4> bloomTexture7 : register(t36);
 Texture2D<float4> currentReservoirGuideTexture : register(t26);
-Texture2D<float4> historyReservoirGuideTexture : register(t27);
 Texture2D<float> blueNoiseTexture : register(t28);
 SamplerState sourceSampler : register(s0);
 
@@ -66,6 +62,8 @@ struct FieldReservoirCandidate
 };
 
 StructuredBuffer<FieldReservoirCandidate> fieldReservoirCandidates : register(t45);
+StructuredBuffer<FieldReservoirCandidate> reservoirHistoryRead : register(t51);
+RWStructuredBuffer<FieldReservoirCandidate> reservoirHistoryWrite : register(u22);
 
 static const uint FieldReservoirSlotsPerPixel = 4u;
 
@@ -78,10 +76,6 @@ struct VertexOut
 struct ResolveOut
 {
     float4 finalColor : SV_Target0;
-    float4 historyColor : SV_Target1;
-    float4 historyMetadata : SV_Target2;
-    float4 historyControl : SV_Target3;
-    float4 historyReservoirGuide : SV_Target4;
 };
 
 struct FieldReservoirResolveOut
@@ -208,29 +202,19 @@ float4 loadCurrentControl(float2 uv)
     return currentSceneControlTexture.Load(int3(pixelFromUv(uv), 0));
 }
 
-float4 loadHistoryColor(float2 uv)
+FieldReservoirCandidate emptyFieldReservoirCandidate()
 {
-    return historyTexture.Load(int3(pixelFromUv(uv), 0));
-}
-
-float4 loadHistoryMetadata(float2 uv)
-{
-    return historyMetadataTexture.Load(int3(pixelFromUv(uv), 0));
-}
-
-float4 loadHistoryControl(float2 uv)
-{
-    return historyControlTexture.Load(int3(pixelFromUv(uv), 0));
+    FieldReservoirCandidate candidate;
+    candidate.colorTravel = float4(0.0, 0.0, 0.0, farDistance + 1.0);
+    candidate.metadata = 0.0;
+    candidate.control = 0.0;
+    candidate.reservoirGuide = float4(1.0, 0.0, 1.0, 0.0);
+    return candidate;
 }
 
 float4 loadCurrentReservoirGuide(float2 uv)
 {
     return currentReservoirGuideTexture.Load(int3(pixelFromUv(uv), 0));
-}
-
-float4 loadHistoryReservoirGuide(float2 uv)
-{
-    return historyReservoirGuideTexture.Load(int3(pixelFromUv(uv), 0));
 }
 
 void currentNeighborhood(float2 uv, out float3 neighborhoodMin, out float3 neighborhoodMax)
@@ -421,6 +405,156 @@ bool fieldReservoirCandidateValid(FieldReservoirCandidate candidate)
         saturate(candidate.reservoirGuide.z) > 0.0;
 }
 
+FieldReservoirCandidate sceneFieldReservoirCandidate(float2 uv)
+{
+    FieldReservoirCandidate candidate;
+    candidate.colorTravel = sourceTexture.SampleLevel(sourceSampler, uv, 0.0);
+    candidate.metadata = loadCurrentMetadata(uv);
+    candidate.control = loadCurrentControl(uv);
+    candidate.reservoirGuide = loadCurrentReservoirGuide(uv);
+    return candidate;
+}
+
+float reservoirCandidateConfidence(FieldReservoirCandidate candidate)
+{
+    return candidate.reservoirGuide.x > 0.0
+        ? saturate(candidate.reservoirGuide.x)
+        : (candidate.control.w > 0.0 ? saturate(candidate.control.w) : 1.0);
+}
+
+float reservoirCandidateDomainValidity(FieldReservoirCandidate candidate)
+{
+    return candidate.reservoirGuide.z > 0.0 ? saturate(candidate.reservoirGuide.z) : 1.0;
+}
+
+float reservoirHistoryValidationWeight(
+    FieldReservoirCandidate currentCandidate,
+    FieldReservoirCandidate previousCandidate,
+    float expectedPreviousTravel,
+    float3 neighborhoodMin,
+    float3 neighborhoodMax,
+    out float3 clampedHistory)
+{
+    clampedHistory = clamp(previousCandidate.colorTravel.rgb, neighborhoodMin, neighborhoodMax);
+    if (!fieldReservoirCandidateValid(currentCandidate) ||
+        !fieldReservoirCandidateValid(previousCandidate))
+    {
+        return 0.0;
+    }
+
+    float travelDelta = abs(previousCandidate.colorTravel.w - expectedPreviousTravel);
+    float travelTolerance = max(0.045, expectedPreviousTravel * 0.018);
+    float travelWeight = 1.0 - smoothstep(travelTolerance, travelTolerance * 4.0, travelDelta);
+    float fieldWeight = abs(previousCandidate.metadata.x - currentCandidate.metadata.x) < 0.001 ? 1.0 : 0.0;
+    float normalWeight = 0.0;
+    if (dot(previousCandidate.metadata.yzw, previousCandidate.metadata.yzw) > 0.01 &&
+        dot(currentCandidate.metadata.yzw, currentCandidate.metadata.yzw) > 0.01)
+    {
+        normalWeight = smoothstep(0.68, 0.96, dot(normalize(previousCandidate.metadata.yzw), normalize(currentCandidate.metadata.yzw)));
+    }
+
+    float colorDelta = length(clampedHistory - currentCandidate.colorTravel.rgb);
+    float colorWeight = 1.0 - smoothstep(0.18, 1.2, colorDelta);
+    float currentLuma = luminance(currentCandidate.colorTravel.rgb);
+    float historyLuma = luminance(clampedHistory);
+    float hotSdfCurrent = currentCandidate.metadata.x >= FIELD_ID_SDF_OBJECT_BASE ? smoothstep(1.0, 5.0, currentLuma - historyLuma) : 0.0;
+    colorWeight = max(colorWeight, hotSdfCurrent * 0.82);
+    float coverageWeight = smoothstep(0.02, 0.55, saturate(currentCandidate.control.x));
+    float coverageContinuityWeight = 1.0 - smoothstep(0.10, 0.50, abs(saturate(previousCandidate.control.x) - saturate(currentCandidate.control.x)));
+    float temporalDetailWeight = 1.0 - smoothstep(0.08, 0.45, abs(saturate(previousCandidate.control.z) - saturate(currentCandidate.control.z)));
+    temporalDetailWeight = max(temporalDetailWeight, 1.0 - smoothstep(0.02, 0.12, max(saturate(previousCandidate.control.z), saturate(currentCandidate.control.z))));
+    float reservoirConfidenceWeight = lerp(0.45, 1.0, min(reservoirCandidateConfidence(currentCandidate), reservoirCandidateConfidence(previousCandidate)));
+    float reservoirDomainWeight = reservoirCandidateDomainValidity(currentCandidate) * reservoirCandidateDomainValidity(previousCandidate);
+    return travelWeight * colorWeight * fieldWeight * normalWeight * coverageWeight * coverageContinuityWeight * temporalDetailWeight * reservoirConfidenceWeight * reservoirDomainWeight;
+}
+
+FieldReservoirCandidate resolveReservoirHistoryCandidate(
+    FieldReservoirCandidate currentCandidate,
+    float2 pixel,
+    float2 uv,
+    out float historyWeight,
+    out float historyAge)
+{
+    historyWeight = 0.0;
+    historyAge = 0.0;
+    if (!fieldReservoirCandidateValid(currentCandidate))
+    {
+        return emptyFieldReservoirCandidate();
+    }
+
+    float reservoirSampleAge = max(currentCandidate.reservoirGuide.y, 0.0);
+    float reservoirInvalidationCode = 0.0;
+    float3 historyColor = currentCandidate.colorTravel.rgb;
+    if (frameIndex > 0.5 && currentCandidate.colorTravel.w <= farDistance && currentCandidate.metadata.x > 0.5)
+    {
+        float3 currentRay = rayDirectionForPixel(pixel, jitterPixels, cameraPosition, cameraTarget);
+        float3 worldPosition = cameraPosition + currentRay * currentCandidate.colorTravel.w;
+        float3 previousWorldPosition = temporalPreviousWorldPosition(worldPosition, currentCandidate.metadata.x);
+        float2 previousUv = projectWorldToPreviousHistoryUv(previousWorldPosition);
+
+        if (all(previousUv >= 0.0) && all(previousUv <= 1.0))
+        {
+            uint2 dimensions = (uint2)max(resolution, float2(1.0, 1.0));
+            uint2 previousPixel = min((uint2)pixelFromUv(previousUv), dimensions - 1u);
+            uint width = dimensions.x;
+            uint previousBaseIndex = (previousPixel.y * width + previousPixel.x) * FieldReservoirSlotsPerPixel;
+            float expectedPreviousTravel = distance(previousCameraPosition, previousWorldPosition);
+            float3 neighborhoodMin;
+            float3 neighborhoodMax;
+            currentNeighborhood(uv, neighborhoodMin, neighborhoodMax);
+            float bestValidationWeight = 0.0;
+            float bestPreviousHistoryAge = 0.0;
+            float bestPreviousReservoirSampleAge = 0.0;
+            float3 bestHistoryColor = currentCandidate.colorTravel.rgb;
+
+            [unroll]
+            for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
+            {
+                FieldReservoirCandidate previousCandidate = reservoirHistoryRead[previousBaseIndex + slot];
+                float3 clampedHistory;
+                float validationWeight = reservoirHistoryValidationWeight(
+                    currentCandidate,
+                    previousCandidate,
+                    expectedPreviousTravel,
+                    neighborhoodMin,
+                    neighborhoodMax,
+                    clampedHistory);
+                if (validationWeight > bestValidationWeight)
+                {
+                    bestValidationWeight = validationWeight;
+                    bestPreviousHistoryAge = max(previousCandidate.control.w, 0.0);
+                    bestPreviousReservoirSampleAge = max(previousCandidate.reservoirGuide.y, 0.0);
+                    bestHistoryColor = clampedHistory;
+                }
+            }
+
+            if (bestValidationWeight > 0.0)
+            {
+                float historyConfidence = smoothstep(0.0, 6.0, bestPreviousHistoryAge);
+                historyColor = bestHistoryColor;
+                historyWeight = 0.82 * lerp(0.35, 1.0, historyConfidence) * bestValidationWeight;
+                historyAge = bestValidationWeight > 0.01 ? min(bestPreviousHistoryAge + 1.0, MAX_HISTORY_AGE) : 0.0;
+                reservoirSampleAge = bestValidationWeight > 0.01 ? min(max(reservoirSampleAge, bestPreviousReservoirSampleAge + 1.0), MAX_HISTORY_AGE) : reservoirSampleAge;
+                reservoirInvalidationCode = bestValidationWeight > 0.01 ? 0.0 : 1.0;
+            }
+            else
+            {
+                reservoirInvalidationCode = 1.0;
+            }
+        }
+    }
+
+    FieldReservoirCandidate resolved = currentCandidate;
+    resolved.colorTravel = float4(lerp(currentCandidate.colorTravel.rgb, historyColor, historyWeight), currentCandidate.colorTravel.w);
+    resolved.control = float4(currentCandidate.control.xyz, historyAge);
+    resolved.reservoirGuide = float4(
+        reservoirCandidateConfidence(currentCandidate),
+        reservoirSampleAge,
+        reservoirCandidateDomainValidity(currentCandidate),
+        reservoirInvalidationCode);
+    return resolved;
+}
+
 float fieldReservoirCandidatePriority(float4 colorTravel, float4 metadata, float4 control, float4 reservoirGuide)
 {
     if (metadata.x <= 0.5 ||
@@ -514,90 +648,63 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
 {
     float2 screenUv = float2(input.uv.x, 1.0 - input.uv.y);
     float2 pixel = screenUv * resolution;
-    float4 current = sourceTexture.SampleLevel(sourceSampler, input.uv, 0.0);
-    float currentTravel = current.a;
-    float3 rawCurrentColor = current.rgb;
-    float3 currentColor = current.rgb;
-    float4 currentMetadata = loadCurrentMetadata(input.uv);
-    float4 currentControl = loadCurrentControl(input.uv);
-    float4 currentReservoirGuide = loadCurrentReservoirGuide(input.uv);
-    float currentFieldId = currentMetadata.x;
-    float3 currentNormal = currentMetadata.yzw;
-    float currentCoverage = saturate(currentControl.x);
-    float currentStepRatio = saturate(currentControl.y);
-    float currentTemporalDetail = saturate(currentControl.z);
-    float currentReservoirConfidence = currentReservoirGuide.x > 0.0 ? saturate(currentReservoirGuide.x) : (currentControl.w > 0.0 ? saturate(currentControl.w) : 1.0);
-    float currentReservoirSampleAge = max(currentReservoirGuide.y, 0.0);
-    float currentReservoirDomainValidity = currentReservoirGuide.z > 0.0 ? saturate(currentReservoirGuide.z) : 1.0;
+    uint2 dimensions = (uint2)max(resolution, float2(1.0, 1.0));
+    uint2 currentPixel = min((uint2)max(pixel, float2(0.0, 0.0)), dimensions - 1u);
+    uint pixelIndex = currentPixel.y * dimensions.x + currentPixel.x;
+    uint baseIndex = pixelIndex * FieldReservoirSlotsPerPixel;
+    FieldReservoirCandidate sceneCandidate = sceneFieldReservoirCandidate(input.uv);
+    FieldReservoirCandidate bestResolved = emptyFieldReservoirCandidate();
+    float bestPriority = 1.0e20;
+    float combinedHistoryWeight = 0.0;
+    float combinedHistoryAge = 0.0;
 
-    float historyWeight = 0.0;
-    float historyAge = 0.0;
-    float reservoirSampleAge = currentReservoirSampleAge;
-    float reservoirInvalidationCode = 0.0;
-    float3 historyColor = currentColor;
-    if (frameIndex > 0.5 && currentTravel <= farDistance && currentFieldId > 0.5)
+    [unroll]
+    for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
     {
-        float3 currentRay = rayDirectionForPixel(pixel, jitterPixels, cameraPosition, cameraTarget);
-        float3 worldPosition = cameraPosition + currentRay * currentTravel;
-        float3 previousWorldPosition = temporalPreviousWorldPosition(worldPosition, currentFieldId);
-        float2 previousUv = projectWorldToPreviousHistoryUv(previousWorldPosition);
-
-        if (all(previousUv >= 0.0) && all(previousUv <= 1.0))
+        FieldReservoirCandidate currentCandidate = sceneCandidate;
+        if (slot > 0u)
         {
-            float4 previousMetadata = loadHistoryMetadata(previousUv);
-            float4 previousControl = loadHistoryControl(previousUv);
-            float4 previousReservoirGuide = loadHistoryReservoirGuide(previousUv);
-            float4 previous = historyTexture.SampleLevel(sourceSampler, previousUv, 0.0);
-            float previousFieldId = previousMetadata.x;
-            float previousTravel = previous.a;
-            float3 previousNormal = previousMetadata.yzw;
-            float previousCoverage = saturate(previousControl.x);
-            float previousTemporalDetail = saturate(previousControl.z);
-            float previousHistoryAge = max(previousControl.w, 0.0);
-            float previousReservoirConfidence = previousReservoirGuide.x > 0.0 ? saturate(previousReservoirGuide.x) : 1.0;
-            float previousReservoirSampleAge = max(previousReservoirGuide.y, 0.0);
-            float previousReservoirDomainValidity = previousReservoirGuide.z > 0.0 ? saturate(previousReservoirGuide.z) : 1.0;
-            float expectedPreviousTravel = distance(previousCameraPosition, previousWorldPosition);
-            float travelDelta = abs(previousTravel - expectedPreviousTravel);
-            float travelTolerance = max(0.045, expectedPreviousTravel * 0.018);
-            float travelWeight = 1.0 - smoothstep(travelTolerance, travelTolerance * 4.0, travelDelta);
-            float fieldWeight = abs(previousFieldId - currentFieldId) < 0.001 ? 1.0 : 0.0;
-            float normalWeight = 0.0;
-            if (dot(previousNormal, previousNormal) > 0.01 && dot(currentNormal, currentNormal) > 0.01)
-            {
-                normalWeight = smoothstep(0.68, 0.96, dot(normalize(previousNormal), normalize(currentNormal)));
-            }
+            currentCandidate = fieldReservoirCandidates[baseIndex + slot - 1u];
+        }
 
-            float3 neighborhoodMin;
-            float3 neighborhoodMax;
-            currentNeighborhood(input.uv, neighborhoodMin, neighborhoodMax);
-            float3 clampedHistory = clamp(previous.rgb, neighborhoodMin, neighborhoodMax);
-            float colorDelta = length(clampedHistory - currentColor);
-            float colorWeight = 1.0 - smoothstep(0.18, 1.2, colorDelta);
-            float currentLuma = luminance(currentColor);
-            float historyLuma = luminance(clampedHistory);
-            float hotSdfCurrent = currentFieldId >= FIELD_ID_SDF_OBJECT_BASE ? smoothstep(1.0, 5.0, currentLuma - historyLuma) : 0.0;
-            colorWeight = max(colorWeight, hotSdfCurrent * 0.82);
-            float coverageWeight = smoothstep(0.02, 0.55, currentCoverage);
-            float coverageContinuityWeight = 1.0 - smoothstep(0.10, 0.50, abs(previousCoverage - currentCoverage));
-            float temporalDetailWeight = 1.0 - smoothstep(0.08, 0.45, abs(previousTemporalDetail - currentTemporalDetail));
-            temporalDetailWeight = max(temporalDetailWeight, 1.0 - smoothstep(0.02, 0.12, max(previousTemporalDetail, currentTemporalDetail)));
-            float reservoirConfidenceWeight = lerp(0.45, 1.0, min(currentReservoirConfidence, previousReservoirConfidence));
-            float reservoirDomainWeight = currentReservoirDomainValidity * previousReservoirDomainValidity;
-            float historyConfidence = smoothstep(0.0, 6.0, previousHistoryAge);
-            float validationWeight = travelWeight * colorWeight * fieldWeight * normalWeight * coverageWeight * coverageContinuityWeight * temporalDetailWeight * reservoirConfidenceWeight * reservoirDomainWeight;
-
-            historyColor = clampedHistory;
-            historyWeight = 0.82 * lerp(0.35, 1.0, historyConfidence) * validationWeight;
-            historyAge = validationWeight > 0.01 ? min(previousHistoryAge + 1.0, MAX_HISTORY_AGE) : 0.0;
-            reservoirSampleAge = validationWeight > 0.01 ? min(max(currentReservoirSampleAge, previousReservoirSampleAge + 1.0), MAX_HISTORY_AGE) : currentReservoirSampleAge;
-            reservoirInvalidationCode = validationWeight > 0.01 ? 0.0 : 1.0;
+        float slotHistoryWeight;
+        float slotHistoryAge;
+        FieldReservoirCandidate resolvedCandidate = resolveReservoirHistoryCandidate(
+            currentCandidate,
+            pixel,
+            input.uv,
+            slotHistoryWeight,
+            slotHistoryAge);
+        reservoirHistoryWrite[baseIndex + slot] = resolvedCandidate;
+        float priority = fieldReservoirCandidatePriority(
+            resolvedCandidate.colorTravel,
+            resolvedCandidate.metadata,
+            resolvedCandidate.control,
+            resolvedCandidate.reservoirGuide);
+        if (priority < bestPriority)
+        {
+            bestResolved = resolvedCandidate;
+            bestPriority = priority;
+            combinedHistoryWeight = slotHistoryWeight;
+            combinedHistoryAge = slotHistoryAge;
         }
     }
 
-    float combinedHistoryWeight = historyWeight;
-    float combinedHistoryAge = historyAge;
-    float3 resolved = lerp(currentColor, historyColor, combinedHistoryWeight);
+    if (bestPriority >= 1.0e19)
+    {
+        bestResolved = sceneCandidate;
+    }
+
+    float3 rawCurrentColor = sceneCandidate.colorTravel.rgb;
+    float3 currentColor = bestResolved.colorTravel.rgb;
+    float currentCoverage = saturate(bestResolved.control.x);
+    float currentStepRatio = saturate(bestResolved.control.y);
+    float currentTemporalDetail = saturate(bestResolved.control.z);
+    float currentFieldId = bestResolved.metadata.x;
+    float currentReservoirConfidence = reservoirCandidateConfidence(bestResolved);
+    float reservoirSampleAge = max(bestResolved.reservoirGuide.y, 0.0);
+    float currentReservoirDomainValidity = reservoirCandidateDomainValidity(bestResolved);
+    float3 resolved = bestResolved.colorTravel.rgb;
     float bloomStability = saturate((luminance(resolved) + 0.25) / max(luminance(currentColor) + 0.25, 0.0001));
     float3 finalColor = presentColor(resolved, input.uv, bloomStability);
     if (renderDebugMode > 0.5 && renderDebugMode < 1.5)
@@ -606,7 +713,7 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
     }
     else if (renderDebugMode >= 1.5 && renderDebugMode < 2.5)
     {
-        finalColor = aces(historyColor * max(exposure, 0.001));
+        finalColor = aces(bestResolved.colorTravel.rgb * max(exposure, 0.001));
     }
     else if (renderDebugMode >= 2.5 && renderDebugMode < 3.5)
     {
@@ -648,9 +755,5 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
     }
     ResolveOut output;
     output.finalColor = float4(ditherDisplay(finalColor, input.uv), 1.0);
-    output.historyColor = float4(resolved, currentTravel);
-    output.historyMetadata = currentMetadata;
-    output.historyControl = float4(currentControl.xyz, combinedHistoryAge);
-    output.historyReservoirGuide = float4(currentReservoirConfidence, reservoirSampleAge, currentReservoirDomainValidity, reservoirInvalidationCode);
     return output;
 }

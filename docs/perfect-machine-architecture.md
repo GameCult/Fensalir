@@ -562,9 +562,9 @@ line for the reservoir guide-buffer fork.
 
 ### Phase B: Explicit Reservoir Guide Layout
 
-Add a dedicated reservoir guide history target rather than packing previous
+Add dedicated structured reservoir history rows rather than packing previous
 reservoir validity into existing control channels. Preserve current-control.w
-as the current confidence lane.
+only as a current-frame confidence compatibility lane.
 
 Guide schema:
 
@@ -575,10 +575,11 @@ z: domain validity
 w: invalidation code
 ```
 
-Current state: SDF and temporal Gaussian passes write a scene reservoir guide
-MRT. Resolve reads current and previous guide textures, folds confidence and
-domain validity into history validation, and writes a ping-ponged history
-reservoir guide target. `history-control.w` remains pixel history age.
+Current state: SDF, temporal Gaussian, and TubeField producers write current
+scene reservoir guide data and shared candidate rows. Reservoir presentation
+resolve reads current candidates plus ping-ponged structured reservoir-history
+rows, folds confidence and domain validity into validation, and writes the next
+structured history rows. Pixel-history MRTs are no longer the temporal owner.
 
 ### Phase C: Fractal Probe Pipeline
 

@@ -275,15 +275,14 @@ Not built yet:
 - camera/disocclusion/material validation for fractal form/appearance reservoirs;
 - spatial neighbor reuse across screen tiles and cube-sphere neighbor domains;
 - GRIS-style domain shift mappings for nested `.aquageo` domains;
-- expanded reservoir guide-buffer storage for previous-frame reservoir confidence,
-  sample age, domain validity, and invalidation reason;
 - SSD/RAM residency queues driven by reservoir contribution estimates.
 
 ## Reservoir Guide Layout
 
-Reservoir guide data has a dedicated current scene target and ping-ponged
-history target. It is deliberately separate from legacy `history-control.w`.
-Pixel history age is a reservoir resolve signal, not a separate TAA authority.
+Reservoir guide data is emitted by current-frame scene producers and then
+persisted in ping-ponged structured reservoir history rows. It is deliberately
+separate from legacy pixel-history control. Pixel age is now a field reservoir
+history signal, not a separate TAA authority.
 
 ```text
 x: reservoir confidence
@@ -292,13 +291,14 @@ z: domain validity
 w: invalidation code
 ```
 
-The first live producers are SDF surfaces and temporal Gaussian splats, but the
-schema is not surface-only. Resolve reads the current and previous guide
-textures, folds confidence and domain validity into history validation, then
-writes the next history guide. This resolve is the first reservoir resolve
-implementation, not an independent TAA owner. Future ReSTIR/GRIS passes should
-extend the producer side of this schema with explicit Form/Appearance/Transport
-fields rather than packing more reservoir folklore into scene-control channels.
+The first live producers are SDF surfaces, temporal Gaussian splats, and
+TubeField candidates, but the schema is not surface-only. Resolve reads current
+candidate rows and previous structured reservoir-history rows, folds confidence
+and domain validity into validation, then writes the next structured reservoir
+history. This resolve is the first reservoir resolve implementation, not an
+independent TAA owner. Future ReSTIR/GRIS passes should extend the producer side
+of this schema with explicit Form/Appearance/Transport fields rather than
+packing more reservoir folklore into scene-control channels.
 
 ## Implementation Roadmap
 
@@ -315,11 +315,11 @@ fields rather than packing more reservoir folklore into scene-control channels.
    surface encoding; density/extinction packets are the transparent/sensor
    volume encoding. Expose debug views for weight sum, selected target,
    candidate count, confidence, age, and invalidation reason.
-7. Weave reservoir confidence and temporal detail into reservoir guide buffers
-   so reservoir resolve can distinguish stable reused evidence from fresh stochastic
-   noise. The first pass uses current scene-control.w for reservoir confidence
-   and keeps history-control.w as age; full previous-frame reservoir validity
-   still needs an expanded guide layout.
+7. Weave reservoir confidence and temporal detail into structured reservoir
+   history rows so reservoir resolve can distinguish stable reused evidence
+   from fresh stochastic noise. The current implementation keeps four
+   resolver-owned rows per pixel and no longer stores previous reservoir
+   validity in pixel-history MRTs.
 8. Add Mimir-facing candidate adapters only after the fractal path proves the
    contract: modality features are candidates, not a second reservoir system.
 9. Port the pure core to HLSL and add CPU/GPU parity fixtures.

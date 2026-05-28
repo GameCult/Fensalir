@@ -43,6 +43,10 @@ Owner:
 
 - `FieldEvidenceMachine` owns the decision that something is visible,
   reusable, resident, or temporally valid.
+- The spatiotemporal field reservoir is the shared rendering organ for
+  reusable claims. Tube fields, direct SDF envelopes, meshes, heightfields,
+  volumes, splats, and sensor-fusion fields are claim producers or lowerings;
+  none of them own final composition as a private renderer.
 
 Inputs:
 
@@ -58,6 +62,8 @@ Outputs:
 - canonical field-claim streams grouped by Form, Appearance, and Transport;
 - selected candidate reservoirs and stable track updates where persistent
   identity exists;
+- temporally reused field presentation decisions for claims whose visible
+  surface or volume candidate is itself the sampled value;
 - residency/page requests and selected cuts;
 - backend packet streams for direct SDF, mesh, splat, height/tile, volume,
   tube, debug, and future paths;
@@ -70,16 +76,20 @@ Derived state:
   postprocess targets are compiled lowerings or diagnostics.
 - The old `SDF/PBR/Radiosity` reservoir naming is backend vocabulary. The
   architectural layers are `Form`, `Appearance`, and `Transport`.
-- TAA history is pixel memory. It is not producer identity and not stable
-  spatial evidence.
+- Legacy TAA history is demoted to reservoir resolve history. It is not
+  producer identity, stable spatial evidence, or a separate owner of temporally
+  reused field presentation.
 
 Forbidden writers:
 
 - alpha blending, quad UVs, screen-space strips, billboard radii, or debug draw
   geometry deciding visible truth;
 - client repos submitting backend packets as if they were semantic claims;
+- payload-specific paths such as TubeField naming themselves as the reservoir
+  renderer instead of feeding candidate claims into the shared field reservoir;
 - Mimir owning a render graph or a second stable evidence cache;
-- TAA repairing missing identity after the fact;
+- any downstream pixel-history/TAA pass repairing missing identity after the
+  fact;
 - backend-specific payload conventions when a typed lowering contract exists.
 
 Shared paths:
@@ -89,6 +99,10 @@ Shared paths:
   density/extinction volumes, mesh geometry, sensor fusion, and debug overlays
   all use the same claim -> candidate -> validation -> lowering contract when
   they want temporal reuse.
+- Payload-specific code may own intersection, envelope evaluation, geometry
+  expansion, material sampling, and proposal PDFs for its own claim family. It
+  may not own final field visibility or bypass the reservoir when the output is
+  meant to participate in temporally reused presentation.
 
 Deletion line:
 
@@ -104,7 +118,7 @@ Deletion line:
 Authored intent / direct field / mesh / Mimir observation
 -> Domain binding
 -> Field claim normalization
--> Candidate generation
+-> Local visibility candidate generation
 -> Target evaluation
 -> Resampled-importance reservoir
 -> Temporal reuse validation
@@ -113,7 +127,7 @@ Authored intent / direct field / mesh / Mimir observation
 -> Occupancy graph and residency/page scheduling
 -> Backend lowering
 -> Evidence-writing render/compute passes
--> TAA guide validation
+-> Reservoir resolve/reconstruction
 -> Presentation and debug telemetry
 ```
 
@@ -156,6 +170,19 @@ tempted to smuggle authority inside its vertex layout.
 ### 2. Candidate And Target Layer
 
 Candidate generators propose work. They do not own final visibility.
+
+For ReSTIR-style lighting, primary surface visibility is usually already known.
+Fensalir's Form fields often do not have that luxury: the candidate being
+sampled is the visible field surface or volume itself. In that case, the
+producer must generate local visibility candidates first, with stable identity,
+support bounds, depth/travel, coverage, material encoding, target value, and
+source/proposal policy. The shared reservoir then owns reuse and final
+presentation membership.
+
+This is the sanctioned divergence from pure ReSTIR and the reason there is no
+separate TAA owner. Reservoir update and reservoir resolve own temporal
+stability, antialiasing, and reconstruction. A downstream pixel-history pass
+may not decide which field candidate existed.
 
 Targets are scalar contribution estimates: projected form error, curvature,
 material delta, extinction contribution, radiance contribution, sensor
@@ -211,10 +238,10 @@ depth when depth participates in validation
 If a lowering cannot provide these, it is a fallback draw. It can help humans
 debug. It cannot claim to be the Perfect Machine.
 
-### 6. Resolve And Presentation
+### 6. Reservoir Resolve And Presentation
 
-TAA consumes guide data and validates pixel history. It does not recover truth
-from broken producers.
+Reservoir resolve consumes guide data and reconstructs presentation from the
+selected field evidence. It does not recover truth from broken producers.
 
 Post, bloom, tonemapping, debug overlays, and output publication operate after
 the evidence lanes are coherent. Glow is allowed to make strong evidence look

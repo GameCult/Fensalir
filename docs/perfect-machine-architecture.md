@@ -42,6 +42,15 @@ This architecture is not invented from the floorboards:
   friendly, but Aquarium should preserve deterministic summaries and bounds as
   safety authority.
 
+Aquarium diverges from pure ReSTIR at the primary-visibility boundary. ReSTIR
+usually reuses lighting or path candidates after a visible surface is known.
+Aquarium/Fensalir often samples the visible field candidate itself. Local Form
+producers therefore generate candidate visibility first, and the reservoir owns
+the temporal-antialiasing-shaped decision about which field candidate persists
+into presentation. There is no separate TAA organ in the target architecture:
+reservoir resolve reconstructs smooth presentation directly from selected field
+evidence.
+
 ## Prime Invariants
 
 - Authored semantic domains are the source of truth.
@@ -55,7 +64,8 @@ This architecture is not invented from the floorboards:
   visibility safety, or calibration safety.
 - Missing children render through parent summaries. A frame does not wait for
   SSD.
-- TAA owns pixel history, not producer identity.
+- Reservoir resolve owns temporal antialiasing and reconstruction; no separate
+  TAA pass owns producer identity or temporally reused field presentation.
 - Mimir sensor fusion and fractal rendering share the evidence machinery; they
   do not share client policy.
 
@@ -73,7 +83,7 @@ Authored intent, resident mesh, direct SDF field, or live sensor input
 -> Residency/page scheduling
 -> Backend packet lowering
 -> direct SDF, mesh, volume, and/or field splat passes
--> Temporal resolve guide buffers
+-> Reservoir resolve guide buffers
 -> Debug/evidence telemetry
 ```
 
@@ -99,7 +109,7 @@ Aquarium.Engine.SensorFusion
 
 Aquarium.Engine.Render
   D3D12 resources, page tables, structured buffers, field splat passes,
-  surface/volume resolves, TAA guide buffers, debug visualization.
+  surface/volume resolves, reservoir guide buffers, debug visualization.
 
 Aquarium.Zyphos
   World policy, cube-sphere/tile roots, planet grammar seeds, setting-safe
@@ -225,8 +235,9 @@ SampleAge
 DomainKey
 ```
 
-The reservoir owns resampling math. It does not own stable tracks, packet
-lowering, or TAA history.
+The reservoir owns resampling math. It does not own stable tracks or packet
+lowering. Reservoir resolve history is the presentation side of the same
+spatiotemporal organ, not a separate TAA owner.
 
 ### Occupancy Graph
 
@@ -440,9 +451,9 @@ the direct representation has become too expensive. Future mesh lowering fits
 the same contract; it is another backend for the same evidence, not another
 authoring language.
 
-### 10. TAA Guide Integration
+### 10. Reservoir Resolve Integration
 
-TAA consumes guide signals:
+Reservoir resolve consumes guide signals:
 
 - reservoir confidence;
 - sample age;
@@ -451,7 +462,11 @@ TAA consumes guide signals:
 - invalidation reason;
 - field id and motion.
 
-TAA does not own reservoirs. It only decides how much pixel history may survive.
+There is no separate TAA owner. Reservoir resolve decides how much temporal
+history may survive after the field reservoir has selected and validated
+presentation candidates. If downstream pixel filtering is required to make an
+unstable field look stable, the Form producer or reservoir validation has
+failed upstream.
 
 ## Resource Tradeoffs
 
@@ -493,7 +508,7 @@ views. It must not walk the authored grammar tree.
 10. Queue missing pages; keep parent summaries active.
 11. Lower selected evidence to direct SDF, mesh, volume, or field-splat packets.
 12. Render surface and/or transparent field passes into scene and guide targets.
-13. Resolve with TAA guide buffers.
+13. Resolve with reservoir guide buffers.
 14. Emit debug telemetry and evidence logs.
 ```
 
@@ -543,7 +558,7 @@ Performance fixtures:
 ### Phase A: Architecture Freeze
 
 Deliver this document, the public thesis article, updated memory, and a cut
-line for the TAA guide-buffer fork.
+line for the reservoir guide-buffer fork.
 
 ### Phase B: Explicit Reservoir Guide Layout
 

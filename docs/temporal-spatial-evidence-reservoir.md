@@ -11,7 +11,8 @@ Fensalir owns the shared temporal evidence machine for two customers:
 
 The old stable-key accumulator was useful, but it was not ReSTIR. The live
 architecture now splits the problem into a small resampled-importance core, a
-spatial evidence track layer, typed lowerings, renderer passes, and TAA history.
+spatial evidence track layer, typed lowerings, renderer passes, and reservoir
+resolve history.
 
 ## Engine Identity
 
@@ -30,6 +31,13 @@ Any implementation that treats Fensalir as "draw some geometry, blend some
 color, let post handle the rest" is violating the engine body. That path may
 exist only as an explicitly named fallback/debug draw with no authority over
 field evidence.
+
+The reservoir is the organ. Payload families are not. A TubeField path may bind
+a rolling buffer, evaluate Catmull-Rom tube envelopes, generate proxy geometry,
+march a tube SDF, sample a blackbody ramp, and emit candidate weights. Those
+are TubeField producer responsibilities. Final visibility, temporal reuse,
+spatial reuse, validation, contribution weight, and presentation membership
+belong to the shared spatiotemporal field reservoir.
 
 ## Research Spine
 
@@ -54,11 +62,36 @@ field evidence.
   https://github.com/NVIDIA-RTX/RTXDI/blob/main/Doc/RestirGI.md
   https://github.com/NVIDIA-RTX/RTXDI/blob/main/Doc/RestirPT.md
 
+## Fensalir Divergence
+
+Pure ReSTIR usually starts after primary visibility is known: a ray or G-buffer
+surface exists, then the reservoir chooses and reuses lighting or path
+candidates for that surface. Fensalir cannot assume that order for field
+claims. In many Fensalir scenes, the thing being sampled is the visible field
+candidate itself: tube surface, SDF envelope, splat support, volume boundary,
+sensor confidence surface, or mesh summary.
+
+That makes the shared field reservoir responsible for the job normally assigned
+to TAA. Claim producers must first generate local visibility
+candidates with stable identity, support, depth/travel, coverage, material
+encoding, target value, and proposal policy. The reservoir then selects and
+reuses those field candidates across time and space. Material and transport
+evaluation ride on the selected field candidate; they do not repair missing
+Form identity after the fact.
+
+There is no separate TAA organ in the target architecture. Any temporal
+stability, history validation, antialiasing, or reconstruction happens inside
+reservoir update and reservoir resolve. The final presentation pass samples or
+filters the resolved reservoir; it does not repair it. If a field surface only
+becomes stable because a downstream pixel-history pass smears unstable pixels
+until they look acceptable, the field producer or reservoir validation is
+wrong.
+
 ## Pipeline Map
 
 ```text
 producer observations
--> candidate generator
+-> local visibility candidate generator
 -> target evaluator
 -> ResampledImportanceReservoir<TSample>
 -> temporal reuse pass
@@ -68,7 +101,7 @@ producer observations
 -> TemporalSpatialEvidenceLowering
 -> backend packet stream
 -> renderer/fusion passes
--> TAA guide/history buffers
+-> reservoir resolve/history buffers
 ```
 
 ## Ownership
@@ -86,6 +119,13 @@ form probe candidates from projected error, node bounds, blue-noise screen
 tiles, or resident children. Mimir may propose visual/audio feature candidates
 from sensor confidence and calibration state. The reservoir does not know these
 domains; it only receives target and source-PDF values.
+
+For opaque Form fields, local candidate generation owns primary visibility
+discovery before reservoir reuse. It may be deterministic when sparse stochastic
+sampling would leave holes in the visible surface. This is not a fallback to a
+private renderer; it is the producer side of the shared reservoir contract.
+TubeField's bounded tile-local candidate enumeration is the current concrete
+example.
 
 Every evidence sample should state its layer and encoding before lowering:
 Form, Appearance, or Transport; then SDF, height, density, extinction,
@@ -134,9 +174,11 @@ candidate selection when the output is a field with persistent identity:
 `TemporalSpatialEvidenceLowering` owns packet conversion. Consumers do not pack
 payload vectors by private convention when a lowering helper exists.
 
-TAA owns pixel history validation and temporal guide buffers. It may consume
-reservoir confidence, sample age, domain id, motion, and temporal-detail lanes,
-but it does not own producer identity or stable spatial evidence.
+Reservoir resolve owns temporal antialiasing and reconstruction over the
+resolved field output. It consumes reservoir confidence, sample age, domain id,
+motion, and temporal-detail lanes. No separate TAA pass owns producer identity,
+stable spatial evidence, or the decision that a field candidate persists across
+frames.
 
 ## Contributor Paths
 
@@ -162,10 +204,16 @@ depth where depth participates in validation. The exact producer can be a
 compute pass, a proxy draw, a mesh draw, or a future volume pass. The invariant
 is the evidence contract, not the producer's religion.
 
+When a contributor needs specialized candidate generation, the specialization
+stops at the candidate boundary. `TubeField` is therefore a claim/candidate
+producer for rolling-buffer tube surfaces, not a separate TubeField reservoir
+renderer. The same rule applies to meshes, volumes, fractal probes, surface
+pages, and future sensor-derived fields.
+
 Traditional meshes therefore do not bypass the machine. They are accepted when
 they can provide stable identity, motion or previous-frame mapping where needed,
-material/field encoding, conservative bounds, and guide data sufficient for TAA
-and reservoir validation. A mesh that only paints pixels is a fallback draw. A
+material/field encoding, conservative bounds, and guide data sufficient for
+reservoir validation. A mesh that only paints pixels is a fallback draw. A
 mesh that emits field evidence is a first-class contributor.
 
 The `.aquafield` script surface follows the same boundary. A script declares
@@ -222,15 +270,15 @@ Not built yet:
 - camera/disocclusion/material validation for fractal form/appearance reservoirs;
 - spatial neighbor reuse across screen tiles and cube-sphere neighbor domains;
 - GRIS-style domain shift mappings for nested `.aquageo` domains;
-- expanded TAA guide-buffer storage for previous-frame reservoir confidence,
+- expanded reservoir guide-buffer storage for previous-frame reservoir confidence,
   sample age, domain validity, and invalidation reason;
 - SSD/RAM residency queues driven by reservoir contribution estimates.
 
-## TAA Guide Layout
+## Reservoir Guide Layout
 
-Reservoir/TAA guide data has a dedicated current scene target and ping-ponged
-history target. It is deliberately separate from `history-control.w`, which
-continues to own pixel history age.
+Reservoir guide data has a dedicated current scene target and ping-ponged
+history target. It is deliberately separate from legacy `history-control.w`.
+Pixel history age is a reservoir resolve signal, not a separate TAA authority.
 
 ```text
 x: reservoir confidence
@@ -242,9 +290,10 @@ w: invalidation code
 The first live producers are SDF surfaces and temporal Gaussian splats, but the
 schema is not surface-only. Resolve reads the current and previous guide
 textures, folds confidence and domain validity into history validation, then
-writes the next history guide. Future ReSTIR/GRIS passes should extend the
-producer side of this schema with explicit Form/Appearance/Transport fields
-rather than packing more reservoir folklore into scene-control channels.
+writes the next history guide. This resolve is the first reservoir resolve
+implementation, not an independent TAA owner. Future ReSTIR/GRIS passes should
+extend the producer side of this schema with explicit Form/Appearance/Transport
+fields rather than packing more reservoir folklore into scene-control channels.
 
 ## Implementation Roadmap
 
@@ -261,8 +310,8 @@ rather than packing more reservoir folklore into scene-control channels.
    surface encoding; density/extinction packets are the transparent/sensor
    volume encoding. Expose debug views for weight sum, selected target,
    candidate count, confidence, age, and invalidation reason.
-7. Weave reservoir confidence and temporal detail into TAA guide buffers so the
-   history filter can distinguish stable reused evidence from fresh stochastic
+7. Weave reservoir confidence and temporal detail into reservoir guide buffers
+   so reservoir resolve can distinguish stable reused evidence from fresh stochastic
    noise. The first pass uses current scene-control.w for reservoir confidence
    and keeps history-control.w as age; full previous-frame reservoir validity
    still needs an expanded guide layout.
@@ -276,5 +325,5 @@ rather than packing more reservoir folklore into scene-control channels.
 
 If a new subsystem stores temporal candidates, it must state whether it owns raw
 producer retention, resampled candidate selection, stable resolved tracks,
-packet lowering, or TAA history. If it cannot name that authority, it is not an
-architecture. It is a decorative leak.
+packet lowering, or reservoir resolve history. If it cannot name that authority,
+it is not an architecture. It is a decorative leak.

@@ -59,8 +59,9 @@ contract for already-derived point claims.
 
 ## Invariants
 
-- Field accumulation happens in world space before pixel history. TAA is the
-  resolver, not the owner of sensor identity.
+- Field accumulation happens in world space before pixel history. Reservoir
+  resolve reconstructs presentation; no separate TAA pass owns sensor identity
+  or temporal smoothing.
 - Stable keys belong to the producer/accumulator boundary; shader packets are
   backend output and do not invent identity.
 - The compact support kernel has a finite bound. Renderer cost must scale from
@@ -96,7 +97,7 @@ Mimir calibration/device metadata
 -> D3D12 GPU sensor fusion compute shader
 -> RWStructuredBuffer<TemporalGaussian>
 -> instanced SDF Gaussian draw
--> TAA/resolve
+-> reservoir resolve
 ```
 
 Ownership:

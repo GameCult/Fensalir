@@ -508,7 +508,10 @@ FieldReservoirResolveOut D3D12FieldReservoirResolvePS(VertexOut input)
     return output;
 }
 
-ResolveOut D3D12ResolvePS(VertexOut input)
+// Reservoir presentation resolve owns temporal reconstruction. The history
+// textures below are cache lines for validated reservoir evidence, not a
+// separate final-pixel TAA authority.
+ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
 {
     float2 screenUv = float2(input.uv.x, 1.0 - input.uv.y);
     float2 pixel = screenUv * resolution;

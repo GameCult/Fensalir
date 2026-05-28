@@ -79,7 +79,7 @@ Fensalir has a GPU-resident fractal/field lane:
 - Form/Appearance/Transport reservoirs keep stable temporal evidence;
 - opaque signed-distance splats and transparent density/extinction splats render
   through separate pipeline states over shared packed buffers;
-- guide output follows the TAA schema: confidence, sample age, domain validity,
+- guide output follows the reservoir guide schema: confidence, sample age, domain validity,
   invalidation code.
 
 The receipt harness lives in `tools/Aquarium.Fractal.Receipt`.
@@ -92,7 +92,7 @@ normal, coverage, and control signals stay coherent.
 
 Debug modes include final color, raw current scene, history, history age,
 history weight, coverage/step ratio, field identity, bloom contribution,
-exposed luminance, proxy identity, proxy step count, and reservoir/TAA guide
+exposed luminance, proxy identity, proxy step count, and reservoir guide
 views. Startup mode can be set with `--render-debug` or
 `AQUARIUM_RENDER_DEBUG_MODE`.
 

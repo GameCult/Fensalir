@@ -55,7 +55,7 @@ Fensalir owns a renderer-native blue-noise threshold tile. Shaders that make
 stochastic coverage decisions should sample that tile with frame-varying offsets
 instead of substituting hash noise. Hashes are acceptable for deterministic ids
 and cheap decorrelation, but not as the visual sampling distribution for
-coverage that is meant to feed TAA or reservoirs.
+coverage that is meant to feed reservoir resolve.
 
 Spline tubes follow this contract directly: CPU geometry emits conservative
 segment envelopes, while the spline shader samples the renderer blue-noise tile,

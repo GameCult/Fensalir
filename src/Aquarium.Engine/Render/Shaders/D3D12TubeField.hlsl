@@ -478,7 +478,7 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
 
     SceneOut output;
     output.colorTravel = float4(color, min(travel, farDistance + 1.0));
-    output.metadata = float4(input.tubeData.w, sampleX, sdf, radiusPx);
+    output.metadata = float4(input.tubeData.w, tubeNormal);
     output.control = float4(claimCoverage, coverage, saturate(radiusPx / 32.0), value);
     output.reservoirGuide = float4(claimCoverage, 0.0, coverage, value);
     output.depth = saturate(travel / max(farDistance, 0.0001));

@@ -57,6 +57,16 @@ struct SdfObject
 
 StructuredBuffer<SdfObject> sdfObjects : register(t24);
 
+struct FieldReservoirCandidate
+{
+    float4 colorTravel;
+    float4 metadata;
+    float4 control;
+    float4 reservoirGuide;
+};
+
+StructuredBuffer<FieldReservoirCandidate> fieldReservoirCandidates : register(t45);
+
 struct VertexOut
 {
     float4 position : SV_Position;
@@ -70,6 +80,14 @@ struct ResolveOut
     float4 historyMetadata : SV_Target2;
     float4 historyControl : SV_Target3;
     float4 historyReservoirGuide : SV_Target4;
+};
+
+struct FieldReservoirResolveOut
+{
+    float4 colorTravel : SV_Target0;
+    float4 metadata : SV_Target1;
+    float4 control : SV_Target2;
+    float4 reservoirGuide : SV_Target3;
 };
 
 static const float FIELD_ID_HEIGHT_FIELD = 4.0;
@@ -390,6 +408,104 @@ float4 D3D12BloomBlurVerticalPS(VertexOut input) : SV_Target0
         sourceTexture.SampleLevel(sourceSampler, input.uv + texel, 0.0).rgb * 0.24477 +
         sourceTexture.SampleLevel(sourceSampler, input.uv + texel * 2.0, 0.0).rgb * 0.06136;
     return float4(color, 1.0);
+}
+
+bool fieldReservoirCandidateValid(FieldReservoirCandidate candidate)
+{
+    return candidate.metadata.x > 0.5 &&
+        candidate.colorTravel.w > 0.0 &&
+        candidate.colorTravel.w <= farDistance &&
+        saturate(candidate.control.x) > 0.0 &&
+        saturate(candidate.reservoirGuide.z) > 0.0;
+}
+
+float fieldReservoirCandidatePriority(float4 colorTravel, float4 metadata, float4 control, float4 reservoirGuide)
+{
+    if (metadata.x <= 0.5 ||
+        colorTravel.w <= 0.0 ||
+        colorTravel.w > farDistance ||
+        saturate(control.x) <= 0.0 ||
+        saturate(reservoirGuide.z) <= 0.0)
+    {
+        return 1.0e20;
+    }
+
+    return colorTravel.w - saturate(control.x) * 0.025;
+}
+
+void acceptFieldReservoirCandidate(
+    FieldReservoirCandidate candidate,
+    inout float4 bestColorTravel,
+    inout float4 bestMetadata,
+    inout float4 bestControl,
+    inout float4 bestReservoirGuide,
+    inout float bestPriority)
+{
+    if (!fieldReservoirCandidateValid(candidate))
+    {
+        return;
+    }
+
+    float priority = fieldReservoirCandidatePriority(
+        candidate.colorTravel,
+        candidate.metadata,
+        candidate.control,
+        candidate.reservoirGuide);
+    if (priority < bestPriority)
+    {
+        bestColorTravel = candidate.colorTravel;
+        bestMetadata = candidate.metadata;
+        bestControl = candidate.control;
+        bestReservoirGuide = candidate.reservoirGuide;
+        bestPriority = priority;
+    }
+}
+
+FieldReservoirResolveOut D3D12FieldReservoirResolvePS(VertexOut input)
+{
+    uint2 pixel = (uint2)pixelFromUv(input.uv);
+    uint width = (uint)max(resolution.x, 1.0);
+    uint pixelIndex = pixel.y * width + pixel.x;
+    float4 bestColorTravel = sourceTexture.Load(int3(pixel, 0));
+    float4 bestMetadata = loadCurrentMetadata(input.uv);
+    float4 bestControl = loadCurrentControl(input.uv);
+    float4 bestReservoirGuide = loadCurrentReservoirGuide(input.uv);
+    float bestPriority = fieldReservoirCandidatePriority(
+        bestColorTravel,
+        bestMetadata,
+        bestControl,
+        bestReservoirGuide);
+
+    uint baseIndex = pixelIndex * 2u;
+    acceptFieldReservoirCandidate(
+        fieldReservoirCandidates[baseIndex + 0u],
+        bestColorTravel,
+        bestMetadata,
+        bestControl,
+        bestReservoirGuide,
+        bestPriority);
+    acceptFieldReservoirCandidate(
+        fieldReservoirCandidates[baseIndex + 1u],
+        bestColorTravel,
+        bestMetadata,
+        bestControl,
+        bestReservoirGuide,
+        bestPriority);
+
+    if (bestPriority >= 1.0e19)
+    {
+        bestColorTravel = float4(0.0, 0.0, 0.0, farDistance + 1.0);
+        bestMetadata = 0.0;
+        bestControl = 0.0;
+        bestReservoirGuide = float4(1.0, 0.0, 1.0, 0.0);
+    }
+
+    FieldReservoirResolveOut output;
+    output.colorTravel = bestColorTravel;
+    output.metadata = bestMetadata;
+    output.control = bestControl;
+    output.reservoirGuide = bestReservoirGuide;
+    return output;
 }
 
 ResolveOut D3D12ResolvePS(VertexOut input)

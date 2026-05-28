@@ -66,6 +66,17 @@ RWStructuredBuffer<uint> TubeFieldIndices : register(u11);
 RWStructuredBuffer<uint> TubeFieldStats : register(u12);
 RWStructuredBuffer<uint> TubeFieldDrawArguments : register(u13);
 
+struct FieldReservoirCandidate
+{
+    float4 colorTravel;
+    float4 metadata;
+    float4 control;
+    float4 reservoirGuide;
+};
+
+RWStructuredBuffer<FieldReservoirCandidate> FieldReservoirCandidates : register(u14);
+RWByteAddressBuffer FieldReservoirLocks : register(u15);
+
 uint PositiveModulo(int value, uint modulo)
 {
     int m = (int)max(modulo, 1u);
@@ -364,6 +375,71 @@ float blueNoiseAt(float2 pixel, uint salt)
     return TubeFieldBlueNoise.Load(int3(coord, 0));
 }
 
+bool candidateIsValid(FieldReservoirCandidate candidate)
+{
+    return candidate.metadata.x > 0.5 &&
+        candidate.colorTravel.w > 0.0 &&
+        candidate.colorTravel.w <= farDistance &&
+        saturate(candidate.control.x) > 0.0 &&
+        saturate(candidate.reservoirGuide.z) > 0.0;
+}
+
+float candidatePriority(FieldReservoirCandidate candidate)
+{
+    if (!candidateIsValid(candidate))
+    {
+        return 1.0e20;
+    }
+
+    return candidate.colorTravel.w - saturate(candidate.control.x) * 0.025;
+}
+
+void injectFieldReservoirCandidate(FieldReservoirCandidate candidate, float2 pixel)
+{
+    uint2 clampedPixel = min((uint2)max(pixel, float2(0.0, 0.0)), (uint2)max(resolution - 1.0, float2(0.0, 0.0)));
+    uint pixelIndex = clampedPixel.y * (uint)max(resolution.x, 1.0) + clampedPixel.x;
+    uint lockAddress = pixelIndex * 4u;
+    uint acquired = 0u;
+
+    [allow_uav_condition]
+    for (uint attempt = 0u; attempt < 32u; attempt++)
+    {
+        uint previous;
+        FieldReservoirLocks.InterlockedCompareExchange(lockAddress, 0u, 1u, previous);
+        if (previous == 0u)
+        {
+            acquired = 1u;
+            break;
+        }
+    }
+
+    if (acquired == 0u)
+    {
+        return;
+    }
+
+    uint baseIndex = pixelIndex * 2u;
+    FieldReservoirCandidate slot0 = FieldReservoirCandidates[baseIndex + 0u];
+    FieldReservoirCandidate slot1 = FieldReservoirCandidates[baseIndex + 1u];
+    float priority0 = candidatePriority(slot0);
+    float priority1 = candidatePriority(slot1);
+    float priorityNew = candidatePriority(candidate);
+
+    if (priorityNew < max(priority0, priority1))
+    {
+        if (priority0 >= priority1)
+        {
+            FieldReservoirCandidates[baseIndex + 0u] = candidate;
+        }
+        else
+        {
+            FieldReservoirCandidates[baseIndex + 1u] = candidate;
+        }
+    }
+
+    FieldReservoirLocks.Store(lockAddress, 0u);
+}
+
 void nearestTubeDistancePx(
     TubeFieldVertexOut input,
     float2 samplePx,
@@ -521,5 +597,11 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     output.control = float4(claimCoverage, coverage, saturate(radiusPx / 32.0), value);
     output.reservoirGuide = float4(claimCoverage, 0.0, coverage, value);
     output.depth = saturate(travel / max(farDistance, 0.0001));
+    FieldReservoirCandidate candidate;
+    candidate.colorTravel = output.colorTravel;
+    candidate.metadata = output.metadata;
+    candidate.control = output.control;
+    candidate.reservoirGuide = output.reservoirGuide;
+    injectFieldReservoirCandidate(candidate, baseSamplePx);
     return output;
 }

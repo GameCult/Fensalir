@@ -64,6 +64,10 @@ invariants:
     direct SDF proxies, meshes, volumes, fractal probes, and Mimir sensor
     observations must publish bounded Form/Appearance/Transport field claims
     before they can participate in reusable field evidence.
+  - Final composition reads canonical scene targets produced by reservoir
+    resolve. TubeField render lowerings inject opaque SDF candidates into the
+    shared field reservoir; they must not regain private final-visibility
+    authority through blend order, proxy depth, or a TubeField-local K-buffer.
   - Field packet payload handles are not authority. Resource-backed claims and
     packets must reference declared AquariumFieldResourceDeclaration rows with
     kind, GPU residency, shader access, format, shape, validity, version, and
@@ -197,6 +201,13 @@ next_actions:
     carries a stable field id derived from the planned claim key instead of one
     flat family constant, so temporal/reprojection/reservoir consumers can
     distinguish source-lane claims while preserving the TubeField family range.
+    D3D12 now has the first shared field-reservoir resolve cut: legacy/direct
+    scene contributors render into scene-candidate MRTs, TubeField injects
+    two-slot-per-pixel opaque SDF candidates into a shared UAV, and a fullscreen
+    resolve writes canonical scene color/travel/metadata/control/reservoir-guide
+    before temporal resolve, bloom, and presentation. The remaining coherence
+    cut is to make every non-debug contributor inject explicit field candidates
+    instead of entering as the single legacy scene-candidate input.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

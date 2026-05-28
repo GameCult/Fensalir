@@ -216,9 +216,12 @@ next_actions:
     compute path: TubeField expansion emits reusable segment records with baked
     material endpoints, segments are binned into screen tiles once per frame,
     pixel-owned reservoirs stream a small proposal set, temporal reuse
-    reprojects previous reservoirs, spatial reuse samples neighbor reservoirs,
-    and the selected candidate is exported into the shared field-reservoir
-    candidate buffer. The old TubeField raster path remains compiled as a
+    reprojects previous reservoirs, and spatial reuse samples neighbor
+    reservoirs only after re-evaluating the selected segment at the receiving
+    pixel. TubeField exports the four best deterministic current pixel
+    candidates into the shared field-reservoir candidate rows so opaque primary
+    visibility is not a single stochastic winner. The old TubeField raster path
+    remains compiled as a
     diagnostic/generated-mesh reference, but the live scene path calls the
     compute ReSTIR export instead of letting raster fragments arbitrate
     visibility with locks.

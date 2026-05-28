@@ -805,6 +805,116 @@ bool evaluateTubeFieldSegmentCandidate(uint segmentIndex, float2 pixel, out Tube
     return true;
 }
 
+bool shiftTubeFieldReservoirToPixel(
+    TubeFieldReservoir source,
+    float2 pixel,
+    out TubeFieldReservoir shifted,
+    out float shiftedTargetPdf)
+{
+    shifted = emptyTubeFieldReservoir();
+    shiftedTargetPdf = 0.0;
+    if (!restirReservoirValid(source))
+    {
+        return false;
+    }
+
+    if (!evaluateTubeFieldSegmentCandidate(source.sampleKey.x, pixel + 0.5, shifted, shiftedTargetPdf))
+    {
+        return false;
+    }
+
+    shifted.statistics = source.statistics;
+    shifted.statistics.y = shiftedTargetPdf;
+    shifted.reservoirGuide.y = max(source.reservoirGuide.y, shifted.reservoirGuide.y);
+    return restirReservoirValid(shifted);
+}
+
+void writeFieldReservoirCandidateSlot(uint baseIndex, uint slot, TubeFieldReservoir reservoir)
+{
+    if (slot >= FieldReservoirSlotsPerPixel || !restirReservoirValid(reservoir))
+    {
+        return;
+    }
+
+    RestirFieldReservoirCandidates[baseIndex + slot].colorTravel = reservoir.colorTravel;
+    RestirFieldReservoirCandidates[baseIndex + slot].metadata = reservoir.metadata;
+    RestirFieldReservoirCandidates[baseIndex + slot].control = reservoir.control;
+    RestirFieldReservoirCandidates[baseIndex + slot].reservoirGuide = reservoir.reservoirGuide;
+}
+
+bool reservoirDuplicateSample(TubeFieldReservoir a, TubeFieldReservoir b)
+{
+    return restirReservoirValid(a) &&
+        restirReservoirValid(b) &&
+        a.sampleKey.x == b.sampleKey.x &&
+        abs(a.sampleData.w - b.sampleData.w) < 0.002;
+}
+
+float tubeFieldReservoirPriority(TubeFieldReservoir reservoir)
+{
+    if (!restirReservoirValid(reservoir))
+    {
+        return 1.0e20;
+    }
+
+    return reservoir.colorTravel.w - saturate(reservoir.control.x) * 0.025;
+}
+
+void insertTubeFieldExportCandidate(
+    TubeFieldReservoir candidate,
+    inout TubeFieldReservoir slot0,
+    inout TubeFieldReservoir slot1,
+    inout TubeFieldReservoir slot2,
+    inout TubeFieldReservoir slot3,
+    inout float priority0,
+    inout float priority1,
+    inout float priority2,
+    inout float priority3)
+{
+    float priority = tubeFieldReservoirPriority(candidate);
+    if (priority >= 1.0e19 ||
+        reservoirDuplicateSample(candidate, slot0) ||
+        reservoirDuplicateSample(candidate, slot1) ||
+        reservoirDuplicateSample(candidate, slot2) ||
+        reservoirDuplicateSample(candidate, slot3))
+    {
+        return;
+    }
+
+    if (priority < priority0)
+    {
+        slot3 = slot2;
+        priority3 = priority2;
+        slot2 = slot1;
+        priority2 = priority1;
+        slot1 = slot0;
+        priority1 = priority0;
+        slot0 = candidate;
+        priority0 = priority;
+    }
+    else if (priority < priority1)
+    {
+        slot3 = slot2;
+        priority3 = priority2;
+        slot2 = slot1;
+        priority2 = priority1;
+        slot1 = candidate;
+        priority1 = priority;
+    }
+    else if (priority < priority2)
+    {
+        slot3 = slot2;
+        priority3 = priority2;
+        slot2 = candidate;
+        priority2 = priority;
+    }
+    else if (priority < priority3)
+    {
+        slot3 = candidate;
+        priority3 = priority;
+    }
+}
+
 [numthreads(256, 1, 1)]
 void D3D12TubeFieldRestirClearTilesCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
@@ -948,11 +1058,17 @@ void D3D12TubeFieldRestirTemporalCS(uint3 dispatchThreadId : SV_DispatchThreadID
     if (restirReservoirValid(reservoir))
     {
         TubeFieldReservoir previousReservoir = RestirPreviousReservoirs[pixelIndex];
-        if (restirReservoirValid(previousReservoir) &&
-            restirCompatibleOpaqueShift(reservoir, previousReservoir))
+        TubeFieldReservoir shiftedPreviousReservoir;
+        float shiftedPreviousTargetPdf;
+        if (shiftTubeFieldReservoirToPixel(
+                previousReservoir,
+                (float2)pixel,
+                shiftedPreviousReservoir,
+                shiftedPreviousTargetPdf) &&
+            restirCompatibleOpaqueShift(reservoir, shiftedPreviousReservoir))
         {
             float randomValue = restirRandom01(pixelIndex * 747796405u + (uint)frameIndex * 2891336453u);
-            restirCombineReservoir(reservoir, previousReservoir, max(previousReservoir.statistics.y, 0.0001), randomValue);
+            restirCombineReservoir(reservoir, shiftedPreviousReservoir, max(shiftedPreviousTargetPdf, 0.0001), randomValue);
             restirFinalize(reservoir);
         }
     }
@@ -1006,24 +1122,75 @@ void D3D12TubeFieldRestirSpatialResolveCS(uint3 dispatchThreadId : SV_DispatchTh
         uint2 neighbor = min((uint2)max(int2(pixel) + offset, int2(0, 0)), dimensions - 1u);
         uint neighborIndex = neighbor.y * dimensions.x + neighbor.x;
         TubeFieldReservoir neighborReservoir = RestirReadReservoirs[neighborIndex];
-        if (restirReservoirValid(neighborReservoir) &&
-            restirCompatibleOpaqueShift(reservoir, neighborReservoir))
+        TubeFieldReservoir shiftedNeighborReservoir;
+        float shiftedNeighborTargetPdf;
+        if (shiftTubeFieldReservoirToPixel(
+                neighborReservoir,
+                (float2)pixel,
+                shiftedNeighborReservoir,
+                shiftedNeighborTargetPdf) &&
+            restirCompatibleOpaqueShift(reservoir, shiftedNeighborReservoir))
         {
             float randomValue = restirRandom01(pixelIndex * 89173u + sampleIndex * 19349663u + (uint)frameIndex * 83492791u);
-            restirCombineReservoir(reservoir, neighborReservoir, max(neighborReservoir.statistics.y, 0.0001), randomValue);
+            restirCombineReservoir(reservoir, shiftedNeighborReservoir, max(shiftedNeighborTargetPdf, 0.0001), randomValue);
         }
     }
 
     restirFinalize(reservoir);
     RestirWriteReservoirs[pixelIndex] = reservoir;
     uint baseIndex = pixelIndex * FieldReservoirSlotsPerPixel;
-    if (restirReservoirValid(reservoir))
+
+    TubeFieldReservoir export0 = emptyTubeFieldReservoir();
+    TubeFieldReservoir export1 = emptyTubeFieldReservoir();
+    TubeFieldReservoir export2 = emptyTubeFieldReservoir();
+    TubeFieldReservoir export3 = emptyTubeFieldReservoir();
+    float priority0 = 1.0e20;
+    float priority1 = 1.0e20;
+    float priority2 = 1.0e20;
+    float priority3 = 1.0e20;
+
+    uint2 tileDims = restirTileDimensions();
+    uint2 tile = min(pixel / TubeFieldRestirTileSize, tileDims - 1u);
+    uint tileIndex = tile.y * tileDims.x + tile.x;
+    uint count = min(RestirTileCountsRead[tileIndex], TubeFieldRestirMaxTileSegments);
+    for (uint index = 0u; index < count; index++)
     {
-        RestirFieldReservoirCandidates[baseIndex + 0u].colorTravel = reservoir.colorTravel;
-        RestirFieldReservoirCandidates[baseIndex + 0u].metadata = reservoir.metadata;
-        RestirFieldReservoirCandidates[baseIndex + 0u].control = reservoir.control;
-        RestirFieldReservoirCandidates[baseIndex + 0u].reservoirGuide = reservoir.reservoirGuide;
+        uint segmentIndex = RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + index];
+        TubeFieldReservoir candidate;
+        float targetPdf;
+        if (evaluateTubeFieldSegmentCandidate(segmentIndex, (float2)pixel + 0.5, candidate, targetPdf))
+        {
+            insertTubeFieldExportCandidate(
+                candidate,
+                export0,
+                export1,
+                export2,
+                export3,
+                priority0,
+                priority1,
+                priority2,
+                priority3);
+        }
     }
+
+    if (tubeFieldReservoirPriority(reservoir) < priority3)
+    {
+        insertTubeFieldExportCandidate(
+            reservoir,
+            export0,
+            export1,
+            export2,
+            export3,
+            priority0,
+            priority1,
+            priority2,
+            priority3);
+    }
+
+    writeFieldReservoirCandidateSlot(baseIndex, 0u, export0);
+    writeFieldReservoirCandidateSlot(baseIndex, 1u, export1);
+    writeFieldReservoirCandidateSlot(baseIndex, 2u, export2);
+    writeFieldReservoirCandidateSlot(baseIndex, 3u, export3);
 }
 
 TubeFieldVertexOut D3D12TubeFieldVS(TubeFieldVertexIn input)

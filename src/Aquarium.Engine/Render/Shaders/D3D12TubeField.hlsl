@@ -59,6 +59,7 @@ cbuffer TubeFieldConstants : register(b3)
 
 ByteAddressBuffer TubeFieldSamples : register(t42);
 Texture2D<float4> TubeFieldRamp : register(t43);
+Texture2D<float> TubeFieldBlueNoise : register(t44);
 SamplerState TubeFieldRampSampler : register(s0);
 RWStructuredBuffer<TubeFieldVertex> TubeFieldVertices : register(u10);
 RWStructuredBuffer<uint> TubeFieldIndices : register(u11);
@@ -347,6 +348,55 @@ void capsuleDistancePx(
     sdf = normalPxLength - radiusPx;
 }
 
+float blueNoiseAt(float2 pixel, uint salt)
+{
+    uint width;
+    uint height;
+    TubeFieldBlueNoise.GetDimensions(width, height);
+    uint2 dimensions = max(uint2(width, height), uint2(1, 1));
+    uint frame = (uint)frameIndex;
+    uint2 offset = uint2(frame * 17u + salt * 43u, frame * 29u + salt * 71u);
+    uint2 coord = (uint2(max(pixel, float2(0.0, 0.0))) + offset) % dimensions;
+    return TubeFieldBlueNoise.Load(int3(coord, 0));
+}
+
+void nearestTubeDistancePx(
+    TubeFieldVertexOut input,
+    float2 samplePx,
+    out float sdf,
+    out float closestT,
+    out float radiusPx,
+    out float2 normalPx)
+{
+    capsuleDistancePx(samplePx, input.segmentStartPx, input.segmentEndPx, input.segmentRadiusPx.x, input.segmentRadiusPx.y, sdf, closestT, radiusPx, normalPx);
+
+    float previousSdf;
+    float previousT;
+    float previousRadius;
+    float2 previousNormal;
+    capsuleDistancePx(samplePx, input.previousPx, input.segmentStartPx, input.joinRadiusPx.x, input.segmentRadiusPx.x, previousSdf, previousT, previousRadius, previousNormal);
+    if (input.segmentValidity.x > 0.5 && previousSdf < sdf)
+    {
+        sdf = previousSdf;
+        closestT = 0.0;
+        radiusPx = previousRadius;
+        normalPx = previousNormal;
+    }
+
+    float nextSdf;
+    float nextT;
+    float nextRadius;
+    float2 nextNormal;
+    capsuleDistancePx(samplePx, input.segmentEndPx, input.nextPx, input.segmentRadiusPx.y, input.joinRadiusPx.y, nextSdf, nextT, nextRadius, nextNormal);
+    if (input.segmentValidity.y > 0.5 && nextSdf < sdf)
+    {
+        sdf = nextSdf;
+        closestT = 1.0;
+        radiusPx = nextRadius;
+        normalPx = nextNormal;
+    }
+}
+
 TubeFieldVertexOut D3D12TubeFieldVS(TubeFieldVertexIn input)
 {
     float3 forward;
@@ -417,45 +467,27 @@ TubeFieldVertexOut D3D12TubeFieldVS(TubeFieldVertexIn input)
 
 SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
 {
-    float2 samplePx = input.position.xy;
+    float2 baseSamplePx = input.position.xy;
     float sdf;
     float closestT;
     float radiusPx;
     float2 normalPx;
-    capsuleDistancePx(samplePx, input.segmentStartPx, input.segmentEndPx, input.segmentRadiusPx.x, input.segmentRadiusPx.y, sdf, closestT, radiusPx, normalPx);
+    nearestTubeDistancePx(input, baseSamplePx, sdf, closestT, radiusPx, normalPx);
 
-    float previousSdf;
-    float previousT;
-    float previousRadius;
-    float2 previousNormal;
-    capsuleDistancePx(samplePx, input.previousPx, input.segmentStartPx, input.joinRadiusPx.x, input.segmentRadiusPx.x, previousSdf, previousT, previousRadius, previousNormal);
-    if (input.segmentValidity.x > 0.5 && previousSdf < sdf)
-    {
-        sdf = previousSdf;
-        closestT = 0.0;
-        radiusPx = previousRadius;
-        normalPx = previousNormal;
-    }
-
-    float nextSdf;
-    float nextT;
-    float nextRadius;
-    float2 nextNormal;
-    capsuleDistancePx(samplePx, input.segmentEndPx, input.nextPx, input.segmentRadiusPx.y, input.joinRadiusPx.y, nextSdf, nextT, nextRadius, nextNormal);
-    if (input.segmentValidity.y > 0.5 && nextSdf < sdf)
-    {
-        sdf = nextSdf;
-        closestT = 1.0;
-        radiusPx = nextRadius;
-        normalPx = nextNormal;
-    }
+    uint jitterSalt = (uint)round(input.tubeData.w * 131.0 + input.tubeData.x * 17.0 + frameIndex * 97.0);
+    float2 jitter01 = float2(
+        blueNoiseAt(baseSamplePx, jitterSalt),
+        blueNoiseAt(baseSamplePx + float2(37.0, 73.0), jitterSalt + 19u));
+    float2 jitterPx = (jitter01 * 2.0 - 1.0) * min(1.25, max(0.25, radiusPx * 0.08));
+    float2 samplePx = baseSamplePx + jitterPx;
+    nearestTubeDistancePx(input, samplePx, sdf, closestT, radiusPx, normalPx);
 
     float aa = max(fwidth(sdf), max(0.75, radiusPx * max(input.feather, 0.0)));
     float coverage = 1.0 - smoothstep(0.0, aa, sdf);
     float sampleX = lerp(input.tubeData.y, input.tubeData.z, closestT);
     float value = SampleCurve((uint)round(input.tubeData.x), sampleX);
     float3 rampColor = TubeFieldRamp.SampleLevel(TubeFieldRampSampler, float2(saturate(value), 0.5), 0.0).rgb;
-    float3 ray = rayDirectionForPixel(samplePx, jitterPixels, cameraPosition, cameraTarget);
+    float3 ray = rayDirectionForPixel(baseSamplePx, jitterPixels, cameraPosition, cameraTarget);
     float3 forward;
     float3 right;
     float3 up;

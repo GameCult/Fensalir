@@ -106,6 +106,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootTubeFieldRenderConstants = 1;
     private const int RootTubeFieldRenderSource = 2;
     private const int RootTubeFieldRenderRamp = 3;
+    private const int RootTubeFieldRenderBlueNoise = 4;
     private static readonly DebugUi.DebugUiOption[] RenderDebugOptions =
     [
         new(0, "Final"),
@@ -2387,6 +2388,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCommandList.SetPipelineState(tubeFieldRenderPipelineState);
         activeCommandList.SetGraphicsRootSignature(tubeFieldRenderRootSignature);
         activeCommandList.SetGraphicsRootDescriptorTable(RootTubeFieldRenderFrameConstants, frameResources.FrameConstantsDescriptor.Gpu);
+        activeCommandList.SetGraphicsRootDescriptorTable(RootTubeFieldRenderBlueNoise, frameResources.BlueNoiseDescriptor.Gpu);
         BindPipelinePrivateGeneratedMesh(activeCommandList, generatedMesh);
         foreach (var batch in tubeFieldDrawBatches)
         {
@@ -4285,12 +4287,19 @@ public sealed class D3D12Renderer : IAquariumRenderer
             43,
             0,
             D3D12.DescriptorRangeOffsetAppend);
+        var blueNoiseTexture = new DescriptorRange(
+            DescriptorRangeType.ShaderResourceView,
+            1,
+            44,
+            0,
+            D3D12.DescriptorRangeOffsetAppend);
         var rootParameters = new[]
         {
             new RootParameter(new RootDescriptorTable([frameConstants]), ShaderVisibility.All),
             new RootParameter(RootParameterType.ConstantBufferView, new RootDescriptor(3, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(42, 0), ShaderVisibility.Pixel),
             new RootParameter(new RootDescriptorTable([rampTexture]), ShaderVisibility.Pixel),
+            new RootParameter(new RootDescriptorTable([blueNoiseTexture]), ShaderVisibility.Pixel),
         };
         var staticSamplers = new[]
         {
@@ -4363,7 +4372,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
             PixelShader = pixelShader,
             BlendState = blend,
             RasterizerState = RasterizerDescription.CullNone,
-            DepthStencilState = DepthStencilDescription.None,
+            DepthStencilState = new DepthStencilDescription
+            {
+                DepthEnable = true,
+                DepthWriteMask = DepthWriteMask.All,
+                DepthFunc = ComparisonFunction.LessEqual,
+                StencilEnable = false,
+            },
             SampleMask = uint.MaxValue,
             PrimitiveTopologyType = PrimitiveTopologyType.Triangle,
             InputLayout = new InputLayoutDescription(
@@ -4380,6 +4395,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             ]),
             RenderTargetFormats = [SceneHdrFormat, SceneHdrFormat, SceneHdrFormat, SceneHdrFormat],
             SampleDescription = new SampleDescription(1, 0),
+            DepthStencilFormat = SceneDepthFormat,
         };
 
         try

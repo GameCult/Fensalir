@@ -43,6 +43,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int MaxTubeFieldVertices = MaxTubeFieldSegments * 4;
     private const int MaxTubeFieldIndices = MaxTubeFieldSegments * 6;
     private const int MaxTubeFieldDrawBatches = 4_096;
+    private const int MaxTubeFieldReplaySources = 16;
     private const int FieldReservoirSlotsPerPixel = 4;
     private const int FieldReservoirCandidateStrideBytes = 144;
     private const int FieldReservoirHistoryStrideBytes = 144;
@@ -83,8 +84,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootBlueNoise = 18;
     private const int RootFieldReservoirCandidates = 19;
     private const int RootReservoirResolvedOutput = 20;
-    private const int RootTubeFieldReplayConstants = 21;
-    private const int RootTubeFieldReplaySource = 22;
+    private const int RootTubeFieldReplayManifest = 21;
+    private const int RootTubeFieldReplaySources = 22;
     private const int RootFusionFrameConstants = 0;
     private const int RootFusionSeeds = 1;
     private const int RootFusionSensorCameras = 2;
@@ -245,6 +246,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly D3D12StructuredBuffer tubeFieldSegmentBuffer;
     private readonly D3D12StructuredBuffer tubeFieldStatsBuffer;
     private readonly D3D12StructuredBuffer tubeFieldDrawArgumentBuffer;
+    private readonly D3D12StructuredBuffer tubeFieldReplayManifestBuffer;
     private D3D12StructuredBuffer fieldReservoirCandidateBuffer = null!;
     private D3D12StructuredBuffer fieldReservoirLockBuffer = null!;
     private readonly List<D3D12TubeFieldDrawBatch> tubeFieldDrawBatches = [];
@@ -435,6 +437,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldSegmentBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldSegments, Marshal.SizeOf<D3D12TubeFieldSegment>(), "Aquarium D3D12 TubeField Segment Buffer", allowUnorderedAccess: true);
         tubeFieldStatsBuffer = new D3D12StructuredBuffer(device, 4, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Stats Buffer", allowUnorderedAccess: true);
         tubeFieldDrawArgumentBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldDrawBatches * GeneratedMeshDrawArgumentUIntCount, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Indirect Draw Arguments", allowUnorderedAccess: true);
+        tubeFieldReplayManifestBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldReplaySources, Marshal.SizeOf<D3D12TubeFieldReplayManifestEntry>(), "Aquarium D3D12 TubeField Replay Manifest");
         CreateFieldReservoirBuffers();
         resourceRegistry.Add("sdf-light-buffer", sdfLightBuffer);
         resourceRegistry.Add("sdf-object-buffer", sdfObjectBuffer);
@@ -448,6 +451,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         resourceRegistry.Add("tube-field-segment-buffer", tubeFieldSegmentBuffer);
         resourceRegistry.Add("tube-field-stats-buffer", tubeFieldStatsBuffer);
         resourceRegistry.Add("tube-field-indirect-draw-arguments", tubeFieldDrawArgumentBuffer);
+        resourceRegistry.Add("tube-field-replay-manifest", tubeFieldReplayManifestBuffer);
         commandList = device.CreateCommandList<ID3D12GraphicsCommandList>(0, CommandListType.Direct, frames[frameIndex].CommandAllocator, null);
         commandList.Name = "Aquarium D3D12 Graphics Command List";
         commandList.Close();
@@ -1196,6 +1200,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         bufferFieldTextureSampleBuffer?.Dispose();
         tubeFieldStatsBuffer.Dispose();
         tubeFieldDrawArgumentBuffer.Dispose();
+        tubeFieldReplayManifestBuffer.Dispose();
         tubeFieldSegmentBuffer.Dispose();
         tubeFieldIndexBuffer.Dispose();
         tubeFieldVertexBuffer.Dispose();
@@ -2576,16 +2581,28 @@ public sealed class D3D12Renderer : IAquariumRenderer
             historyReadBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
             historyWriteBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
             reservoirResolvedRenderTarget.Transition(activeCommandList, ResourceStates.UnorderedAccess);
-            var tubeFieldReplayBatch = tubeFieldDrawBatches.Count == 1 ? tubeFieldDrawBatches[0] : (D3D12TubeFieldDrawBatch?)null;
-            var tubeFieldReplayConstants = tubeFieldReplayBatch is not null
-                ? tubeFieldReplayBatch.Value.ConstantsGpuVirtualAddress
-                : frameResources.UploadRing.WriteConstant(D3D12TubeFieldConstants.Disabled).GpuVirtualAddress;
-            var tubeFieldReplaySource = tubeFieldReplayBatch is not null
-                ? tubeFieldReplayBatch.Value.Source
-                : tubeFieldStatsBuffer;
-            tubeFieldReplaySource.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+            var replayManifest = new D3D12TubeFieldReplayManifestEntry[MaxTubeFieldReplaySources];
+            Array.Fill(replayManifest, D3D12TubeFieldReplayManifestEntry.Disabled);
+            var replaySourceCount = Math.Min(tubeFieldDrawBatches.Count, MaxTubeFieldReplaySources);
+            for (var index = 0; index < replaySourceCount; index++)
+            {
+                var batch = tubeFieldDrawBatches[index];
+                replayManifest[index] = D3D12TubeFieldReplayManifestEntry.FromConstants(batch.Constants, index);
+                batch.Source.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+            }
+
+            tubeFieldStatsBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+            tubeFieldReplayManifestBuffer.Upload(activeCommandList, frameResources.UploadRing, replayManifest);
 
             activeCommandList.SetDescriptorHeaps(frameResources.TransientShaderDescriptors.Heap);
+            var replaySourceDescriptors = frameResources.TransientShaderDescriptors.AllocateRange(MaxTubeFieldReplaySources);
+            for (var index = 0; index < MaxTubeFieldReplaySources; index++)
+            {
+                var descriptor = frameResources.TransientShaderDescriptors.Offset(replaySourceDescriptors, index);
+                var source = index < replaySourceCount ? tubeFieldDrawBatches[index].Source : tubeFieldStatsBuffer;
+                source.CreateRawShaderResourceView(device, descriptor);
+            }
+
             activeCommandList.SetPipelineState(reservoirHistoryUpdatePipelineState);
             activeCommandList.SetComputeRootSignature(fullscreenRootSignature);
             activeCommandList.SetComputeRootDescriptorTable(RootFrameConstants, frameResources.FrameConstantsDescriptor.Gpu);
@@ -2597,8 +2614,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             activeCommandList.SetComputeRootDescriptorTable(RootCurrentReservoirGuide, frameResources.SceneReservoirGuideDescriptor.Gpu);
             activeCommandList.SetComputeRootShaderResourceView(RootFieldReservoirCandidates, fieldReservoirCandidateBuffer.Resource.GPUVirtualAddress);
             activeCommandList.SetComputeRootDescriptorTable(RootReservoirResolvedOutput, frameResources.ReservoirResolvedUnorderedAccessDescriptor.Gpu);
-            activeCommandList.SetComputeRootConstantBufferView(RootTubeFieldReplayConstants, tubeFieldReplayConstants);
-            activeCommandList.SetComputeRootShaderResourceView(RootTubeFieldReplaySource, tubeFieldReplaySource.Resource.GPUVirtualAddress);
+            activeCommandList.SetComputeRootShaderResourceView(RootTubeFieldReplayManifest, tubeFieldReplayManifestBuffer.Resource.GPUVirtualAddress);
+            activeCommandList.SetComputeRootDescriptorTable(RootTubeFieldReplaySources, replaySourceDescriptors.Gpu);
             activeCommandList.Dispatch((uint)((width + 7) / 8), (uint)((height + 7) / 8), 1);
             activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(historyWriteBuffer.Resource));
             activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(reservoirResolvedRenderTarget.Resource));
@@ -3218,6 +3235,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             activeTubeFieldIndirectDrawCount++;
             tubeFieldDrawBatches.Add(new D3D12TubeFieldDrawBatch(
                 sourceBuffer,
+                constants,
                 constantsUpload.GpuVirtualAddress,
                 normalized.RampResourceKey,
                 tubeFieldDrawBatches.Count * GeneratedMeshDrawArgumentBytes));
@@ -4381,6 +4399,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
             23,
             0,
             D3D12.DescriptorRangeOffsetAppend);
+        var tubeFieldReplaySourceRange = new DescriptorRange(
+            DescriptorRangeType.ShaderResourceView,
+            MaxTubeFieldReplaySources,
+            60,
+            0,
+            D3D12.DescriptorRangeOffsetAppend);
         var rootParameters = new[]
         {
             new RootParameter(new RootDescriptorTable([constantBufferRange]), ShaderVisibility.All),
@@ -4404,8 +4428,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new RootParameter(new RootDescriptorTable([blueNoiseRange]), ShaderVisibility.Pixel),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(45, 0), ShaderVisibility.All),
             new RootParameter(new RootDescriptorTable([reservoirResolvedOutputRange]), ShaderVisibility.All),
-            new RootParameter(RootParameterType.ConstantBufferView, new RootDescriptor(3, 0), ShaderVisibility.All),
-            new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(42, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(59, 0), ShaderVisibility.All),
+            new RootParameter(new RootDescriptorTable([tubeFieldReplaySourceRange]), ShaderVisibility.All),
         };
         var staticSamplers = new[]
         {
@@ -4635,7 +4659,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var transientDescriptors = new D3D12DescriptorArena(
             device,
             DescriptorHeapType.ConstantBufferViewShaderResourceViewUnorderedAccessView,
-            96,
+            128,
             DescriptorHeapFlags.ShaderVisible,
             $"Aquarium D3D12 Frame {index} Transient Shader Descriptor Arena");
 
@@ -5119,6 +5143,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private readonly record struct D3D12TubeFieldDrawBatch(
         D3D12StructuredBuffer Source,
+        D3D12TubeFieldConstants Constants,
         ulong ConstantsGpuVirtualAddress,
         string RampResourceKey,
         int DrawArgumentOffsetBytes);
@@ -5159,6 +5184,37 @@ public sealed class D3D12Renderer : IAquariumRenderer
             0.0f,
             Vector3.Zero,
             0.0f);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct D3D12TubeFieldReplayManifestEntry(
+        Vector4 Shape,
+        Vector4 Columns,
+        Vector4 Amplitude,
+        Vector4 Material,
+        Vector4 Dispatch,
+        Vector4 Draw,
+        Vector4 Origin,
+        Vector4 AxisStep,
+        Vector4 ColumnStep,
+        Vector4 Source)
+    {
+        public static readonly D3D12TubeFieldReplayManifestEntry Disabled = FromConstants(D3D12TubeFieldConstants.Disabled, -1);
+
+        public static D3D12TubeFieldReplayManifestEntry FromConstants(D3D12TubeFieldConstants constants, int sourceIndex)
+        {
+            return new D3D12TubeFieldReplayManifestEntry(
+                constants.Shape,
+                constants.Columns,
+                constants.Amplitude,
+                constants.Material,
+                constants.Dispatch,
+                constants.Draw,
+                new Vector4(constants.Origin, 0.0f),
+                new Vector4(constants.AxisStep, 0.0f),
+                new Vector4(constants.ColumnStep, 0.0f),
+                new Vector4(sourceIndex, sourceIndex >= 0 ? 1.0f : 0.0f, 0.0f, 0.0f));
+        }
     }
 
     private sealed record D3D12ShaderPaths(

@@ -131,11 +131,12 @@ next_actions:
   - Before more occlusion-threshold tuning, extend native-domain replay beyond
     the first TubeField proof path. TubeField and SDF proposals now include
     selected domain/sample-coordinate and support data, reuse validates support
-    overlap, single-batch TubeField history re-evaluates the shifted logical
+    overlap, TubeField history chooses a replay source through a bounded
+    producer-keyed manifest before re-evaluating the shifted logical
     column/curve coordinate against the live producer buffer, and SDF history
     carries the previous selected hit through object motion before validating
-    current ray/travel/support. The next cut is a producer-keyed replay manifest
-    for multi-batch TubeField reuse and future exact producer SDF replay.
+    current ray/travel/support. The next cut is baseline/native-domain capture
+    plus future exact producer SDF replay.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then
@@ -290,11 +291,11 @@ next_actions:
     authority is cut from both TubeField injection and final resolve. Shared
     temporal reuse validates only the previous frame's row-3 final reservoir by
     field id, travel, normal, domain validity, motion/previous UV, guide
-    confidence, support overlap, single-batch TubeField producer re-evaluation,
-    and SDF object-hit replay before RIS merge; rejected history cannot become visible
-    fallback by itself. Multi-batch TubeField replay is invalid until a
-    producer-keyed replay manifest maps selected samples to their source buffer
-    and constants. Spatial reuse validates neighboring
+    confidence, support overlap, TubeField producer re-evaluation through the
+    replay manifest/source table, and SDF object-hit replay before RIS merge;
+    rejected history cannot become visible fallback by itself. TubeField replay
+    sources beyond the bounded manifest cap are invalid until the source table
+    grows or a replay atlas replaces per-source descriptors. Spatial reuse validates neighboring
     current reservoirs by field id, travel, normal, support overlap, and domain
     before merge. Current-frame structural proposal assembly has a
     visibility gate before RIS: if two valid proposals at the same pixel differ

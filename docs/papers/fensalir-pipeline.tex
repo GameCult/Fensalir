@@ -552,10 +552,8 @@ available.  Field id still carries physical rolling-column identity.  SDF
 proposals reconstruct object-local hit coordinates and mark object-motion
 replay.  Temporal and spatial reuse now reject missing domain state and include
 support overlap in the validation weight.  The first TubeField replay path
-also re-evaluates the shifted selected logical column/curve coordinate against
-the live TubeField buffer when exactly one replay batch is bound.  Multi-batch
-TubeField replay remains invalid until a producer-keyed replay manifest maps
-selected samples to the correct source buffer and constants.  SDF object-hit
+now re-evaluates the shifted selected logical column/curve coordinate through
+a bounded producer-keyed replay manifest and raw source descriptor table.  SDF object-hit
 replay reconstructs the previous selected world hit from stored UV/travel,
 carries it through object center motion, and validates current ray/travel/support
 before temporal reuse can merge it; exact client SDF distance replay remains a
@@ -651,12 +649,12 @@ validated reservoirs.  Neither mode lets a pixel row become truth.
 \end{itemize}
 
 The known architectural gap has moved forward: the current row ABI now carries
-domain/sample-coordinate authority, and the first TubeField replay path
-re-evaluates a selected logical column/curve coordinate in the current frame for
-the single-batch proof case.  SDF object-hit replay now carries the previous
-selected hit through object motion and validates it against current
-ray/travel/support.  The next proof cuts are producer-keyed multi-batch replay
-manifests, exact producer SDF replay, and measured rejection precision.
+domain/sample-coordinate authority, TubeField replay uses a bounded
+producer-keyed manifest/source table to re-evaluate selected logical
+column/curve coordinates in the current frame, and SDF object-hit replay carries
+the previous selected hit through object motion before validating current
+ray/travel/support.  The next proof cuts are exact producer SDF replay, measured
+rejection precision, and baseline/native-domain captures.
 The system has cut the false ``nearest-travel-minus-coverage'' priority owner
 and the side-cache temptation.
 

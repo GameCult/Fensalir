@@ -359,8 +359,10 @@ validity now fails when a live sample lacks domain state, and temporal/spatial
 validation multiplies the existing field/travel/normal/confidence checks by
 support overlap in the selected-domain lane.  The first TubeField replay path
 re-evaluates the selected logical column/curve coordinate against the live
-producer buffer when exactly one TubeField replay batch is bound; ambiguous
-multi-batch replay is invalid until a producer-keyed replay manifest exists.
+producer buffer through a bounded producer-keyed replay manifest and raw source
+descriptor table; selected samples choose the matching replay entry by field-id
+family instead of relying on a CPU-side single-batch binding.  Manifest overflow
+is invalid rather than guessed.
 SDF temporal reuse reconstructs the previous selected world hit from stored
 sample UV/travel, carries the hit through object center motion, and rejects the
 history unless the replayed hit still matches the current camera ray, travel,

@@ -27,22 +27,6 @@ cbuffer AquariumFrame : register(b0)
     float4 cameraFrustumZ;
 };
 
-cbuffer TubeFieldReplayConstants : register(b3)
-{
-    float4 tubeShape;
-    float4 tubeColumns;
-    float4 tubeAmplitude;
-    float4 tubeMaterial;
-    float4 tubeDispatch;
-    float4 tubeDraw;
-    float3 tubeOrigin;
-    float tubePadding0;
-    float3 tubeAxisStep;
-    float tubePadding1;
-    float3 tubeColumnStep;
-    float tubePadding2;
-};
-
 Texture2D<float4> sourceTexture : register(t0);
 Texture2D<float4> currentSceneMetadataTexture : register(t5);
 Texture2D<float4> currentSceneControlTexture : register(t7);
@@ -56,7 +40,6 @@ Texture2D<float4> bloomTexture6 : register(t35);
 Texture2D<float4> bloomTexture7 : register(t36);
 Texture2D<float4> currentReservoirGuideTexture : register(t26);
 Texture2D<float> blueNoiseTexture : register(t28);
-ByteAddressBuffer tubeFieldReplaySamples : register(t42);
 SamplerState sourceSampler : register(s0);
 
 #include "D3D12Aces2.hlsl"
@@ -70,6 +53,38 @@ struct SdfObject
 };
 
 StructuredBuffer<SdfObject> sdfObjects : register(t24);
+
+struct TubeFieldReplayManifestEntry
+{
+    float4 shape;
+    float4 columns;
+    float4 amplitude;
+    float4 material;
+    float4 dispatch;
+    float4 draw;
+    float4 origin;
+    float4 axisStep;
+    float4 columnStep;
+    float4 source;
+};
+
+StructuredBuffer<TubeFieldReplayManifestEntry> tubeFieldReplayManifest : register(t59);
+ByteAddressBuffer tubeFieldReplaySource0 : register(t60);
+ByteAddressBuffer tubeFieldReplaySource1 : register(t61);
+ByteAddressBuffer tubeFieldReplaySource2 : register(t62);
+ByteAddressBuffer tubeFieldReplaySource3 : register(t63);
+ByteAddressBuffer tubeFieldReplaySource4 : register(t64);
+ByteAddressBuffer tubeFieldReplaySource5 : register(t65);
+ByteAddressBuffer tubeFieldReplaySource6 : register(t66);
+ByteAddressBuffer tubeFieldReplaySource7 : register(t67);
+ByteAddressBuffer tubeFieldReplaySource8 : register(t68);
+ByteAddressBuffer tubeFieldReplaySource9 : register(t69);
+ByteAddressBuffer tubeFieldReplaySource10 : register(t70);
+ByteAddressBuffer tubeFieldReplaySource11 : register(t71);
+ByteAddressBuffer tubeFieldReplaySource12 : register(t72);
+ByteAddressBuffer tubeFieldReplaySource13 : register(t73);
+ByteAddressBuffer tubeFieldReplaySource14 : register(t74);
+ByteAddressBuffer tubeFieldReplaySource15 : register(t75);
 
 StructuredBuffer<FieldReservoirSample> fieldReservoirCandidates : register(t45);
 StructuredBuffer<FieldReservoirSample> reservoirHistoryRead : register(t51);
@@ -189,13 +204,13 @@ uint tubeReplayPositiveModulo(int value, uint modulo)
     return (uint)(r < 0 ? r + m : r);
 }
 
-uint tubeReplaySampleAddressWithOffset(uint logicalColumn, uint sampleIndex, int rollingOffset)
+uint tubeReplaySampleAddressWithOffset(TubeFieldReplayManifestEntry replay, uint logicalColumn, uint sampleIndex, int rollingOffset)
 {
-    uint width = max((uint)round(tubeShape.x), 1u);
-    uint height = max((uint)round(tubeShape.y), 1u);
-    uint firstColumn = (uint)max(round(tubeShape.w), 0.0);
-    uint columnStride = max((uint)round(tubeColumns.y), 1u);
-    uint rollingModulo = (uint)max(round(tubeColumns.z), 0.0);
+    uint width = max((uint)round(replay.shape.x), 1u);
+    uint height = max((uint)round(replay.shape.y), 1u);
+    uint firstColumn = (uint)max(round(replay.shape.w), 0.0);
+    uint columnStride = max((uint)round(replay.columns.y), 1u);
+    uint rollingModulo = (uint)max(round(replay.columns.z), 0.0);
     uint physicalColumn = firstColumn + logicalColumn * columnStride;
     if (rollingModulo > 0u)
     {
@@ -203,25 +218,46 @@ uint tubeReplaySampleAddressWithOffset(uint logicalColumn, uint sampleIndex, int
     }
 
     physicalColumn = min(physicalColumn, height - 1u);
-    uint strideBytes = max((uint)round(tubeShape.z), 4u);
+    uint strideBytes = max((uint)round(replay.shape.z), 4u);
     return (physicalColumn * width + min(sampleIndex, width - 1u)) * strideBytes;
 }
 
-float tubeReplayRawSampleWithOffset(uint logicalColumn, int sampleIndex, int rollingOffset)
+float tubeReplayLoad(uint sourceIndex, uint address)
 {
-    uint width = max((uint)round(tubeShape.x), 1u);
-    uint clamped = (uint)clamp(sampleIndex, 0, (int)width - 1);
-    return asfloat(tubeFieldReplaySamples.Load(tubeReplaySampleAddressWithOffset(logicalColumn, clamped, rollingOffset)));
+    if (sourceIndex == 0u) return asfloat(tubeFieldReplaySource0.Load(address));
+    if (sourceIndex == 1u) return asfloat(tubeFieldReplaySource1.Load(address));
+    if (sourceIndex == 2u) return asfloat(tubeFieldReplaySource2.Load(address));
+    if (sourceIndex == 3u) return asfloat(tubeFieldReplaySource3.Load(address));
+    if (sourceIndex == 4u) return asfloat(tubeFieldReplaySource4.Load(address));
+    if (sourceIndex == 5u) return asfloat(tubeFieldReplaySource5.Load(address));
+    if (sourceIndex == 6u) return asfloat(tubeFieldReplaySource6.Load(address));
+    if (sourceIndex == 7u) return asfloat(tubeFieldReplaySource7.Load(address));
+    if (sourceIndex == 8u) return asfloat(tubeFieldReplaySource8.Load(address));
+    if (sourceIndex == 9u) return asfloat(tubeFieldReplaySource9.Load(address));
+    if (sourceIndex == 10u) return asfloat(tubeFieldReplaySource10.Load(address));
+    if (sourceIndex == 11u) return asfloat(tubeFieldReplaySource11.Load(address));
+    if (sourceIndex == 12u) return asfloat(tubeFieldReplaySource12.Load(address));
+    if (sourceIndex == 13u) return asfloat(tubeFieldReplaySource13.Load(address));
+    if (sourceIndex == 14u) return asfloat(tubeFieldReplaySource14.Load(address));
+    return asfloat(tubeFieldReplaySource15.Load(address));
 }
 
-float tubeReplayFilteredSampleWithOffset(uint logicalColumn, float x, int rollingOffset)
+float tubeReplayRawSampleWithOffset(TubeFieldReplayManifestEntry replay, uint logicalColumn, int sampleIndex, int rollingOffset)
+{
+    uint width = max((uint)round(replay.shape.x), 1u);
+    uint clamped = (uint)clamp(sampleIndex, 0, (int)width - 1);
+    uint sourceIndex = min((uint)max(round(replay.source.x), 0.0), 15u);
+    return tubeReplayLoad(sourceIndex, tubeReplaySampleAddressWithOffset(replay, logicalColumn, clamped, rollingOffset));
+}
+
+float tubeReplayFilteredSampleWithOffset(TubeFieldReplayManifestEntry replay, uint logicalColumn, float x, int rollingOffset)
 {
     int center = (int)floor(x + 0.5);
-    float s0 = tubeReplayRawSampleWithOffset(logicalColumn, center - 2, rollingOffset);
-    float s1 = tubeReplayRawSampleWithOffset(logicalColumn, center - 1, rollingOffset);
-    float s2 = tubeReplayRawSampleWithOffset(logicalColumn, center, rollingOffset);
-    float s3 = tubeReplayRawSampleWithOffset(logicalColumn, center + 1, rollingOffset);
-    float s4 = tubeReplayRawSampleWithOffset(logicalColumn, center + 2, rollingOffset);
+    float s0 = tubeReplayRawSampleWithOffset(replay, logicalColumn, center - 2, rollingOffset);
+    float s1 = tubeReplayRawSampleWithOffset(replay, logicalColumn, center - 1, rollingOffset);
+    float s2 = tubeReplayRawSampleWithOffset(replay, logicalColumn, center, rollingOffset);
+    float s3 = tubeReplayRawSampleWithOffset(replay, logicalColumn, center + 1, rollingOffset);
+    float s4 = tubeReplayRawSampleWithOffset(replay, logicalColumn, center + 2, rollingOffset);
     return (s0 + s4 + 4.0 * (s1 + s3) + 6.0 * s2) / 16.0;
 }
 
@@ -235,45 +271,66 @@ float tubeReplayCatmull(float p0, float p1, float p2, float p3, float t)
         (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3);
 }
 
-float tubeReplayNormalizedSampleWithOffset(uint logicalColumn, float x, int rollingOffset)
+float tubeReplayNormalizedSampleWithOffset(TubeFieldReplayManifestEntry replay, uint logicalColumn, float x, int rollingOffset)
 {
-    float value = tubeReplayFilteredSampleWithOffset(logicalColumn, x, rollingOffset);
-    return saturate((value - tubeAmplitude.z) / max(tubeAmplitude.w - tubeAmplitude.z, 0.0001));
+    float value = tubeReplayFilteredSampleWithOffset(replay, logicalColumn, x, rollingOffset);
+    return saturate((value - replay.amplitude.z) / max(replay.amplitude.w - replay.amplitude.z, 0.0001));
 }
 
-float tubeReplaySampleCurve(uint logicalColumn, float x)
+float tubeReplaySampleCurve(TubeFieldReplayManifestEntry replay, uint logicalColumn, float x)
 {
     int i1 = (int)floor(x);
     float t = frac(x);
-    float p0 = tubeReplayNormalizedSampleWithOffset(logicalColumn, (float)(i1 - 1), (int)round(tubeColumns.w));
-    float p1 = tubeReplayNormalizedSampleWithOffset(logicalColumn, (float)i1, (int)round(tubeColumns.w));
-    float p2 = tubeReplayNormalizedSampleWithOffset(logicalColumn, (float)(i1 + 1), (int)round(tubeColumns.w));
-    float p3 = tubeReplayNormalizedSampleWithOffset(logicalColumn, (float)(i1 + 2), (int)round(tubeColumns.w));
+    int rollingOffset = (int)round(replay.columns.w);
+    float p0 = tubeReplayNormalizedSampleWithOffset(replay, logicalColumn, (float)(i1 - 1), rollingOffset);
+    float p1 = tubeReplayNormalizedSampleWithOffset(replay, logicalColumn, (float)i1, rollingOffset);
+    float p2 = tubeReplayNormalizedSampleWithOffset(replay, logicalColumn, (float)(i1 + 1), rollingOffset);
+    float p3 = tubeReplayNormalizedSampleWithOffset(replay, logicalColumn, (float)(i1 + 2), rollingOffset);
     return saturate(tubeReplayCatmull(p0, p1, p2, p3, t));
 }
 
-bool tubeFieldReplayAvailableFor(FieldReservoirSample sample)
+bool tubeFieldReplaySampleMatches(TubeFieldReplayManifestEntry replay, FieldReservoirSample sample)
 {
-    return tubeShape.x > 0.5 &&
+    return replay.source.y > 0.5 &&
+        replay.shape.x > 0.5 &&
         sample.domainSupport.z > FieldDomainKindTube - 0.25 &&
         sample.domainSupport.z < FieldDomainKindTube + 0.25 &&
-        sample.metadata.x >= tubeDraw.z &&
-        sample.metadata.x < tubeDraw.z + 50.0;
+        sample.metadata.x >= replay.draw.z &&
+        sample.metadata.x < replay.draw.z + 50.0;
+}
+
+bool tubeFieldReplayEntryFor(FieldReservoirSample currentSample, FieldReservoirSample previousSample, out TubeFieldReplayManifestEntry replay)
+{
+    [loop]
+    for (int index = 0; index < 16; index++)
+    {
+        TubeFieldReplayManifestEntry candidate = tubeFieldReplayManifest[index];
+        if (tubeFieldReplaySampleMatches(candidate, currentSample) &&
+            tubeFieldReplaySampleMatches(candidate, previousSample))
+        {
+            replay = candidate;
+            return true;
+        }
+    }
+
+    replay = tubeFieldReplayManifest[0];
+    return false;
 }
 
 float tubeFieldReplayValidationWeight(FieldReservoirSample currentSample, FieldReservoirSample previousSample, uint2 pixel)
 {
-    if (!tubeFieldReplayAvailableFor(currentSample) || !tubeFieldReplayAvailableFor(previousSample))
+    TubeFieldReplayManifestEntry replay;
+    if (!tubeFieldReplayEntryFor(currentSample, previousSample, replay))
     {
         return 0.0;
     }
 
-    uint columnCount = max((uint)round(tubeColumns.x), 1u);
+    uint columnCount = max((uint)round(replay.columns.x), 1u);
     uint logicalColumn = min((uint)max(round(previousSample.domainSample.z), 0.0), columnCount - 1u);
-    float sampleX = clamp(previousSample.domainSample.w, 0.0, max(tubeShape.x - 1.0, 0.0));
-    float value = tubeReplaySampleCurve(logicalColumn, sampleX);
-    float amplitude = pow(value, max(tubeAmplitude.x, 0.0001));
-    float3 replayWorld = tubeOrigin + tubeAxisStep * sampleX + tubeColumnStep * (float)logicalColumn + float3(0.0, amplitude * tubeAmplitude.y, 0.0);
+    float sampleX = clamp(previousSample.domainSample.w, 0.0, max(replay.shape.x - 1.0, 0.0));
+    float value = tubeReplaySampleCurve(replay, logicalColumn, sampleX);
+    float amplitude = pow(value, max(replay.amplitude.x, 0.0001));
+    float3 replayWorld = replay.origin.xyz + replay.axisStep.xyz * sampleX + replay.columnStep.xyz * (float)logicalColumn + float3(0.0, amplitude * replay.amplitude.y, 0.0);
     float3 ray = rayDirectionForPixel((float2)pixel, jitterPixels, cameraPosition, cameraTarget);
     float3 delta = replayWorld - cameraPosition;
     float replayTravel = dot(delta, ray);
@@ -283,7 +340,7 @@ float tubeFieldReplayValidationWeight(FieldReservoirSample currentSample, FieldR
     }
 
     float rayDistance = length(delta - ray * replayTravel);
-    float radius = max(tubeMaterial.x + value * tubeMaterial.y, 0.0001);
+    float radius = max(replay.material.x + value * replay.material.y, 0.0001);
     float support = 1.0 - smoothstep(radius, radius + max(radius * 0.35, 0.01), rayDistance);
     float travelTolerance = max(0.045, currentSample.colorTravel.w * 0.018);
     float travelWeight = 1.0 - smoothstep(travelTolerance, travelTolerance * 4.0, abs(replayTravel - currentSample.colorTravel.w));

@@ -147,6 +147,26 @@ internal sealed class D3D12StructuredBuffer : IDisposable
             descriptor.Cpu);
     }
 
+    public void CreateRawShaderResourceView(ID3D12Device device, D3D12DescriptorSlot descriptor)
+    {
+        device.CreateShaderResourceView(
+            Resource,
+            new ShaderResourceViewDescription
+            {
+                Format = Format.R32_Typeless,
+                ViewDimension = ShaderResourceViewDimension.Buffer,
+                Shader4ComponentMapping = ShaderComponentMapping.Default,
+                Buffer = new BufferShaderResourceView
+                {
+                    FirstElement = 0,
+                    NumElements = (uint)(SizeBytes / sizeof(uint)),
+                    StructureByteStride = 0,
+                    Flags = BufferShaderResourceViewFlags.Raw,
+                },
+            },
+            descriptor.Cpu);
+    }
+
     public void CreateUnorderedAccessView(ID3D12Device device, D3D12DescriptorSlot descriptor)
     {
         device.CreateUnorderedAccessView(

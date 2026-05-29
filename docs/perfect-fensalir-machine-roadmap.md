@@ -46,10 +46,10 @@ Fensalir already has the first shared GPU field-reservoir spine:
 The surviving flaw has moved one layer downstream: the live ABI now stores
 selected sample UV, packed producer coordinate, support footprint, domain kind,
 and shift kind, and temporal/spatial validation uses support overlap. TubeField
-history can now re-evaluate a shifted selected logical column/curve coordinate
-against the live producer buffer when exactly one TubeField replay batch is
-bound. Multi-batch replay still needs a producer-keyed replay manifest before it
-can claim authority. SDF history now carries previous object hits through
+history now re-evaluates shifted selected logical column/curve coordinates
+through a bounded producer-keyed replay manifest plus raw source descriptor
+table, so the history shader can choose the correct replay source per selected
+TubeField sample. Manifest overflow remains invalid rather than guessed. SDF history now carries previous object hits through
 object motion and validates the replayed hit against the current camera ray,
 travel, and conservative object support before temporal reuse may merge it.
 Exact client SDF distance re-evaluation is still producer-owned work; the
@@ -485,14 +485,15 @@ Work packet:
 5. Done: implement temporal/spatial support-overlap validation before further
    threshold tuning.
 6. Partial: implement producer re-evaluation after the support-overlap gate for
-   TubeField rolling-column replay. The first path is intentionally limited to
-   one replay-bound TubeField batch; multi-batch replay is rejected until a
-   producer-keyed replay manifest exists.
+   TubeField rolling-column replay. The path now uses a bounded replay manifest
+   and source descriptor table instead of the old single-batch binding; batches
+   beyond the replay-source cap remain invalid until the source table grows or
+   a replay atlas replaces it.
 7. Done: implement SDF object-hit replay validation. Previous SDF hits are
    reconstructed from stored selected UV/travel, carried through object center
    motion, and checked against the current camera ray/travel/support before
    reuse can merge them.
-8. Capture the occluded-spectrum-tubes scene in baseline and native-domain
+8. Next: capture the occluded-spectrum-tubes scene in baseline and native-domain
    modes.
 
 Required verification:

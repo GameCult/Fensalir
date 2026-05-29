@@ -59,6 +59,7 @@ struct FieldReservoirCandidate
     float4 metadata;
     float4 control;
     float4 reservoirGuide;
+    float4 motion;
 };
 
 StructuredBuffer<FieldReservoirCandidate> fieldReservoirCandidates : register(t45);
@@ -89,6 +90,8 @@ struct FieldReservoirResolveOut
 
 static const float FIELD_ID_HEIGHT_FIELD = 4.0;
 static const float FIELD_ID_SDF_OBJECT_BASE = 10.0;
+static const float FIELD_ID_TUBE_FIELD_BASE = 5100.0;
+static const float FIELD_ID_TUBE_FIELD_MAX = 10000.0;
 static const int AQUARIUM_SDF_OBJECT_CAPACITY = 64;
 static const float MAX_HISTORY_AGE = 32.0;
 VertexOut FullscreenTriangleVS(uint vertexId : SV_VertexID)
@@ -210,6 +213,7 @@ FieldReservoirCandidate emptyFieldReservoirCandidate()
     candidate.metadata = 0.0;
     candidate.control = 0.0;
     candidate.reservoirGuide = float4(1.0, 0.0, 1.0, 0.0);
+    candidate.motion = 0.0;
     return candidate;
 }
 
@@ -413,6 +417,7 @@ FieldReservoirCandidate sceneFieldReservoirCandidate(float2 uv)
     candidate.metadata = loadCurrentMetadata(uv);
     candidate.control = loadCurrentControl(uv);
     candidate.reservoirGuide = loadCurrentReservoirGuide(uv);
+    candidate.motion = 0.0;
     return candidate;
 }
 
@@ -428,6 +433,12 @@ float reservoirCandidateDomainValidity(FieldReservoirCandidate candidate)
     return candidate.reservoirGuide.z > 0.0 ? saturate(candidate.reservoirGuide.z) : 1.0;
 }
 
+bool fieldReservoirCandidateRequiresExplicitMotion(FieldReservoirCandidate candidate)
+{
+    return candidate.metadata.x >= FIELD_ID_TUBE_FIELD_BASE &&
+        candidate.metadata.x < FIELD_ID_TUBE_FIELD_MAX;
+}
+
 float reservoirHistoryValidationWeight(
     FieldReservoirCandidate currentCandidate,
     FieldReservoirCandidate previousCandidate,
@@ -441,6 +452,12 @@ float reservoirHistoryValidationWeight(
         !fieldReservoirCandidateValid(previousCandidate))
     {
         return 0.0;
+    }
+
+    bool isTubeFieldCandidate = fieldReservoirCandidateRequiresExplicitMotion(currentCandidate);
+    if (isTubeFieldCandidate)
+    {
+        clampedHistory = previousCandidate.colorTravel.rgb;
     }
 
     float travelDelta = abs(previousCandidate.colorTravel.w - expectedPreviousTravel);
@@ -460,8 +477,17 @@ float reservoirHistoryValidationWeight(
     float historyLuma = luminance(clampedHistory);
     float hotSdfCurrent = currentCandidate.metadata.x >= FIELD_ID_SDF_OBJECT_BASE ? smoothstep(1.0, 5.0, currentLuma - historyLuma) : 0.0;
     colorWeight = max(colorWeight, hotSdfCurrent * 0.82);
-    float coverageWeight = smoothstep(0.02, 0.55, saturate(currentCandidate.control.x));
-    float coverageContinuityWeight = 1.0 - smoothstep(0.10, 0.50, abs(saturate(previousCandidate.control.x) - saturate(currentCandidate.control.x)));
+    if (isTubeFieldCandidate)
+    {
+        colorWeight = 1.0;
+    }
+
+    float coverageWeight = isTubeFieldCandidate
+        ? smoothstep(0.001, 0.20, saturate(currentCandidate.control.x))
+        : smoothstep(0.02, 0.55, saturate(currentCandidate.control.x));
+    float coverageContinuityWeight = isTubeFieldCandidate
+        ? 1.0
+        : 1.0 - smoothstep(0.10, 0.50, abs(saturate(previousCandidate.control.x) - saturate(currentCandidate.control.x)));
     float temporalDetailWeight = 1.0 - smoothstep(0.08, 0.45, abs(saturate(previousCandidate.control.z) - saturate(currentCandidate.control.z)));
     temporalDetailWeight = max(temporalDetailWeight, 1.0 - smoothstep(0.02, 0.12, max(saturate(previousCandidate.control.z), saturate(currentCandidate.control.z))));
     float reservoirConfidenceWeight = lerp(0.45, 1.0, min(reservoirCandidateConfidence(currentCandidate), reservoirCandidateConfidence(previousCandidate)));
@@ -486,20 +512,36 @@ FieldReservoirCandidate resolveReservoirHistoryCandidate(
     float reservoirSampleAge = max(currentCandidate.reservoirGuide.y, 0.0);
     float reservoirInvalidationCode = 0.0;
     float3 historyColor = currentCandidate.colorTravel.rgb;
+    if (fieldReservoirCandidateRequiresExplicitMotion(currentCandidate) && currentCandidate.motion.w <= 0.5)
+    {
+        FieldReservoirCandidate resolvedNoMotion = currentCandidate;
+        resolvedNoMotion.control = float4(currentCandidate.control.xyz, 0.0);
+        resolvedNoMotion.reservoirGuide = float4(
+            reservoirCandidateConfidence(currentCandidate),
+            reservoirSampleAge,
+            reservoirCandidateDomainValidity(currentCandidate),
+            4.0);
+        return resolvedNoMotion;
+    }
+
     if (frameIndex > 0.5 && currentCandidate.colorTravel.w <= farDistance && currentCandidate.metadata.x > 0.5)
     {
-        float3 currentRay = rayDirectionForPixel(pixel, jitterPixels, cameraPosition, cameraTarget);
-        float3 worldPosition = cameraPosition + currentRay * currentCandidate.colorTravel.w;
-        float3 previousWorldPosition = temporalPreviousWorldPosition(worldPosition, currentCandidate.metadata.x);
-        float2 previousUv = projectWorldToPreviousHistoryUv(previousWorldPosition);
+        float expectedPreviousTravel = currentCandidate.motion.z;
+        float2 previousUv = currentCandidate.motion.xy;
+        if (currentCandidate.motion.w <= 0.5)
+        {
+            float3 currentRay = rayDirectionForPixel(pixel, jitterPixels, cameraPosition, cameraTarget);
+            float3 worldPosition = cameraPosition + currentRay * currentCandidate.colorTravel.w;
+            float3 previousWorldPosition = temporalPreviousWorldPosition(worldPosition, currentCandidate.metadata.x);
+            previousUv = projectWorldToPreviousHistoryUv(previousWorldPosition);
+            expectedPreviousTravel = distance(previousCameraPosition, previousWorldPosition);
+        }
 
         if (all(previousUv >= 0.0) && all(previousUv <= 1.0))
         {
             uint2 dimensions = (uint2)max(resolution, float2(1.0, 1.0));
             uint2 previousPixel = min((uint2)pixelFromUv(previousUv), dimensions - 1u);
             uint width = dimensions.x;
-            uint previousBaseIndex = (previousPixel.y * width + previousPixel.x) * FieldReservoirSlotsPerPixel;
-            float expectedPreviousTravel = distance(previousCameraPosition, previousWorldPosition);
             float3 neighborhoodMin;
             float3 neighborhoodMax;
             currentNeighborhood(uv, neighborhoodMin, neighborhoodMax);
@@ -507,25 +549,48 @@ FieldReservoirCandidate resolveReservoirHistoryCandidate(
             float bestPreviousHistoryAge = 0.0;
             float bestPreviousReservoirSampleAge = 0.0;
             float3 bestHistoryColor = currentCandidate.colorTravel.rgb;
+            bool isTubeFieldCandidate = fieldReservoirCandidateRequiresExplicitMotion(currentCandidate);
+            bool needsWideHistorySearch = isTubeFieldCandidate && saturate(currentCandidate.control.x) < 0.45;
+            int historySearchMaxOffset = needsWideHistorySearch ? 1 : 0;
 
             [unroll]
-            for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
+            for (int historyY = 0; historyY <= 1; historyY++)
             {
-                FieldReservoirCandidate previousCandidate = reservoirHistoryRead[previousBaseIndex + slot];
-                float3 clampedHistory;
-                float validationWeight = reservoirHistoryValidationWeight(
-                    currentCandidate,
-                    previousCandidate,
-                    expectedPreviousTravel,
-                    neighborhoodMin,
-                    neighborhoodMax,
-                    clampedHistory);
-                if (validationWeight > bestValidationWeight)
+                [unroll]
+                for (int historyX = 0; historyX <= 1; historyX++)
                 {
-                    bestValidationWeight = validationWeight;
-                    bestPreviousHistoryAge = max(previousCandidate.control.w, 0.0);
-                    bestPreviousReservoirSampleAge = max(previousCandidate.reservoirGuide.y, 0.0);
-                    bestHistoryColor = clampedHistory;
+                    if (historyX > historySearchMaxOffset || historyY > historySearchMaxOffset)
+                    {
+                        continue;
+                    }
+
+                    int2 candidatePixelSigned = clamp((int2)previousPixel + int2(historyX, historyY), int2(0, 0), (int2)dimensions - int2(1, 1));
+                    uint2 candidatePixel = (uint2)candidatePixelSigned;
+                    uint previousBaseIndex = (candidatePixel.y * width + candidatePixel.x) * FieldReservoirSlotsPerPixel;
+                    float spatialPenalty = needsWideHistorySearch
+                        ? 1.0 - 0.10 * min(length(float2(historyX, historyY)), 1.5)
+                        : 1.0;
+
+                    [unroll]
+                    for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
+                    {
+                        FieldReservoirCandidate previousCandidate = reservoirHistoryRead[previousBaseIndex + slot];
+                        float3 clampedHistory;
+                        float validationWeight = reservoirHistoryValidationWeight(
+                            currentCandidate,
+                            previousCandidate,
+                            expectedPreviousTravel,
+                            neighborhoodMin,
+                            neighborhoodMax,
+                            clampedHistory) * spatialPenalty;
+                        if (validationWeight > bestValidationWeight)
+                        {
+                            bestValidationWeight = validationWeight;
+                            bestPreviousHistoryAge = max(previousCandidate.control.w, 0.0);
+                            bestPreviousReservoirSampleAge = max(previousCandidate.reservoirGuide.y, 0.0);
+                            bestHistoryColor = clampedHistory;
+                        }
+                    }
                 }
             }
 
@@ -570,6 +635,66 @@ float fieldReservoirCandidatePriority(float4 colorTravel, float4 metadata, float
     return colorTravel.w - saturate(control.x) * 0.025;
 }
 
+FieldReservoirCandidate currentSpatialFallbackCandidate(uint2 currentPixel, uint2 dimensions)
+{
+    FieldReservoirCandidate best = emptyFieldReservoirCandidate();
+    float bestPriority = 1.0e20;
+    float bestDistance = 0.0;
+    uint width = dimensions.x;
+
+    [unroll]
+    for (int y = -1; y <= 1; y++)
+    {
+        [unroll]
+        for (int x = -1; x <= 1; x++)
+        {
+            if (x == 0 && y == 0)
+            {
+                continue;
+            }
+
+            int2 neighborSigned = clamp((int2)currentPixel + int2(x, y), int2(0, 0), (int2)dimensions - int2(1, 1));
+            uint2 neighborPixel = (uint2)neighborSigned;
+            uint neighborBaseIndex = (neighborPixel.y * width + neighborPixel.x) * FieldReservoirSlotsPerPixel;
+            float pixelDistance = length(float2(x, y));
+
+            [unroll]
+            for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
+            {
+                FieldReservoirCandidate candidate = fieldReservoirCandidates[neighborBaseIndex + slot];
+                if (!fieldReservoirCandidateValid(candidate))
+                {
+                    continue;
+                }
+
+                float priority = fieldReservoirCandidatePriority(
+                    candidate.colorTravel,
+                    candidate.metadata,
+                    candidate.control,
+                    candidate.reservoirGuide) + pixelDistance * 0.035;
+                if (priority < bestPriority)
+                {
+                    best = candidate;
+                    bestPriority = priority;
+                    bestDistance = pixelDistance;
+                }
+            }
+        }
+    }
+
+    if (fieldReservoirCandidateValid(best))
+    {
+        float spatialWeight = 1.0 - smoothstep(0.0, 1.5, bestDistance);
+        best.control.x *= 0.42;
+        best.reservoirGuide.x = min(saturate(best.reservoirGuide.x), 0.42 * spatialWeight);
+        best.reservoirGuide.y = 0.0;
+        best.reservoirGuide.w = 3.0;
+        best.motion = 0.0;
+    }
+
+    return best;
+}
+
 void acceptFieldReservoirCandidate(
     FieldReservoirCandidate candidate,
     inout float4 bestColorTravel,
@@ -609,6 +734,21 @@ FieldReservoirCandidate carryFieldReservoirHistoryCandidate(FieldReservoirCandid
     carried.control.w = min(previousCandidate.control.w + 1.0, MAX_HISTORY_AGE);
     carried.reservoirGuide.y = min(max(previousCandidate.reservoirGuide.y, 0.0) + 1.0, MAX_HISTORY_AGE);
     carried.reservoirGuide.w = 0.0;
+    return carried;
+}
+
+FieldReservoirCandidate unsupportedCarryHistoryCandidate(FieldReservoirCandidate previousCandidate)
+{
+    FieldReservoirCandidate carried = carryFieldReservoirHistoryCandidate(previousCandidate);
+    if (!fieldReservoirCandidateValid(carried))
+    {
+        return carried;
+    }
+
+    float unsupportedAge = max(carried.control.w, carried.reservoirGuide.y);
+    float decay = 1.0 - smoothstep(1.0, 8.0, unsupportedAge);
+    carried.reservoirGuide.x = saturate(carried.reservoirGuide.x) * decay;
+    carried.reservoirGuide.w = 2.0;
     return carried;
 }
 
@@ -683,28 +823,30 @@ void D3D12ReservoirHistoryUpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     if (!hasSharedCandidate && !fieldReservoirCandidateValid(sceneCandidate))
     {
-        FieldReservoirCandidate bestCarried = emptyFieldReservoirCandidate();
-        float bestCarriedPriority = 1.0e20;
+        bool hasLatentCarry = false;
         [unroll]
         for (uint carrySlot = 0u; carrySlot < FieldReservoirSlotsPerPixel; carrySlot++)
         {
-            FieldReservoirCandidate carried = carryFieldReservoirHistoryCandidate(reservoirHistoryRead[baseIndex + carrySlot]);
+            FieldReservoirCandidate carried = unsupportedCarryHistoryCandidate(reservoirHistoryRead[baseIndex + carrySlot]);
             reservoirHistoryWrite[baseIndex + carrySlot] = carried;
-            float carriedPriority = fieldReservoirCandidatePriority(
-                carried.colorTravel,
-                carried.metadata,
-                carried.control,
-                carried.reservoirGuide);
-            if (carriedPriority < bestCarriedPriority)
-            {
-                bestCarried = carried;
-                bestCarriedPriority = carriedPriority;
-            }
+            hasLatentCarry = hasLatentCarry || fieldReservoirCandidateValid(carried);
         }
 
-        reservoirResolvedTexture[currentPixel] = bestCarriedPriority < 1.0e19
-            ? bestCarried.colorTravel
-            : sceneCandidate.colorTravel;
+        FieldReservoirCandidate spatialFallback = emptyFieldReservoirCandidate();
+        if (hasLatentCarry)
+        {
+            spatialFallback = currentSpatialFallbackCandidate(currentPixel, dimensions);
+        }
+        if (fieldReservoirCandidateValid(spatialFallback))
+        {
+            reservoirHistoryWrite[baseIndex] = spatialFallback;
+            reservoirResolvedTexture[currentPixel] = spatialFallback.colorTravel;
+        }
+        else
+        {
+            reservoirResolvedTexture[currentPixel] = sceneCandidate.colorTravel;
+        }
+
         return;
     }
 
@@ -731,19 +873,22 @@ void D3D12ReservoirHistoryUpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         }
         else
         {
-            resolvedCandidate = carryFieldReservoirHistoryCandidate(reservoirHistoryRead[baseIndex + slot]);
+            resolvedCandidate = unsupportedCarryHistoryCandidate(reservoirHistoryRead[baseIndex + slot]);
         }
 
         reservoirHistoryWrite[baseIndex + slot] = resolvedCandidate;
-        float priority = fieldReservoirCandidatePriority(
-            resolvedCandidate.colorTravel,
-            resolvedCandidate.metadata,
-            resolvedCandidate.control,
-            resolvedCandidate.reservoirGuide);
-        if (priority < bestPriority)
+        if (fieldReservoirCandidateValid(currentCandidate))
         {
-            bestResolved = resolvedCandidate;
-            bestPriority = priority;
+            float priority = fieldReservoirCandidatePriority(
+                resolvedCandidate.colorTravel,
+                resolvedCandidate.metadata,
+                resolvedCandidate.control,
+                resolvedCandidate.reservoirGuide);
+            if (priority < bestPriority)
+            {
+                bestResolved = resolvedCandidate;
+                bestPriority = priority;
+            }
         }
     }
 

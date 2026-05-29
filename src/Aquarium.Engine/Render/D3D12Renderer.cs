@@ -44,8 +44,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int MaxTubeFieldIndices = MaxTubeFieldSegments * 6;
     private const int MaxTubeFieldDrawBatches = 4_096;
     private const int FieldReservoirSlotsPerPixel = 4;
-    private const int FieldReservoirCandidateStrideBytes = 64;
-    private const int FieldReservoirHistoryStrideBytes = 64;
+    private const int FieldReservoirCandidateStrideBytes = 80;
+    private const int FieldReservoirHistoryStrideBytes = 80;
     private const int GeneratedMeshDrawArgumentUIntCount = 5;
     private const int GeneratedMeshDrawArgumentBytes = GeneratedMeshDrawArgumentUIntCount * sizeof(uint);
     private const float SurfaceTransparentMinZ = -1.85f;
@@ -243,6 +243,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private D3D12StructuredBuffer fieldReservoirCandidateBuffer = null!;
     private D3D12StructuredBuffer fieldReservoirLockBuffer = null!;
     private readonly List<D3D12TubeFieldDrawBatch> tubeFieldDrawBatches = [];
+    private readonly Dictionary<string, int> previousTubeFieldRollingOffsets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, D3D12ExternalSensorTexture> externalSensorTextures = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ExternalProducerFenceSlot> externalProducerFences = new(StringComparer.Ordinal);
     private readonly List<D3D12TrackedResource> programOutputTextures = [];
@@ -3152,13 +3153,16 @@ public sealed class D3D12Renderer : IAquariumRenderer
             activeTubeFieldTruncatedSegments += requestedSegments - dispatchSegments;
             var startIndex = segmentBase * 6;
             var fieldId = StableFieldId(lowering.ClaimKey, 5100.0f, 4096);
+            var previousRollingOffset = previousTubeFieldRollingOffsets.TryGetValue(lowering.ClaimKey, out var storedRollingOffset)
+                ? storedRollingOffset
+                : normalized.RollingOffset;
             var constants = new D3D12TubeFieldConstants(
                 new Vector4(normalized.Width, normalized.Height, normalized.StrideBytes, normalized.FirstColumn),
                 new Vector4(normalized.ColumnCount, normalized.ColumnStride, normalized.RollingModulo, normalized.RollingOffset),
                 new Vector4(normalized.AmplitudePower, normalized.AmplitudeScale, normalized.NormalizeMin, normalized.NormalizeMax),
                 new Vector4(normalized.BaseRadius, normalized.RadiusScale, normalized.Alpha, normalized.Feather),
                 new Vector4(normalized.EmissionScale, subdivisions, segmentBase, dispatchSegments),
-                new Vector4(tubeFieldDrawBatches.Count * GeneratedMeshDrawArgumentUIntCount, startIndex, fieldId, 0.0f),
+                new Vector4(tubeFieldDrawBatches.Count * GeneratedMeshDrawArgumentUIntCount, startIndex, fieldId, previousRollingOffset),
                 normalized.Origin,
                 0.0f,
                 normalized.AxisStep,
@@ -3202,6 +3206,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 constantsUpload.GpuVirtualAddress,
                 normalized.RampResourceKey,
                 tubeFieldDrawBatches.Count * GeneratedMeshDrawArgumentBytes));
+            previousTubeFieldRollingOffsets[lowering.ClaimKey] = normalized.RollingOffset;
         }
 
         activeTubeFieldDrawIndexCount = activeTubeFieldDispatchedSegments * 6;

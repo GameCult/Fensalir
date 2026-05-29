@@ -30,6 +30,7 @@ struct FieldReservoirCandidate
     float4 metadata;
     float4 control;
     float4 reservoirGuide;
+    float4 motion;
 };
 
 cbuffer AquariumFrame : register(b0)
@@ -98,14 +99,13 @@ uint PositiveModulo(int value, uint modulo)
     return (uint)(r < 0 ? r + m : r);
 }
 
-uint SampleAddress(uint logicalColumn, uint sampleIndex)
+uint SampleAddressWithOffset(uint logicalColumn, uint sampleIndex, int rollingOffset)
 {
     uint width = max((uint)round(tubeShape.x), 1u);
     uint height = max((uint)round(tubeShape.y), 1u);
     uint firstColumn = (uint)max(round(tubeShape.w), 0.0);
     uint columnStride = max((uint)round(tubeColumns.y), 1u);
     uint rollingModulo = (uint)max(round(tubeColumns.z), 0.0);
-    int rollingOffset = (int)round(tubeColumns.w);
     uint physicalColumn = firstColumn + logicalColumn * columnStride;
     if (rollingModulo > 0u)
     {
@@ -117,12 +117,36 @@ uint SampleAddress(uint logicalColumn, uint sampleIndex)
     return (physicalColumn * width + min(sampleIndex, width - 1u)) * strideBytes;
 }
 
+uint PhysicalColumnWithOffset(uint logicalColumn, int rollingOffset)
+{
+    uint height = max((uint)round(tubeShape.y), 1u);
+    uint firstColumn = (uint)max(round(tubeShape.w), 0.0);
+    uint columnStride = max((uint)round(tubeColumns.y), 1u);
+    uint rollingModulo = (uint)max(round(tubeColumns.z), 0.0);
+    uint physicalColumn = firstColumn + logicalColumn * columnStride;
+    if (rollingModulo > 0u)
+    {
+        physicalColumn = PositiveModulo((int)physicalColumn + rollingOffset, rollingModulo);
+    }
 
-float RawSample(uint logicalColumn, int sampleIndex)
+    return min(physicalColumn, height - 1u);
+}
+
+uint SampleAddress(uint logicalColumn, uint sampleIndex)
+{
+    return SampleAddressWithOffset(logicalColumn, sampleIndex, (int)round(tubeColumns.w));
+}
+
+float RawSampleWithOffset(uint logicalColumn, int sampleIndex, int rollingOffset)
 {
     uint width = max((uint)round(tubeShape.x), 1u);
     uint clamped = (uint)clamp(sampleIndex, 0, (int)width - 1);
-    return asfloat(TubeFieldSamples.Load(SampleAddress(logicalColumn, clamped)));
+    return asfloat(TubeFieldSamples.Load(SampleAddressWithOffset(logicalColumn, clamped, rollingOffset)));
+}
+
+float RawSample(uint logicalColumn, int sampleIndex)
+{
+    return RawSampleWithOffset(logicalColumn, sampleIndex, (int)round(tubeColumns.w));
 }
 
 
@@ -137,10 +161,27 @@ float FilteredSample(uint logicalColumn, float x)
     return (s0 + s4 + 4.0 * (s1 + s3) + 6.0 * s2) / 16.0;
 }
 
+float FilteredSampleWithOffset(uint logicalColumn, float x, int rollingOffset)
+{
+    int center = (int)floor(x + 0.5);
+    float s0 = RawSampleWithOffset(logicalColumn, center - 2, rollingOffset);
+    float s1 = RawSampleWithOffset(logicalColumn, center - 1, rollingOffset);
+    float s2 = RawSampleWithOffset(logicalColumn, center, rollingOffset);
+    float s3 = RawSampleWithOffset(logicalColumn, center + 1, rollingOffset);
+    float s4 = RawSampleWithOffset(logicalColumn, center + 2, rollingOffset);
+    return (s0 + s4 + 4.0 * (s1 + s3) + 6.0 * s2) / 16.0;
+}
+
 
 float NormalizedSample(uint logicalColumn, float x)
 {
     float value = FilteredSample(logicalColumn, x);
+    return saturate((value - tubeAmplitude.z) / max(tubeAmplitude.w - tubeAmplitude.z, 0.0001));
+}
+
+float NormalizedSampleWithOffset(uint logicalColumn, float x, int rollingOffset)
+{
+    float value = FilteredSampleWithOffset(logicalColumn, x, rollingOffset);
     return saturate((value - tubeAmplitude.z) / max(tubeAmplitude.w - tubeAmplitude.z, 0.0001));
 }
 
@@ -166,6 +207,17 @@ float SampleCurve(uint logicalColumn, float x)
     return saturate(Catmull(p0, p1, p2, p3, t));
 }
 
+float SampleCurveWithOffset(uint logicalColumn, float x, int rollingOffset)
+{
+    int i1 = (int)floor(x);
+    float t = frac(x);
+    float p0 = NormalizedSampleWithOffset(logicalColumn, (float)(i1 - 1), rollingOffset);
+    float p1 = NormalizedSampleWithOffset(logicalColumn, (float)i1, rollingOffset);
+    float p2 = NormalizedSampleWithOffset(logicalColumn, (float)(i1 + 1), rollingOffset);
+    float p3 = NormalizedSampleWithOffset(logicalColumn, (float)(i1 + 2), rollingOffset);
+    return saturate(Catmull(p0, p1, p2, p3, t));
+}
+
 
 float SampleAmplitudeCurve(uint logicalColumn, float x)
 {
@@ -180,6 +232,12 @@ float3 TubePoint(uint logicalColumn, float x)
         tubeAxisStep * x +
         tubeColumnStep * (float)logicalColumn +
         float3(0.0, value * tubeAmplitude.y, 0.0);
+}
+
+float3 TubePointWithOffset(uint logicalColumn, float x, int rollingOffset)
+{
+    float y = pow(SampleCurveWithOffset(logicalColumn, x, rollingOffset), max(tubeAmplitude.x, 0.0001)) * tubeAmplitude.y;
+    return tubeOrigin + tubeAxisStep * x + tubeColumnStep * logicalColumn + float3(0.0, y, 0.0);
 }
 
 
@@ -362,6 +420,22 @@ float2 ndcToPixel(float2 ndc)
 float2 pixelToNdc(float2 pixel)
 {
     return float2(pixel.x / max(resolution.x, 1.0) * 2.0 - 1.0, 1.0 - pixel.y / max(resolution.y, 1.0) * 2.0);
+}
+
+float2 projectWorldToPreviousHistoryUv(float3 worldPosition)
+{
+    float3 forward;
+    float3 right;
+    float3 up;
+    cameraBasis(previousCameraPosition, previousCameraTarget, forward, right, up);
+    float3 delta = worldPosition - previousCameraPosition;
+    float z = max(dot(delta, forward), 0.0001);
+    float2 frustumMin = float2(cameraFrustumXy.x, cameraFrustumXy.z);
+    float2 frustumMax = float2(cameraFrustumXy.y, cameraFrustumXy.w);
+    float2 slope = float2(dot(delta, right), dot(delta, up)) / z;
+    float2 ndc = ((slope - frustumMin) / max(frustumMax - frustumMin, float2(0.0001, 0.0001))) * 2.0 - 1.0;
+    float2 pixel = (ndc * resolution + resolution) * 0.5 - previousJitterPixels;
+    return float2(pixel.x / resolution.x, 1.0 - pixel.y / resolution.y);
 }
 
 float splineRadiusToPixels(float radiusWorld, float viewDepth)
@@ -822,10 +896,25 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     float emission = exactTubeMaterial ? max(input.material.x, 0.0) : materialValue * materialValue * max(input.material.x, 0.0);
     float3 color = emissionColor * emission * glowFacing * claimCoverage;
     float travel = baseHit.travel;
+    float4 motion = 0.0;
+    int currentRollingOffset = (int)round(tubeColumns.w);
+    int previousRollingOffset = (int)round(tubeDraw.w);
+    float columnStride = max(round(tubeColumns.y), 1.0);
+    float previousLogicalColumn = round(input.tubeData.x) + ((float)(currentRollingOffset - previousRollingOffset) / columnStride);
+    float visibleColumnCount = max(round(tubeColumns.x), 1.0);
+    if (previousLogicalColumn >= 0.0 && previousLogicalColumn < visibleColumnCount)
+    {
+        uint previousLogical = (uint)round(previousLogicalColumn);
+        float3 previousWorld = TubePointWithOffset(previousLogical, sampleX, previousRollingOffset);
+        float2 previousUv = projectWorldToPreviousHistoryUv(previousWorld);
+        float expectedPreviousTravel = distance(previousCameraPosition, previousWorld);
+        motion = float4(previousUv, expectedPreviousTravel, 1.0);
+    }
 
     SceneOut output;
     output.colorTravel = float4(color, min(travel, farDistance + 1.0));
-    output.metadata = float4(input.tubeData.w, tubeNormal);
+    float candidateFieldId = abs(input.tubeData.w) + (float)PhysicalColumnWithOffset((uint)round(input.tubeData.x), currentRollingOffset) * 0.01;
+    output.metadata = float4(candidateFieldId, tubeNormal);
     output.control = float4(claimCoverage, coverage, saturate(radiusWorld / max(viewRadius, 0.0001)), value);
     output.reservoirGuide = float4(claimCoverage, 0.0, coverage, value);
     output.depth = saturate(travel / max(farDistance, 0.0001));
@@ -834,6 +923,7 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     candidate.metadata = output.metadata;
     candidate.control = output.control;
     candidate.reservoirGuide = output.reservoirGuide;
+    candidate.motion = motion;
     injectFieldReservoirCandidate(candidate, baseSamplePx);
     return output;
 }

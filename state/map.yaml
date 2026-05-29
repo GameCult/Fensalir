@@ -216,8 +216,13 @@ next_actions:
     frustum/cap neighborhood in world space, samples the rolling source buffer
     for material, and writes candidates directly into the shared field
     reservoir inlet. Shared reservoir history carries prior opaque field
-    candidates across current-frame subpixel misses instead of clearing them.
-    The deleted TubeField-local compute
+    candidates only as latent validation memory across current-frame subpixel
+    misses; unsupported carried rows cannot resolve visible color by
+    themselves. Shared field candidates now include a motion lane. TubeField
+    writes previous history UV and previous travel from rolling-buffer offset
+    motion, encodes physical rolling-column identity into metadata, bypasses
+    raw RGB clamp for tube validation, and uses a gated current-frame spatial
+    fallback/2x2 previous-history search for low-support samples. The deleted TubeField-local compute
     ReSTIR/tile-bin path is not a live authority, fallback, or hidden mode. Any
     future temporal/spatial reuse for tubes must extend the shared reservoir
     organ rather than resurrecting a payload-local reservoir renderer.

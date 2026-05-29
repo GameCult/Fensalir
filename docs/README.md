@@ -13,6 +13,8 @@ historical branch scar.
 
 ## Fields, Reservoirs, And Fractals
 
+- `../src/Saga/README.md`: studio-facing Saga middleware pitch and subproject
+  overview for stochastic planetary flow.
 - `papers/fensalir-pipeline.tex`: living MiKTeX paper for the Fensalir
   pipeline, research spine, domain reservoir model, and evaluation plan.
 - `papers/fensalir-native-domain-reservoirs.tex`: focused SIGGRAPH-shaped

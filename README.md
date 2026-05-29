@@ -136,6 +136,9 @@ how WASAPI or Faust got invited to the party.
   audio/synth host, bundled assets, and renderer-owned shaders.
 - `src/Aquarium.Engine.Fractal`: `.aquageo`, IFS/fractal fields, temporal
   reservoirs, evidence tracks, contribution cache, and lowering machinery.
+- `src/Saga`: stochastic planetary flow middleware for cube-sphere Transport
+  fields, arbitrary forcing, Coriolis-aware advection, and learned atmosphere /
+  ocean / debris flow packets.
 - `src/Aquarium.Fensalir`: Fensalir splash/art reconstruction demo.
 - `src/Aquarium.Sample.Minimal`: tiny client proving the runtime boundary.
 - `src/Aquarium.Zyphos`: planetary/fractal terrain demo.

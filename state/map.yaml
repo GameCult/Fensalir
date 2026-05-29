@@ -21,6 +21,12 @@ current_model:
     implementation: src/Aquarium.Engine.Fractal
     tests: tests/Aquarium.Engine.Fractal.Tests
     receipt_tool: tools/Aquarium.Fractal.Receipt
+  saga:
+    implementation: src/Saga
+    purpose: >
+      Stochastic planetary flow middleware for cube-sphere Transport fields,
+      arbitrary forcing, explicit Coriolis/rotation conditioning, and learned
+      atmosphere/ocean/debris advection packets.
   demos:
     fensalir_splash: src/Aquarium.Fensalir
     minimal: src/Aquarium.Sample.Minimal

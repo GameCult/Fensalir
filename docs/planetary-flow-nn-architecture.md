@@ -55,6 +55,11 @@ Conditioning tokens:
 
 - day-of-year Fourier features;
 - hour/diurnal Fourier features when using hourly atmosphere data;
+- sun direction in planet-centered coordinates and local tangent coordinates;
+- sun elevation/azimuth at the sample point;
+- moon direction in planet-centered coordinates and local tangent coordinates;
+- moon elevation/azimuth at the sample point;
+- lunar phase or normalized sun-moon angle;
 - lead time;
 - layer id: ocean surface, atmosphere near-surface, or pressure level;
 - dataset/model/provenance id embedding;
@@ -63,6 +68,15 @@ Conditioning tokens:
 Do not make elevation the protagonist. It is one channel group. The dynamic
 state and time phase are not optional decoration; they are the difference
 between a flow model and a coastline horoscope.
+
+Sun and moon conditioning are evaluator inputs, not derived afterthoughts. The
+model should receive the same celestial forcing basis the runtime evaluator will
+use: global direction vectors for coherent planetary phase, local elevation and
+azimuth for terrain/atmosphere response, and lunar phase/sun-moon geometry for
+tidal and coastal-current regimes. Early atmosphere training can mostly learn
+from sun terms and calendar/hour features. Ocean training should keep moon terms
+present from the start so the packet schema does not need surgery when tides
+stop being optional.
 
 ## FlowNet-S: Local Baseline
 
@@ -84,7 +98,7 @@ encoder:
   stage 3: downsample + 3 residual blocks, width 192
 
 conditioning:
-  FiLM or adaptive layer norm from time/layer/LOD embeddings
+  FiLM or adaptive layer norm from celestial/time/layer/LOD embeddings
 
 decoder:
   FPN/U-Net upsample to 64x64

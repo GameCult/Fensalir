@@ -25,8 +25,9 @@ schema. Runtime inference may later move to a dedicated ML package, but the
 engine owns the field contract that clients consume.
 
 Inputs: cube-sphere tile address, projection metadata, static relief/bathymetry,
-land/sea mask, latitude/Coriolis features, calendar/season phase, optional
-recent atmosphere/ocean state, and dataset provenance/version.
+land/sea mask, latitude/Coriolis features, calendar/season phase, sun and moon
+directions in planet/global and local tangent bases, optional recent
+atmosphere/ocean state, and dataset provenance/version.
 
 Outputs: bounded stochastic advection parameter tiles for atmosphere and ocean
 surface. The first output schema should support mean velocity, covariance or
@@ -70,8 +71,8 @@ pages with stochastic advection parameters instead of authored brush evidence.
 - Cube-sphere tile identity is the runtime domain. Lat-long is only source data
   layout or debug view.
 - Static relief alone is not a sufficient predictor. Bathymetry/topography can
-  shape flow, but dynamic atmosphere/ocean state and time conditioning are real
-  inputs.
+  shape flow, but dynamic atmosphere/ocean state, time conditioning, and
+  sun/moon forcing are real inputs.
 - A stochastic output must expose uncertainty. A mean vector without dispersion
   is a visualization convenience, not the organ.
 - Conservative LOD summaries remain renderable. Missing high-resolution child
@@ -89,6 +90,7 @@ transition-matrix targets:
 ```text
 FlowTilePacket
   Domain: CubeTileKey, projection id, cell spacing, time basis
+  Celestial: sun/moon direction, local elevation/azimuth, lunar phase
   Layer: oceanSurface | atmosphereNearSurface | atmospherePressureLevel
   MeanVelocity: tangent-space u/v per sample
   Diffusivity: symmetric 2x2 tangent covariance or log-Cholesky parameters
@@ -210,8 +212,9 @@ the result beats calibrated covariance and ensemble heads.
 
 4. Train a single-tile local model.
    Inputs are multi-channel multiscale crops around a target cell: relief,
-   slope, land/sea, Coriolis/latitude, season phase, and recent dynamic fields.
-   Output mean velocity plus diagonal covariance.
+   slope, land/sea, Coriolis/latitude, season phase, sun/moon direction, local
+   celestial elevation/azimuth, lunar phase, and recent dynamic fields. Output
+   mean velocity plus diagonal covariance.
 
 5. Add cross-tile and parent/child context.
    Replace pure crops with cube-sphere graph adjacency and LOD-aware message

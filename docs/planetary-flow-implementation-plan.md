@@ -41,7 +41,7 @@ Deliverables:
   curvature, coastline distance, source quality;
 - baked dynamic channel fixture from a small ERA5/OSCAR subset;
 - metric metadata per tile: area scale, local tangent frame, latitude/Coriolis,
-  projection id, and missing-data mask.
+  sun/moon local direction basis, projection id, and missing-data mask.
 
 Verification:
 
@@ -99,6 +99,8 @@ Training plan:
 - start with ERA5 10m wind over a small temporal window;
 - add OSCAR surface currents as the first ocean target;
 - train on cube-sphere pages, not raw lat/lon;
+- feed the evaluator's sun and moon direction inputs through the same
+  conditioning path used by training;
 - normalize per variable and preserve masks;
 - keep model identity, source versions, and normalization stats with every
   checkpoint.

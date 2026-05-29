@@ -124,7 +124,7 @@ RWStructuredBuffer<FieldReservoirCandidate> RestirFieldReservoirCandidates : reg
 static const uint TubeFieldRestirTileSize = 16u;
 static const uint TubeFieldRestirMaxTileSegments = 128u;
 static const uint TubeFieldRestirSpatialTileLanes = 16u;
-static const uint TubeFieldRestirDepthLanesPerSpatialLane = 1u;
+static const uint TubeFieldRestirDepthLanesPerSpatialLane = 4u;
 static const uint TubeFieldRestirResidentTileCandidates = TubeFieldRestirSpatialTileLanes * TubeFieldRestirDepthLanesPerSpatialLane;
 static const uint TubeFieldRestirSpatialCandidateCount = 4u;
 static const uint FieldReservoirSlotsPerPixel = 4u;
@@ -1150,19 +1150,24 @@ void D3D12TubeFieldRestirInitialCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    uint count = TubeFieldRestirResidentTileCandidates;
     uint2 localPixelInTile = pixel - tile * TubeFieldRestirTileSize;
     uint laneX = min(localPixelInTile.x / 4u, 3u);
     uint laneY = min(localPixelInTile.y / 4u, 3u);
-    uint candidateSlot = min(laneY * 4u + laneX, count - 1u);
-    uint columnIndex;
-    if (unpackRestirTileSegment(RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + candidateSlot], columnIndex))
+    uint spatialLane = laneY * 4u + laneX;
+    [unroll(4)]
+    for (uint depthLane = 0u; depthLane < TubeFieldRestirDepthLanesPerSpatialLane; depthLane++)
     {
-        TubeFieldReservoir candidate;
-        float targetPdf;
-        if (evaluateTubeFieldColumnCandidate(columnIndex, (float2)pixel + 0.5 + jitterPixels, candidate, targetPdf))
+        uint candidateSlot = spatialLane * TubeFieldRestirDepthLanesPerSpatialLane + depthLane;
+        uint columnIndex;
+        if (unpackRestirTileSegment(RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + candidateSlot], columnIndex))
         {
-            restirStreamCandidate(reservoir, candidate, targetPdf, (float)count, restirRandom01(pixelIndex * 1664525u + (uint)frameIndex * 977u));
+            TubeFieldReservoir candidate;
+            float targetPdf;
+            if (evaluateTubeFieldColumnCandidate(columnIndex, (float2)pixel + 0.5 + jitterPixels, candidate, targetPdf))
+            {
+                float randomValue = restirRandom01(pixelIndex * 1664525u + depthLane * 1013904223u + (uint)frameIndex * 977u);
+                restirStreamCandidate(reservoir, candidate, targetPdf, (float)TubeFieldRestirDepthLanesPerSpatialLane, randomValue);
+            }
         }
     }
 
@@ -1289,28 +1294,32 @@ void D3D12TubeFieldRestirSpatialResolveCS(uint3 dispatchThreadId : SV_DispatchTh
     uint touchedSegmentCount = RestirTileCountsRead[tileIndex];
     if (touchedSegmentCount > 0u)
     {
-        uint count = TubeFieldRestirResidentTileCandidates;
         uint2 localPixelInTile = pixel - tile * TubeFieldRestirTileSize;
         uint laneX = min(localPixelInTile.x / 4u, 3u);
         uint laneY = min(localPixelInTile.y / 4u, 3u);
-        uint candidateSlot = min(laneY * 4u + laneX, count - 1u);
-        uint columnIndex;
-        if (unpackRestirTileSegment(RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + candidateSlot], columnIndex))
+        uint spatialLane = laneY * 4u + laneX;
+        [unroll(4)]
+        for (uint depthLane = 0u; depthLane < TubeFieldRestirDepthLanesPerSpatialLane; depthLane++)
         {
-            TubeFieldReservoir candidate;
-            float targetPdf;
-            if (evaluateTubeFieldColumnCandidate(columnIndex, (float2)pixel + 0.5 + jitterPixels, candidate, targetPdf))
+            uint candidateSlot = spatialLane * TubeFieldRestirDepthLanesPerSpatialLane + depthLane;
+            uint columnIndex;
+            if (unpackRestirTileSegment(RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + candidateSlot], columnIndex))
             {
-                insertTubeFieldExportCandidate(
-                    candidate,
-                    export0,
-                    export1,
-                    export2,
-                    export3,
-                    priority0,
-                    priority1,
-                    priority2,
-                    priority3);
+                TubeFieldReservoir candidate;
+                float targetPdf;
+                if (evaluateTubeFieldColumnCandidate(columnIndex, (float2)pixel + 0.5 + jitterPixels, candidate, targetPdf))
+                {
+                    insertTubeFieldExportCandidate(
+                        candidate,
+                        export0,
+                        export1,
+                        export2,
+                        export3,
+                        priority0,
+                        priority1,
+                        priority2,
+                        priority3);
+                }
             }
         }
     }

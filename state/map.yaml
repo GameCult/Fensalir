@@ -256,7 +256,11 @@ next_actions:
     Texture2D or RollingTexture resources, profile/calibration/camera-pair
     identity, and coherent output shape/range. This keeps Mimir's libSGM-shaped
     D3D12 depth path inside typed field/resource authority instead of a private
-    texture or CUDA/TensorRT dependency. VolumeTexture
+    texture or CUDA/TensorRT dependency. The D3D12 renderer now evaluates
+    stereo-depth dispatch readiness without writing fake depth: a lowering is
+    ready only when its Height claim is planned and left/right input textures
+    plus UAV disparity SurfacePage resolve through the field resource registry;
+    capacity logs still state that the kernel is not installed. VolumeTexture
     resources now have the same
     first resolver shape: contracts and DSL can declare GPU-resident 3D
     textures with dimensions, depth, format, and version, and the D3D12 registry

@@ -309,6 +309,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private int activeTubeFieldSkippedDrawBatches;
     private int activeTubeFieldUnplannedLowerings;
     private int activeTubeFieldInvalidColumns;
+    private int activeStereoDepthDispatchReadyLowerings;
+    private int activeStereoDepthUnplannedLowerings;
+    private int activeStereoDepthUnresolvedLowerings;
     private int activeFieldResourceUploadCount;
     private int activeFieldResourceUploadSkippedCount;
     private Viewport viewport;
@@ -3352,6 +3355,54 @@ public sealed class D3D12Renderer : IAquariumRenderer
         return planned;
     }
 
+    private void EvaluateStereoDepthLowerings()
+    {
+        activeStereoDepthDispatchReadyLowerings = 0;
+        activeStereoDepthUnplannedLowerings = 0;
+        activeStereoDepthUnresolvedLowerings = 0;
+        if (activeFieldEvidenceFrame.StereoDepthLowerings.Count == 0)
+        {
+            return;
+        }
+
+        var plannedClaims = PlannedStereoDepthClaimKeys();
+        foreach (var lowering in activeFieldEvidenceFrame.StereoDepthLowerings)
+        {
+            if (!plannedClaims.Contains(lowering.ClaimKey))
+            {
+                activeStereoDepthUnplannedLowerings++;
+                continue;
+            }
+
+            if (!lowering.IsValid ||
+                !fieldResourceRegistry.TryGetTexture2D(lowering.LeftResourceKey, out _) ||
+                !fieldResourceRegistry.TryGetTexture2D(lowering.RightResourceKey, out _) ||
+                !fieldResourceRegistry.TryGetSurfacePage(lowering.DisparityResourceKey, out var disparity) ||
+                !disparity.AllowsUnorderedAccess)
+            {
+                activeStereoDepthUnresolvedLowerings++;
+                continue;
+            }
+
+            activeStereoDepthDispatchReadyLowerings++;
+        }
+    }
+
+    private HashSet<string> PlannedStereoDepthClaimKeys()
+    {
+        var planned = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var packet in activeFieldLoweringPlan.Packets)
+        {
+            if (packet.Backend == AquariumFieldBackendKind.SurfacePage &&
+                packet.Encoding == AquariumFieldEncoding.Height)
+            {
+                planned.Add(packet.ClaimKey);
+            }
+        }
+
+        return planned;
+    }
+
     private void UploadFieldResourceData(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
     {
         foreach (var upload in activeFieldEvidenceFrame.ResourceUploads)
@@ -3520,6 +3571,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeFieldLoweringPlan = activeFieldEvidenceValidation.HasErrors
             ? AquariumFieldLoweringPlan.Empty
             : AquariumFieldLoweringPlanner.Plan(activeFieldEvidenceFrame);
+        EvaluateStereoDepthLowerings();
         activeFractalProgramTransforms = activeFractalReservoirField.HasInput && scene.FractalReservoirField.ProgramTransforms.Count > 0
             ? scene.FractalReservoirField.ProgramTransforms as AquariumPackedFractalIfsTransform[] ?? scene.FractalReservoirField.ProgramTransforms.ToArray()
             : [];
@@ -4072,6 +4124,16 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 $"skipped uploads {activeFieldResourceUploadSkippedCount:N0}; " +
                 $"index draw count {activeTubeFieldDrawIndexCount:N0}; " +
                 $"segment budget {MaxTubeFieldSegments:N0}");
+        }
+
+        if (activeFieldEvidenceFrame.StereoDepthLowerings.Count > 0)
+        {
+            Console.WriteLine(
+                $"D3D12 stereo depth: lowerings {activeFieldEvidenceFrame.StereoDepthLowerings.Count:N0}; " +
+                $"dispatch-ready {activeStereoDepthDispatchReadyLowerings:N0}; " +
+                $"unplanned {activeStereoDepthUnplannedLowerings:N0}; " +
+                $"unresolved {activeStereoDepthUnresolvedLowerings:N0}; " +
+                "kernel not installed");
         }
 
         if (accumulatedTimingFrames > 0)

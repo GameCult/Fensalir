@@ -107,8 +107,9 @@ old occluded tubes leak through nearby missed tube samples.
 5. Done: assign row 0/1/2/3 to current/temporal/spatial/final reservoir stages.
 6. Done: preserve proposal policy through field evidence lowering/backend
    packets and reject invalid proposal weights.
-7. Partial: expose every requested TSR diagnostic as a named UI label; the GPU
-   data is present in modes 13-15, but the debug UI still uses older labels.
+7. Done: expose rebuilt reservoir diagnostics as named UI labels. Modes 13-15
+   now mean rejection, stats, and proposal; invalid final reservoirs render as
+   unsupported instead of masquerading as accepted history.
 8. Partial: tune occlusion/disocclusion thresholds against fresh captures after
    this architecture cut.
 9. Next: capture final color and row-3 debug views against the noisy/occlusion

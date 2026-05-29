@@ -86,15 +86,20 @@ The receipt harness lives in `tools/Aquarium.Fractal.Receipt`.
 
 ## Temporal Diagnostics
 
-`D3D12Post.hlsl` keeps color, metadata, and control history. Projection jitter
-uses a small Halton sequence. History is accepted only when travel, field,
-normal, coverage, and control signals stay coherent.
+`D3D12Post.hlsl` owns the shared field reservoir resolve. Current-frame scene
+and TubeField proposals are normalized into `FieldReservoirSample` rows before
+reuse; row 0 is current RIS, row 1 temporal reuse, row 2 spatial/domain reuse,
+and row 3 final resolved reservoir. History is accepted only when field id,
+travel, normal, support, domain validity, and motion/reprojection signals stay
+coherent.
 
 Debug modes include final color, raw current scene, history, history age,
 history weight, coverage/step ratio, field identity, bloom contribution,
-exposed luminance, proxy identity, proxy step count, and reservoir guide
-views. Startup mode can be set with `--render-debug` or
-`AQUARIUM_RENDER_DEBUG_MODE`.
+exposed luminance, proxy identity, proxy step count, and reservoir guide views.
+Modes `13`, `14`, and `15` read the compute-owned reservoir output rather than
+stale guide MRTs: rejection reason, selected target/weight sum/candidate count,
+and proposal target/source PDF/contribution weight. Startup mode can be set
+with `--render-debug` or `AQUARIUM_RENDER_DEBUG_MODE`.
 
 ## HDR
 

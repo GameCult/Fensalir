@@ -50,6 +50,37 @@ public sealed class ResampledImportanceReservoirTests
     }
 
     [Fact]
+    public void ReservoirUsesSourcePdfAndRepresentedCountForContributionWeight()
+    {
+        var reservoir = new ResampledImportanceReservoir<string>();
+
+        Assert.True(reservoir.Add(new ResampledImportanceCandidate<string>("packed", 4.0f, 0.5f, 8), randomUnit: 0.0));
+
+        Assert.Equal("packed", reservoir.SelectedSample);
+        Assert.Equal(4.0f, reservoir.SelectedTarget);
+        Assert.Equal(8.0f, reservoir.WeightSum);
+        Assert.Equal(8, reservoir.CandidateCount);
+        Assert.Equal(0.25f, reservoir.ContributionWeight);
+    }
+
+    [Fact]
+    public void ReservoirMergeSelectionUsesIncomingWeightMass()
+    {
+        var left = new ResampledImportanceReservoir<string>();
+        var right = new ResampledImportanceReservoir<string>();
+
+        Assert.True(left.Add(new ResampledImportanceCandidate<string>("left", 1.0f, 1.0f), randomUnit: 0.0));
+        Assert.True(right.Add(new ResampledImportanceCandidate<string>("right", 3.0f, 1.0f), randomUnit: 0.0));
+        Assert.True(left.Merge(right, randomUnit: 0.74));
+
+        Assert.Equal("right", left.SelectedSample);
+        Assert.Equal(3.0f, left.SelectedTarget);
+        Assert.Equal(4.0f, left.WeightSum);
+        Assert.Equal(2, left.CandidateCount);
+        Assert.InRange(left.ContributionWeight, 0.66f, 0.67f);
+    }
+
+    [Fact]
     public void ReservoirRejectsOutOfRangeRandomUnits()
     {
         var reservoir = new ResampledImportanceReservoir<string>();

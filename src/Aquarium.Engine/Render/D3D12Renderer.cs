@@ -129,9 +129,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         new(10, "SdfObject Steps"),
         new(11, "Client Fractal Domains"),
         new(12, "Reservoir Guide"),
-        new(13, "Reservoir Reject"),
-        new(14, "Reservoir Evidence"),
-        new(15, "Reservoir Motion"),
+        new(13, "Reservoir Rejection"),
+        new(14, "Reservoir Stats"),
+        new(15, "Reservoir Proposal"),
     ];
     private static readonly DebugUi.DebugUiOption[] SynthPresetOptions = AquaSynth.Dsl.BuiltInScripts.ReferenceScripts()
         .Select((preset, index) => new DebugUi.DebugUiOption(index, $"{preset.Family}/{preset.Name}"))

@@ -610,6 +610,11 @@ float4 reservoirDebugOrColor(FieldReservoirSample candidate)
 {
     if (renderDebugMode >= 12.5 && renderDebugMode < 13.5)
     {
+        if (!fieldReservoirSampleValid(candidate, farDistance))
+        {
+            return float4(0.025, 0.025, 0.035, candidate.colorTravel.w);
+        }
+
         float invalidation = candidate.guide.w;
         float3 color = float3(0.0, 0.0, 0.0);
         if (invalidation < 0.5)
@@ -638,6 +643,11 @@ float4 reservoirDebugOrColor(FieldReservoirSample candidate)
 
     if (renderDebugMode >= 13.5 && renderDebugMode < 14.5)
     {
+        if (!fieldReservoirSampleValid(candidate, farDistance))
+        {
+            return float4(0.0, 0.0, 0.0, candidate.colorTravel.w);
+        }
+
         return float4(
             saturate(candidate.stats.x),
             saturate(candidate.stats.y * 0.1),
@@ -647,6 +657,11 @@ float4 reservoirDebugOrColor(FieldReservoirSample candidate)
 
     if (renderDebugMode >= 14.5 && renderDebugMode < 15.5)
     {
+        if (!fieldReservoirSampleValid(candidate, farDistance))
+        {
+            return float4(0.0, 0.0, 0.0, candidate.colorTravel.w);
+        }
+
         return float4(
             saturate(candidate.proposal.x),
             saturate(candidate.proposal.y),

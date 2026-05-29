@@ -124,8 +124,10 @@ For opaque Form fields, local candidate generation owns primary visibility
 discovery before reservoir reuse. It may be deterministic when sparse stochastic
 sampling would leave holes in the visible surface. This is not a fallback to a
 private renderer; it is the producer side of the shared reservoir contract.
-TubeField's bounded tile-local candidate enumeration is the current concrete
-example.
+TubeField's current concrete example is raster proxy candidate discovery:
+compute emits conservative segment envelopes, the fixed-function pipeline
+finds covered pixels, and the proxy pixel shader evaluates the tube SDF before
+writing candidates into the shared reservoir inlet.
 
 Every evidence sample should state its layer and encoding before lowering:
 Form, Appearance, or Transport; then SDF, height, density, extinction,

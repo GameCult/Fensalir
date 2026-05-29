@@ -208,20 +208,15 @@ next_actions:
     fullscreen resolve writes canonical scene color/travel/metadata/control/
     reservoir-guide lanes. A shared compute pass then updates ping-ponged
     structured reservoir history, emits the resolved HDR field texture, and
-    bloom/presentation consume that texture without owning history. The
-    remaining coherence cut is to make every non-debug contributor inject
-    explicit field candidates instead of entering as the single legacy
-    scene-candidate input.
-    TubeField reservoir ownership now uses spline/column packets as the
-    candidate authority rather than generated mesh segments. TubeField expansion
-    writes one GPU-resident column packet per rolling-buffer column, tile binning
-    files those columns into screen-space lanes, pixel-owned reservoirs evaluate
-    a local Catmull-Rom SDF sample directly from the source buffer, temporal
-    reuse reprojects previous column samples, and spatial reuse re-evaluates the
-    selected column at the receiving pixel before combination. The shared field
-    reservoir remains the only final contribution path. Generated vertex/index
-    output is currently zeroed for the live path and retained only as a
-    diagnostic/generated-mesh reference.
+    bloom/presentation consume that texture without owning history. TubeField
+    candidate discovery is the fixed-function raster path: compute emits
+    conservative GPU-resident segment proxy geometry and indirect draw packets,
+    the proxy pixel shader evaluates the sampled Catmull-Rom tube SDF against
+    the rolling source buffer, and that shader writes candidates directly into
+    the shared field reservoir inlet. The deleted TubeField-local compute
+    ReSTIR/tile-bin path is not a live authority, fallback, or hidden mode. Any
+    future temporal/spatial reuse for tubes must extend the shared reservoir
+    organ rather than resurrecting a payload-local reservoir renderer.
   - Move any remaining client-only Epiphany state found here back to `E:\Projects\Aquarium-Engine`.
   - Keep Mimir app/adapters out of this repo; Fensalir may expose generic sensor-fusion contracts only.
   - Package contracts/host deliberately before replacing sibling source references in client repos.

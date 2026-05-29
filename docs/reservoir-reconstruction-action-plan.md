@@ -62,6 +62,9 @@ old occluded tubes leak through nearby missed tube samples.
 - Debug modes 13-15 now inspect the compute-owned reservoir result rather than
   old current-frame guide textures: rejection/invalidation state, evidence
   age/confidence, and explicit motion support.
+- Explicit-motion candidates now track represented sample count separately from
+  history age in the motion lane. TubeField history authority can ramp from
+  accumulated evidence instead of treating age alone as trust.
 
 ## Authority Map
 
@@ -90,7 +93,7 @@ old occluded tubes leak through nearby missed tube samples.
    stochastic material/sample jitter misses.
 7. Partial: replace raw RGB neighborhood clamp with field/depth-aware clamp.
 8. Done: add a current-frame spatial fallback for rejected history.
-9. Track represented/accumulated sample count separately from age.
+9. Done: track represented/accumulated sample count separately from age.
 10. Partial: add TSR-style debug views for current support, occupancy, reprojection,
     disocclusion, rejection, clamp, unsupported carry, sample count, and final
     history weight.

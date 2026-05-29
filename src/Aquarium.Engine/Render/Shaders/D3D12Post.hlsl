@@ -511,6 +511,7 @@ FieldReservoirCandidate resolveReservoirHistoryCandidate(
 
     float reservoirSampleAge = max(currentCandidate.reservoirGuide.y, 0.0);
     float reservoirInvalidationCode = 0.0;
+    float representedSampleCount = max(currentCandidate.motion.w, 0.0);
     float3 historyColor = currentCandidate.colorTravel.rgb;
     if (fieldReservoirCandidateRequiresExplicitMotion(currentCandidate) && currentCandidate.motion.w <= 0.5)
     {
@@ -548,6 +549,7 @@ FieldReservoirCandidate resolveReservoirHistoryCandidate(
             float bestValidationWeight = 0.0;
             float bestPreviousHistoryAge = 0.0;
             float bestPreviousReservoirSampleAge = 0.0;
+            float bestPreviousRepresentedSampleCount = 0.0;
             float3 bestHistoryColor = currentCandidate.colorTravel.rgb;
             bool isTubeFieldCandidate = fieldReservoirCandidateRequiresExplicitMotion(currentCandidate);
             bool needsWideHistorySearch = isTubeFieldCandidate && saturate(currentCandidate.control.x) < 0.45;
@@ -588,6 +590,7 @@ FieldReservoirCandidate resolveReservoirHistoryCandidate(
                             bestValidationWeight = validationWeight;
                             bestPreviousHistoryAge = max(previousCandidate.control.w, 0.0);
                             bestPreviousReservoirSampleAge = max(previousCandidate.reservoirGuide.y, 0.0);
+                            bestPreviousRepresentedSampleCount = max(previousCandidate.motion.w, 0.0);
                             bestHistoryColor = clampedHistory;
                         }
                     }
@@ -596,11 +599,15 @@ FieldReservoirCandidate resolveReservoirHistoryCandidate(
 
             if (bestValidationWeight > 0.0)
             {
-                float historyConfidence = smoothstep(0.0, 6.0, bestPreviousHistoryAge);
+                bool isTubeFieldCandidate = fieldReservoirCandidateRequiresExplicitMotion(currentCandidate);
+                float representedConfidence = smoothstep(1.0, 12.0, bestPreviousRepresentedSampleCount);
+                float historyConfidence = max(smoothstep(0.0, 6.0, bestPreviousHistoryAge), representedConfidence);
+                float maxHistoryWeight = isTubeFieldCandidate ? 0.90 : 0.82;
                 historyColor = bestHistoryColor;
-                historyWeight = 0.82 * lerp(0.35, 1.0, historyConfidence) * bestValidationWeight;
+                historyWeight = maxHistoryWeight * lerp(0.35, 1.0, historyConfidence) * bestValidationWeight;
                 historyAge = bestValidationWeight > 0.01 ? min(bestPreviousHistoryAge + 1.0, MAX_HISTORY_AGE) : 0.0;
                 reservoirSampleAge = bestValidationWeight > 0.01 ? min(max(reservoirSampleAge, bestPreviousReservoirSampleAge + 1.0), MAX_HISTORY_AGE) : reservoirSampleAge;
+                representedSampleCount = bestValidationWeight > 0.01 ? min(max(representedSampleCount, bestPreviousRepresentedSampleCount + 1.0), MAX_HISTORY_AGE) : representedSampleCount;
                 reservoirInvalidationCode = bestValidationWeight > 0.01 ? 0.0 : 1.0;
             }
             else
@@ -618,6 +625,7 @@ FieldReservoirCandidate resolveReservoirHistoryCandidate(
         reservoirSampleAge,
         reservoirCandidateDomainValidity(currentCandidate),
         reservoirInvalidationCode);
+    resolved.motion = float4(currentCandidate.motion.xyz, representedSampleCount);
     return resolved;
 }
 
@@ -786,7 +794,7 @@ float4 reservoirDebugOrColor(FieldReservoirCandidate candidate)
     {
         return float4(
             saturate(candidate.control.w / MAX_HISTORY_AGE),
-            saturate(candidate.reservoirGuide.y / MAX_HISTORY_AGE),
+            saturate(candidate.motion.w / MAX_HISTORY_AGE),
             saturate(reservoirCandidateConfidence(candidate)),
             candidate.colorTravel.w);
     }

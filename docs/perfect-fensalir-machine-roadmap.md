@@ -567,6 +567,18 @@ Work packet:
     1306 of 42864 pixels and found the top 5 of 50 tiles carried 99.3305% of
     measured reference-error delta. This is allocator evidence only; it does
     not own runtime visibility or scheduling.
+14. Partial: add a runtime spatial-reuse sampling budget. The renderer now
+    carries `GraphicsSettings.FieldReservoirSpatialReuseBudget` through UI,
+    runtime options, CLI/env overrides, headless capture scripts, frame
+    constants, and `D3D12ReservoirHistoryUpdateCS`. Every reservoir work-grid
+    pixel still writes current and temporal rows, but only the budgeted
+    deterministic phase spends the 3x3 neighbor reuse samples each frame. The
+    default is 0.5, so the reservoir runs at half presentation grid scale and
+    half spatial reuse by default. Smoke `reservoir-sequence-20260530-003006-*`
+    compared native scale 0.5 / spatial budget 0.5 against reference scale
+    0.75 / spatial budget 1.0; masked reference-error-native covered 3.8261%
+    of pixels, and budget pressure found the top 5 of 50 tiles carried
+    90.8321% of measured reference-error delta.
 
 Required verification:
 

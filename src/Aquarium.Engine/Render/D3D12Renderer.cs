@@ -586,7 +586,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 .Button("Reset View", () => RenderDebugMode = 0, "Returns to the final presented frame.", () => activeDebugTab == 0)
                 .Options("Reservoir Mode", () => settings.FieldReservoirMode, value => settings = (settings with { FieldReservoirMode = Math.Clamp(value, GraphicsSettings.FieldReservoirModeNativeDomain, GraphicsSettings.FieldReservoirModeTexelBaseline) }).Normalized(), FieldReservoirModeOptions, "Selects native-domain validation or texel-owned baseline reuse.", () => activeDebugTab == 0)
                 .Slider("Reservoir Scale", () => settings.FieldReservoirScale, value => settings = (settings with { FieldReservoirScale = Math.Clamp(value, GraphicsSettings.MinFieldReservoirScale, GraphicsSettings.MaxFieldReservoirScale) }).Normalized(), GraphicsSettings.MinFieldReservoirScale, GraphicsSettings.MaxFieldReservoirScale, "0.##", "Controls the internal reservoir work grid; presentation remains full resolution.", () => activeDebugTab == 0)
+                .Slider("Spatial Reuse Budget", () => settings.FieldReservoirSpatialReuseBudget, value => settings = (settings with { FieldReservoirSpatialReuseBudget = Math.Clamp(value, GraphicsSettings.MinFieldReservoirSpatialReuseBudget, GraphicsSettings.MaxFieldReservoirSpatialReuseBudget) }).Normalized(), GraphicsSettings.MinFieldReservoirSpatialReuseBudget, GraphicsSettings.MaxFieldReservoirSpatialReuseBudget, "0.##", "Controls what share of reservoir work-grid pixels spend neighbor sampling each frame.", () => activeDebugTab == 0)
                 .Readout("Reservoir Grid", () => $"{reservoirWidth}x{reservoirHeight} / present {width}x{height}", "Internal reservoir work grid and final present size.", () => activeDebugTab == 0)
+                .Readout("Reservoir Budget", () => $"{settings.FieldReservoirSpatialReuseBudget:P0} spatial reuse / {settings.FieldReservoirScale:P0} work grid", "Current reservoir sampling budget and work-grid scale.", () => activeDebugTab == 0)
                 .Section("HDR", () => activeDebugTab == 0)
                 .Slider("Exposure", () => settings.SceneExposure, value => settings = (settings with { SceneExposure = Math.Clamp(value, GraphicsSettings.MinSceneExposure, GraphicsSettings.MaxSceneExposure) }).Normalized(), GraphicsSettings.MinSceneExposure, GraphicsSettings.MaxSceneExposure, "0.###", "Manual scene exposure before display transform.", () => activeDebugTab == 0)
                 .Slider("Bloom Intensity", () => settings.BloomIntensity, value => settings = (settings with { BloomIntensity = Math.Clamp(value, GraphicsSettings.MinBloomIntensity, GraphicsSettings.MaxBloomIntensity) }).Normalized(), GraphicsSettings.MinBloomIntensity, GraphicsSettings.MaxBloomIntensity, "0.###", "Strength of pre-tonemap bloom energy.", () => activeDebugTab == 0)
@@ -934,7 +936,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 visibleFractalSplatCount,
                 activeFractalReservoirField.HasInput ? activeFractalReservoirField.ReservoirUpdatesPerPass : 0,
                 activeFractalReservoirField.HasInput ? activeFractalReservoirField.CandidatesPerReservoirUpdate : 0),
-            activeFractalReservoirField.HasInput ? activeFractalReservoirField.WorldCenterRadius : Vector4.Zero));
+            activeFractalReservoirField.HasInput ? activeFractalReservoirField.WorldCenterRadius : Vector4.Zero,
+            new Vector4(settings.FieldReservoirSpatialReuseBudget, 0.0f, 0.0f, 0.0f)));
         frameResources.FrameConstantsDescriptor = frameResources.TransientShaderDescriptors.Allocate();
         device.CreateConstantBufferView(
             new ConstantBufferViewDescription(frameConstants.GpuVirtualAddress, frameConstants.SizeInBytes),
@@ -5191,7 +5194,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Vector4 CameraFrustumZ,
         Vector4 GpuFusionInfo,
         Vector4 FractalReservoirInfo,
-        Vector4 FractalReservoirFrame);
+        Vector4 FractalReservoirFrame,
+        Vector4 ReservoirBudgetInfo);
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct D3D12SplineVertex(

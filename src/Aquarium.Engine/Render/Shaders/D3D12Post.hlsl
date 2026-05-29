@@ -25,6 +25,10 @@ cbuffer AquariumFrame : register(b0)
     float4 temporalGaussianInfo;
     float4 cameraFrustumXy;
     float4 cameraFrustumZ;
+    float4 gpuFusionInfo;
+    float4 fractalReservoirInfo;
+    float4 fractalReservoirFrame;
+    float4 reservoirBudgetInfo;
 };
 
 Texture2D<float4> sourceTexture : register(t0);
@@ -120,6 +124,26 @@ static const float MAX_HISTORY_AGE = 32.0;
 bool nativeDomainReservoirEnabled()
 {
     return cameraFrustumZ.z < 0.5;
+}
+
+float fieldReservoirSpatialReuseBudget()
+{
+    return clamp(reservoirBudgetInfo.x, 0.25, 1.0);
+}
+
+bool fieldReservoirShouldSpendSpatialReuse(uint2 pixel)
+{
+    float budget = fieldReservoirSpatialReuseBudget();
+    uint activePhases = clamp((uint)floor(budget * 4.0 + 0.5), 1u, 4u);
+    if (activePhases >= 4u)
+    {
+        return true;
+    }
+
+    uint tilePhase = (pixel.x & 1u) | ((pixel.y & 1u) << 1);
+    uint phaseStart = (uint)frameIndex & 3u;
+    uint phaseDistance = (tilePhase + 4u - phaseStart) & 3u;
+    return phaseDistance < activePhases;
 }
 
 VertexOut FullscreenTriangleVS(uint vertexId : SV_VertexID)
@@ -1111,7 +1135,11 @@ void D3D12ReservoirHistoryUpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     uint baseIndex = pixelIndex * FieldReservoirSlotsPerPixel;
     FieldReservoirSample current = currentFrameReservoirSample(currentPixel, uv);
     FieldReservoirSample temporal = temporallyReuseReservoirSample(current, currentPixel, uv);
-    FieldReservoirSample spatial = spatiallyReuseReservoirSample(temporal, currentPixel, uv, dimensions);
+    FieldReservoirSample spatial = temporal;
+    if (fieldReservoirShouldSpendSpatialReuse(currentPixel))
+    {
+        spatial = spatiallyReuseReservoirSample(temporal, currentPixel, uv, dimensions);
+    }
     FieldReservoirSample finalSample = spatial;
     finalSample.guide.w = spatial.guide.w;
 

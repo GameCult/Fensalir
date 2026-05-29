@@ -44,5 +44,6 @@ public readonly record struct AquariumRuntimeOptions(
     string? CultCachePath,
     int? RenderDebugModeOverride = null,
     int? FieldReservoirModeOverride = null,
-    float? FieldReservoirScaleOverride = null);
+    float? FieldReservoirScaleOverride = null,
+    float? FieldReservoirSpatialReuseBudgetOverride = null);
 

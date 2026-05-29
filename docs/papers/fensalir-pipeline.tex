@@ -678,6 +678,9 @@ native-resolution intermediate reservoir.
 Those rows feed an offline budget-pressure probe that ranks fixed tiles by
 masked reference error, giving the future scheduler a concrete pressure signal
 without letting a debug script own runtime visibility.
+The renderer now has a fixed spatial-reuse sampling budget in the history update
+owner: current and temporal rows remain per-work-grid-pixel, while 3x3 spatial
+neighbor reuse runs only on the active budget phase for the frame.
 The system has cut the false ``nearest-travel-minus-coverage'' priority owner
 and the side-cache temptation.
 

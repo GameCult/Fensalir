@@ -84,6 +84,24 @@ public sealed class FieldReservoirAbiTests
     }
 
     [Fact]
+    public void ReservoirSpatialReuseHasExplicitBudgetOwner()
+    {
+        var repoRoot = FindRepoRoot();
+        var settings = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine.Contracts", "GraphicsSettings.cs"));
+        var host = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "AquariumHost.cs"));
+        var renderer = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "Render", "D3D12Renderer.cs"));
+        var post = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "Render", "Shaders", "D3D12Post.hlsl"));
+        var capture = File.ReadAllText(Path.Combine(repoRoot, "scripts", "capture-reservoir-mode-sequence.ps1"));
+
+        Assert.Contains("FieldReservoirSpatialReuseBudget", settings);
+        Assert.Contains("MinFieldReservoirSpatialReuseBudget = 0.25f", settings);
+        Assert.Contains("--field-reservoir-spatial-reuse-budget", host);
+        Assert.Contains("ReservoirBudgetInfo", renderer);
+        Assert.Contains("fieldReservoirShouldSpendSpatialReuse", post);
+        Assert.Contains("SpatialReuseBudget", capture);
+    }
+
+    [Fact]
     public void ReservoirDisocclusionDebugModeIsOwnerDerived()
     {
         var repoRoot = FindRepoRoot();

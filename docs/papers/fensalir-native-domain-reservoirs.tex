@@ -397,6 +397,11 @@ An offline budget-pressure probe now bins that masked reference error by fixed
 tiles and ranks tiles by mean error times mask coverage.  The probe is allocator
 evidence, not a runtime visibility owner: it says where additional reservoir
 updates may buy stability under a fixed budget.
+The first runtime budget is now explicit: every work-grid pixel writes current
+and temporal rows, while only a deterministic budget phase spends the 3x3
+spatial neighbor reuse samples.  The default therefore combines a half-scale
+reservoir grid with half spatial reuse sampling before full-resolution
+presentation reconstruction.
 
 \section{Required Evaluation}
 

@@ -67,6 +67,18 @@ measured 1306 of 42864 pixels and found the top 5 of 50 tiles carried 99.3305%
 of measured reference-error delta. This is offline allocator evidence, not a
 runtime scheduler.
 
+Runtime spatial reuse budget:
+`GraphicsSettings.FieldReservoirSpatialReuseBudget` now flows through renderer
+UI, runtime options, CLI/env overrides, headless capture scripts, frame
+constants, and `D3D12ReservoirHistoryUpdateCS`. Current and temporal reservoir
+rows are still written for every work-grid pixel; the budget only decides
+whether that pixel spends the 3x3 spatial neighbor sampling pass this frame.
+Default is 0.5. Smoke `artifacts/fensalir-captures/reservoir-sequence-20260530-003006-*`
+used native scale 0.5 / spatial budget 0.5 against reference scale 0.75 /
+spatial budget 1.0. Masked reference-error-native changed 63.7195% over 3.8261%
+of frame pixels, and `reservoir-budget-pressure-20260530-003006.*` found the
+top 5 of 50 tiles carried 90.8321% of measured reference-error delta.
+
 ## Hot Lesson
 
 Area ReSTIR confirms that reuse over an area domain is invalid unless the
@@ -98,9 +110,9 @@ cap remain intentionally non-authoritative.
 
 Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Convert budget-pressure evidence into a renderer-owned adaptive update
-   contract only after the owner, inputs, outputs, and transition behavior are
-   explicit. Do not add native-resolution reservoir intermediates.
+1. Convert the fixed spatial-reuse budget into a pressure-guided adaptive
+   update contract only after the renderer owns a per-tile pressure input path.
+   Do not add native-resolution reservoir intermediates.
 2. Add exact SDF producer replay only when client SDF distance functions have a
    shared replay include or manifest instead of duplicating shader policy in
    post.

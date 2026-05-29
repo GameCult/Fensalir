@@ -7,7 +7,9 @@ param(
     [ValidateSet("native", "baseline", "both")]
     [string]$FieldReservoirMode = "both",
     [double]$FieldReservoirScale = 0.5,
+    [double]$FieldReservoirSpatialReuseBudget = 0.5,
     [double]$ReferenceFieldReservoirScale = 0.0,
+    [double]$ReferenceFieldReservoirSpatialReuseBudget = 1.0,
     [int[]]$RenderDebugModes = @(0, 13),
     [int]$RetainSlots = 4,
     [int]$TimeoutSeconds = 120
@@ -86,6 +88,7 @@ foreach ($mode in $modes) {
     foreach ($readyFrame in $ReadyFrames) {
         foreach ($debugMode in $RenderDebugModes) {
             $captureScale = if ($mode -eq "reference") { $ReferenceFieldReservoirScale } else { $FieldReservoirScale }
+            $captureSpatialReuseBudget = if ($mode -eq "reference") { $ReferenceFieldReservoirSpatialReuseBudget } else { $FieldReservoirSpatialReuseBudget }
             $suffix = DebugSuffix -Mode $debugMode
             $outputPath = Join-Path $OutputDirectory ("reservoir-sequence-$Stamp-$mode-f{0:D4}-$suffix.png" -f $readyFrame)
             $arguments = @(
@@ -96,7 +99,8 @@ foreach ($mode in $modes) {
                 "--cache", $cachePath,
                 "--shader-source", (Join-Path $slotPath "Render\Shaders\D3D12HeightField.hlsl"),
                 "--capture-frame", $outputPath,
-                "--field-reservoir-scale", $captureScale
+                "--field-reservoir-scale", $captureScale,
+                "--field-reservoir-spatial-reuse-budget", $captureSpatialReuseBudget
             )
             if ($mode -eq "baseline") {
                 $arguments += @("--field-reservoir-mode", "baseline")
@@ -112,6 +116,7 @@ foreach ($mode in $modes) {
                     ReadyFrames = $readyFrame
                     RenderDebugMode = $debugMode
                     ReservoirScale = $captureScale
+                    SpatialReuseBudget = $captureSpatialReuseBudget
                     Suffix = $suffix
                     Path = $outputPath
                 })
@@ -146,6 +151,7 @@ foreach ($mode in $modes) {
                 ReadyFrames = $readyFrame
                 RenderDebugMode = $debugMode
                 ReservoirScale = $captureScale
+                SpatialReuseBudget = $captureSpatialReuseBudget
                 Suffix = $suffix
                 Path = $outputPath
             })

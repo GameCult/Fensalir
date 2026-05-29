@@ -16,7 +16,8 @@ public static class AquariumHost
             ParseCachePath(args),
             ParseRenderDebugMode(args),
             ParseFieldReservoirMode(args),
-            ParseFieldReservoirScale(args));
+            ParseFieldReservoirScale(args),
+            ParseFieldReservoirSpatialReuseBudget(args));
         using var runtimeLoader = new ClientRuntimeLoader(runtimeOptions, ParseClientAssemblyPath(args), ParseClientReloadPointerPath(args));
         var runtime = runtimeLoader.Load();
         if (runtimeOptions.RenderDebugModeOverride is { } renderDebugModeOverride)
@@ -38,6 +39,13 @@ public static class AquariumHost
             runtime.GraphicsSettings = (runtime.GraphicsSettings with
             {
                 FieldReservoirScale = fieldReservoirScaleOverride,
+            }).Normalized();
+        }
+        if (runtimeOptions.FieldReservoirSpatialReuseBudgetOverride is { } fieldReservoirSpatialReuseBudgetOverride)
+        {
+            runtime.GraphicsSettings = (runtime.GraphicsSettings with
+            {
+                FieldReservoirSpatialReuseBudget = fieldReservoirSpatialReuseBudgetOverride,
             }).Normalized();
         }
         var input = new InputState();
@@ -311,6 +319,23 @@ public static class AquariumHost
 
         return float.TryParse(Environment.GetEnvironmentVariable("AQUARIUM_FIELD_RESERVOIR_SCALE"), out var environmentScale)
             ? environmentScale
+            : null;
+    }
+
+    private static float? ParseFieldReservoirSpatialReuseBudget(IReadOnlyCollection<string> args)
+    {
+        var values = args.ToArray();
+        for (var index = 0; index < values.Length - 1; index++)
+        {
+            if (string.Equals(values[index], "--field-reservoir-spatial-reuse-budget", StringComparison.OrdinalIgnoreCase)
+                && float.TryParse(values[index + 1], out var budget))
+            {
+                return budget;
+            }
+        }
+
+        return float.TryParse(Environment.GetEnvironmentVariable("AQUARIUM_FIELD_RESERVOIR_SPATIAL_REUSE_BUDGET"), out var environmentBudget)
+            ? environmentBudget
             : null;
     }
 

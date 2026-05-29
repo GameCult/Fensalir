@@ -79,6 +79,14 @@ spatial budget 1.0. Masked reference-error-native changed 63.7195% over 3.8261%
 of frame pixels, and `reservoir-budget-pressure-20260530-003006.*` found the
 top 5 of 50 tiles carried 90.8321% of measured reference-error delta.
 
+Spatial budget debug:
+Debug mode 20, `Reservoir Spatial Budget`, visualizes the sampler branch that
+spends 3x3 spatial reuse. Green pixels spend spatial reuse; blue pixels skip it
+for the current frame. Smoke
+`artifacts/fensalir-captures/reservoir-sequence-20260530-003746-*` captured the
+mode at scale 0.5 / spatial budget 0.5. A bitmap probe counted 32078 green,
+6818 blue, and 3968 other/filtering pixels in the 304x141 present output.
+
 ## Hot Lesson
 
 Area ReSTIR confirms that reuse over an area domain is invalid unless the
@@ -112,7 +120,8 @@ Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
 1. Convert the fixed spatial-reuse budget into a pressure-guided adaptive
    update contract only after the renderer owns a per-tile pressure input path.
-   Do not add native-resolution reservoir intermediates.
+   Debug mode 20 is the visible layer to validate the active budget phase. Do
+   not add native-resolution reservoir intermediates.
 2. Add exact SDF producer replay only when client SDF distance functions have a
    shared replay include or manifest instead of duplicating shader policy in
    post.

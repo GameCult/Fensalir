@@ -109,11 +109,26 @@ public sealed class FieldReservoirAbiTests
         var renderer = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "Render", "D3D12Renderer.cs"));
         var post = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "Render", "Shaders", "D3D12Post.hlsl"));
 
-        Assert.Contains("MaxRenderDebugMode = 19", settings);
+        Assert.Contains("MaxRenderDebugMode = 20", settings);
         Assert.Contains("Reservoir Disocclusion", renderer);
         Assert.Contains("previousUvOut", post);
         Assert.Contains("previousCloser", post);
         Assert.Contains("supportLost", post);
+    }
+
+    [Fact]
+    public void ReservoirSpatialBudgetDebugModeShowsTheSamplingOwner()
+    {
+        var repoRoot = FindRepoRoot();
+        var settings = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine.Contracts", "GraphicsSettings.cs"));
+        var renderer = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "Render", "D3D12Renderer.cs"));
+        var post = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "Render", "Shaders", "D3D12Post.hlsl"));
+        var sequenceCapture = File.ReadAllText(Path.Combine(repoRoot, "scripts", "capture-reservoir-mode-sequence.ps1"));
+
+        Assert.Contains("MaxRenderDebugMode = 20", settings);
+        Assert.Contains("Reservoir Spatial Budget", renderer);
+        Assert.Contains("fieldReservoirShouldSpendSpatialReuse(pixel)", post);
+        Assert.Contains("spatial-budget", sequenceCapture);
     }
 
     [Fact]

@@ -681,6 +681,9 @@ without letting a debug script own runtime visibility.
 The renderer now has a fixed spatial-reuse sampling budget in the history update
 owner: current and temporal rows remain per-work-grid-pixel, while 3x3 spatial
 neighbor reuse runs only on the active budget phase for the frame.
+The active phase is visible through the Reservoir Spatial Budget debug view, so
+budget enforcement can be checked against captured pixels rather than inferred
+from state alone.
 The system has cut the false ``nearest-travel-minus-coverage'' priority owner
 and the side-cache temptation.
 

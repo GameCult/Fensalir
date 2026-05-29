@@ -972,8 +972,20 @@ FieldReservoirSample spatiallyReuseReservoirSample(FieldReservoirSample temporal
     return spatial;
 }
 
-float4 reservoirDebugOrColor(FieldReservoirSample candidate)
+float4 reservoirDebugOrColor(FieldReservoirSample candidate, uint2 pixel)
 {
+    if (renderDebugMode >= 19.5 && renderDebugMode < 20.5)
+    {
+        bool spendsSpatialReuse = fieldReservoirShouldSpendSpatialReuse(pixel);
+        float budget = fieldReservoirSpatialReuseBudget();
+        if (spendsSpatialReuse)
+        {
+            return float4(0.05, 0.95, 0.35, candidate.colorTravel.w);
+        }
+
+        return float4(0.02, 0.08, max(0.18, budget), candidate.colorTravel.w);
+    }
+
     if (renderDebugMode >= 12.5 && renderDebugMode < 13.5)
     {
         if (!fieldReservoirSampleValid(candidate, farDistance))
@@ -1147,7 +1159,7 @@ void D3D12ReservoirHistoryUpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     reservoirHistoryWrite[baseIndex + FieldReservoirRowTemporal] = temporal;
     reservoirHistoryWrite[baseIndex + FieldReservoirRowSpatial] = spatial;
     reservoirHistoryWrite[baseIndex + FieldReservoirRowFinal] = finalSample;
-    reservoirResolvedTexture[currentPixel] = reservoirDebugOrColor(finalSample);
+    reservoirResolvedTexture[currentPixel] = reservoirDebugOrColor(finalSample, currentPixel);
 }
 
 ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)

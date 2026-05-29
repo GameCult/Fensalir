@@ -80,6 +80,9 @@ function DebugSuffix {
     if ($Mode -eq 19) {
         return "disocclusion"
     }
+    if ($Mode -eq 20) {
+        return "spatial-budget"
+    }
 
     return "debug$Mode"
 }

@@ -402,6 +402,9 @@ and temporal rows, while only a deterministic budget phase spends the 3x3
 spatial neighbor reuse samples.  The default therefore combines a half-scale
 reservoir grid with half spatial reuse sampling before full-resolution
 presentation reconstruction.
+Debug mode 20 exposes that spatial reuse phase directly, so budgeted sampling
+can be inspected at the same visible layer where disocclusion and final output
+are evaluated.
 
 \section{Required Evaluation}
 

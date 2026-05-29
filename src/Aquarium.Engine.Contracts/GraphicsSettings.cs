@@ -10,7 +10,7 @@ public readonly record struct GraphicsSettings(
     float FieldReservoirSpatialReuseBudget)
 {
     public const int MinRenderDebugMode = 0;
-    public const int MaxRenderDebugMode = 19;
+    public const int MaxRenderDebugMode = 20;
     public const int FieldReservoirModeNativeDomain = 0;
     public const int FieldReservoirModeTexelBaseline = 1;
     public const float MinFieldReservoirScale = 0.25f;

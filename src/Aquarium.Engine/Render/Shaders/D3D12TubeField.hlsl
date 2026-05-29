@@ -879,7 +879,7 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     output.reservoirGuide = float4(claimCoverage, 0.0, supportCoverage, value);
     output.depth = saturate(travel / max(farDistance, 0.0001));
     float target = fieldReservoirDefaultTarget(output.colorTravel, output.control, output.reservoirGuide);
-    float selectedColumn = (float)PhysicalColumnWithOffset((uint)round(input.tubeData.x), currentRollingOffset);
+    float selectedColumn = round(input.tubeData.x);
     float2 selectedUv = (baseSamplePx + 0.5) / max(resolution, float2(1.0, 1.0));
     float2 selectedProducerCoord = float2(selectedColumn, sampleX);
     float2 supportFootprintPx = max(float2(baseRadiusPx, baseRadiusPx), float2(0.5, 0.5));

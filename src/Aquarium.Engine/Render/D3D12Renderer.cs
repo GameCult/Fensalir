@@ -83,6 +83,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootBlueNoise = 18;
     private const int RootFieldReservoirCandidates = 19;
     private const int RootReservoirResolvedOutput = 20;
+    private const int RootTubeFieldReplayConstants = 21;
+    private const int RootTubeFieldReplaySource = 22;
     private const int RootFusionFrameConstants = 0;
     private const int RootFusionSeeds = 1;
     private const int RootFusionSensorCameras = 2;
@@ -2574,6 +2576,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
             historyReadBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
             historyWriteBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
             reservoirResolvedRenderTarget.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+            var tubeFieldReplayBatch = tubeFieldDrawBatches.Count == 1 ? tubeFieldDrawBatches[0] : (D3D12TubeFieldDrawBatch?)null;
+            var tubeFieldReplayConstants = tubeFieldReplayBatch is not null
+                ? tubeFieldReplayBatch.Value.ConstantsGpuVirtualAddress
+                : frameResources.UploadRing.WriteConstant(D3D12TubeFieldConstants.Disabled).GpuVirtualAddress;
+            var tubeFieldReplaySource = tubeFieldReplayBatch is not null
+                ? tubeFieldReplayBatch.Value.Source
+                : tubeFieldStatsBuffer;
+            tubeFieldReplaySource.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
 
             activeCommandList.SetDescriptorHeaps(frameResources.TransientShaderDescriptors.Heap);
             activeCommandList.SetPipelineState(reservoirHistoryUpdatePipelineState);
@@ -2587,6 +2597,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             activeCommandList.SetComputeRootDescriptorTable(RootCurrentReservoirGuide, frameResources.SceneReservoirGuideDescriptor.Gpu);
             activeCommandList.SetComputeRootShaderResourceView(RootFieldReservoirCandidates, fieldReservoirCandidateBuffer.Resource.GPUVirtualAddress);
             activeCommandList.SetComputeRootDescriptorTable(RootReservoirResolvedOutput, frameResources.ReservoirResolvedUnorderedAccessDescriptor.Gpu);
+            activeCommandList.SetComputeRootConstantBufferView(RootTubeFieldReplayConstants, tubeFieldReplayConstants);
+            activeCommandList.SetComputeRootShaderResourceView(RootTubeFieldReplaySource, tubeFieldReplaySource.Resource.GPUVirtualAddress);
             activeCommandList.Dispatch((uint)((width + 7) / 8), (uint)((height + 7) / 8), 1);
             activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(historyWriteBuffer.Resource));
             activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(reservoirResolvedRenderTarget.Resource));
@@ -4392,6 +4404,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new RootParameter(new RootDescriptorTable([blueNoiseRange]), ShaderVisibility.Pixel),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(45, 0), ShaderVisibility.All),
             new RootParameter(new RootDescriptorTable([reservoirResolvedOutputRange]), ShaderVisibility.All),
+            new RootParameter(RootParameterType.ConstantBufferView, new RootDescriptor(3, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(42, 0), ShaderVisibility.All),
         };
         var staticSamplers = new[]
         {
@@ -5130,7 +5144,22 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Vector3 AxisStep,
         float Padding1,
         Vector3 ColumnStep,
-        float Padding2);
+        float Padding2)
+    {
+        public static readonly D3D12TubeFieldConstants Disabled = new(
+            Vector4.Zero,
+            Vector4.Zero,
+            Vector4.Zero,
+            Vector4.Zero,
+            Vector4.Zero,
+            Vector4.Zero,
+            Vector3.Zero,
+            0.0f,
+            Vector3.Zero,
+            0.0f,
+            Vector3.Zero,
+            0.0f);
+    }
 
     private sealed record D3D12ShaderPaths(
         string HeightField,

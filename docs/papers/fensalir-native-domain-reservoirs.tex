@@ -349,15 +349,20 @@ Lane & Meaning \\
 \end{tabular}
 \end{center}
 
-TubeField row-0 proposals write the selected subpixel UV, physical rolling
+TubeField row-0 proposals write the selected subpixel UV, logical source
 column, curve sample coordinate, tube-core support footprint, and explicit
-motion shift kind when rolling-column replay is available.  SDF scene proposals
-reconstruct the current world hit, pack object-local coordinates, and mark the
-sample as object-replayable.  Reservoir validity now fails when a live sample
-lacks domain state, and temporal/spatial validation multiplies the existing
-field/travel/normal/confidence checks by support overlap in the selected-domain
-lane.  Debug modes expose selected coordinates, support footprint/domain kind,
-and shift/rejection state from the same row-3 layer consumed by presentation.
+motion shift kind when rolling-column replay is available.  The field id still
+uses physical rolling-column identity so age-column history cannot silently
+cross-validate.  SDF scene proposals reconstruct the current world hit, pack
+object-local coordinates, and mark the sample as object-replayable.  Reservoir
+validity now fails when a live sample lacks domain state, and temporal/spatial
+validation multiplies the existing field/travel/normal/confidence checks by
+support overlap in the selected-domain lane.  The first TubeField replay path
+re-evaluates the selected logical column/curve coordinate against the live
+producer buffer when exactly one TubeField replay batch is bound; ambiguous
+multi-batch replay is invalid until a producer-keyed replay manifest exists.
+Debug modes expose selected coordinates, support footprint/domain kind, and
+shift/rejection state from the same row-3 layer consumed by presentation.
 
 \section{Required Evaluation}
 

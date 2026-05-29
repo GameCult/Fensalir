@@ -45,9 +45,11 @@ Fensalir already has the first shared GPU field-reservoir spine:
 
 The surviving flaw has moved one layer downstream: the live ABI now stores
 selected sample UV, packed producer coordinate, support footprint, domain kind,
-and shift kind, and temporal/spatial validation uses support overlap. It still
-needs producer-domain replay/re-evaluation before reuse can claim the full Area
-ReSTIR proof rather than a first legal-overlap gate.
+and shift kind, and temporal/spatial validation uses support overlap. TubeField
+history can now re-evaluate a shifted selected logical column/curve coordinate
+against the live producer buffer when exactly one TubeField replay batch is
+bound. Multi-batch replay still needs a producer-keyed replay manifest before it
+can claim authority.
 
 ## Invariants
 
@@ -476,9 +478,12 @@ Work packet:
    and shift kind.
 5. Done: implement temporal/spatial support-overlap validation before further
    threshold tuning.
-6. Next: implement producer re-evaluation after the support-overlap gate for
-   TubeField rolling-column replay and SDF object-hit replay.
-7. Capture the occluded-spectrum-tubes scene in baseline and native-domain
+6. Partial: implement producer re-evaluation after the support-overlap gate for
+   TubeField rolling-column replay. The first path is intentionally limited to
+   one replay-bound TubeField batch; multi-batch replay is rejected until a
+   producer-keyed replay manifest exists.
+7. Next: implement SDF object-hit replay/re-evaluation.
+8. Capture the occluded-spectrum-tubes scene in baseline and native-domain
    modes.
 
 Required verification:

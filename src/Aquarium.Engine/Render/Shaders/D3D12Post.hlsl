@@ -27,6 +27,22 @@ cbuffer AquariumFrame : register(b0)
     float4 cameraFrustumZ;
 };
 
+cbuffer TubeFieldReplayConstants : register(b3)
+{
+    float4 tubeShape;
+    float4 tubeColumns;
+    float4 tubeAmplitude;
+    float4 tubeMaterial;
+    float4 tubeDispatch;
+    float4 tubeDraw;
+    float3 tubeOrigin;
+    float tubePadding0;
+    float3 tubeAxisStep;
+    float tubePadding1;
+    float3 tubeColumnStep;
+    float tubePadding2;
+};
+
 Texture2D<float4> sourceTexture : register(t0);
 Texture2D<float4> currentSceneMetadataTexture : register(t5);
 Texture2D<float4> currentSceneControlTexture : register(t7);
@@ -40,6 +56,7 @@ Texture2D<float4> bloomTexture6 : register(t35);
 Texture2D<float4> bloomTexture7 : register(t36);
 Texture2D<float4> currentReservoirGuideTexture : register(t26);
 Texture2D<float> blueNoiseTexture : register(t28);
+ByteAddressBuffer tubeFieldReplaySamples : register(t42);
 SamplerState sourceSampler : register(s0);
 
 #include "D3D12Aces2.hlsl"
@@ -163,6 +180,114 @@ float3 temporalPreviousWorldPosition(float3 worldPosition, float fieldId)
     }
 
     return worldPosition;
+}
+
+uint tubeReplayPositiveModulo(int value, uint modulo)
+{
+    int m = (int)max(modulo, 1u);
+    int r = value % m;
+    return (uint)(r < 0 ? r + m : r);
+}
+
+uint tubeReplaySampleAddressWithOffset(uint logicalColumn, uint sampleIndex, int rollingOffset)
+{
+    uint width = max((uint)round(tubeShape.x), 1u);
+    uint height = max((uint)round(tubeShape.y), 1u);
+    uint firstColumn = (uint)max(round(tubeShape.w), 0.0);
+    uint columnStride = max((uint)round(tubeColumns.y), 1u);
+    uint rollingModulo = (uint)max(round(tubeColumns.z), 0.0);
+    uint physicalColumn = firstColumn + logicalColumn * columnStride;
+    if (rollingModulo > 0u)
+    {
+        physicalColumn = tubeReplayPositiveModulo((int)physicalColumn + rollingOffset, rollingModulo);
+    }
+
+    physicalColumn = min(physicalColumn, height - 1u);
+    uint strideBytes = max((uint)round(tubeShape.z), 4u);
+    return (physicalColumn * width + min(sampleIndex, width - 1u)) * strideBytes;
+}
+
+float tubeReplayRawSampleWithOffset(uint logicalColumn, int sampleIndex, int rollingOffset)
+{
+    uint width = max((uint)round(tubeShape.x), 1u);
+    uint clamped = (uint)clamp(sampleIndex, 0, (int)width - 1);
+    return asfloat(tubeFieldReplaySamples.Load(tubeReplaySampleAddressWithOffset(logicalColumn, clamped, rollingOffset)));
+}
+
+float tubeReplayFilteredSampleWithOffset(uint logicalColumn, float x, int rollingOffset)
+{
+    int center = (int)floor(x + 0.5);
+    float s0 = tubeReplayRawSampleWithOffset(logicalColumn, center - 2, rollingOffset);
+    float s1 = tubeReplayRawSampleWithOffset(logicalColumn, center - 1, rollingOffset);
+    float s2 = tubeReplayRawSampleWithOffset(logicalColumn, center, rollingOffset);
+    float s3 = tubeReplayRawSampleWithOffset(logicalColumn, center + 1, rollingOffset);
+    float s4 = tubeReplayRawSampleWithOffset(logicalColumn, center + 2, rollingOffset);
+    return (s0 + s4 + 4.0 * (s1 + s3) + 6.0 * s2) / 16.0;
+}
+
+float tubeReplayCatmull(float p0, float p1, float p2, float p3, float t)
+{
+    float t2 = t * t;
+    float t3 = t2 * t;
+    return 0.5 * ((2.0 * p1) +
+        (-p0 + p2) * t +
+        (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 +
+        (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3);
+}
+
+float tubeReplayNormalizedSampleWithOffset(uint logicalColumn, float x, int rollingOffset)
+{
+    float value = tubeReplayFilteredSampleWithOffset(logicalColumn, x, rollingOffset);
+    return saturate((value - tubeAmplitude.z) / max(tubeAmplitude.w - tubeAmplitude.z, 0.0001));
+}
+
+float tubeReplaySampleCurve(uint logicalColumn, float x)
+{
+    int i1 = (int)floor(x);
+    float t = frac(x);
+    float p0 = tubeReplayNormalizedSampleWithOffset(logicalColumn, (float)(i1 - 1), (int)round(tubeColumns.w));
+    float p1 = tubeReplayNormalizedSampleWithOffset(logicalColumn, (float)i1, (int)round(tubeColumns.w));
+    float p2 = tubeReplayNormalizedSampleWithOffset(logicalColumn, (float)(i1 + 1), (int)round(tubeColumns.w));
+    float p3 = tubeReplayNormalizedSampleWithOffset(logicalColumn, (float)(i1 + 2), (int)round(tubeColumns.w));
+    return saturate(tubeReplayCatmull(p0, p1, p2, p3, t));
+}
+
+bool tubeFieldReplayAvailableFor(FieldReservoirSample sample)
+{
+    return tubeShape.x > 0.5 &&
+        sample.domainSupport.z > FieldDomainKindTube - 0.25 &&
+        sample.domainSupport.z < FieldDomainKindTube + 0.25 &&
+        sample.metadata.x >= tubeDraw.z &&
+        sample.metadata.x < tubeDraw.z + 50.0;
+}
+
+float tubeFieldReplayValidationWeight(FieldReservoirSample currentSample, FieldReservoirSample previousSample, uint2 pixel)
+{
+    if (!tubeFieldReplayAvailableFor(currentSample) || !tubeFieldReplayAvailableFor(previousSample))
+    {
+        return 0.0;
+    }
+
+    uint columnCount = max((uint)round(tubeColumns.x), 1u);
+    uint logicalColumn = min((uint)max(round(previousSample.domainSample.z), 0.0), columnCount - 1u);
+    float sampleX = clamp(previousSample.domainSample.w, 0.0, max(tubeShape.x - 1.0, 0.0));
+    float value = tubeReplaySampleCurve(logicalColumn, sampleX);
+    float amplitude = pow(value, max(tubeAmplitude.x, 0.0001));
+    float3 replayWorld = tubeOrigin + tubeAxisStep * sampleX + tubeColumnStep * (float)logicalColumn + float3(0.0, amplitude * tubeAmplitude.y, 0.0);
+    float3 ray = rayDirectionForPixel((float2)pixel, jitterPixels, cameraPosition, cameraTarget);
+    float3 delta = replayWorld - cameraPosition;
+    float replayTravel = dot(delta, ray);
+    if (replayTravel <= 0.0 || replayTravel > farDistance)
+    {
+        return 0.0;
+    }
+
+    float rayDistance = length(delta - ray * replayTravel);
+    float radius = max(tubeMaterial.x + value * tubeMaterial.y, 0.0001);
+    float support = 1.0 - smoothstep(radius, radius + max(radius * 0.35, 0.01), rayDistance);
+    float travelTolerance = max(0.045, currentSample.colorTravel.w * 0.018);
+    float travelWeight = 1.0 - smoothstep(travelTolerance, travelTolerance * 4.0, abs(replayTravel - currentSample.colorTravel.w));
+    return support * travelWeight;
 }
 
 float2 projectWorldToPreviousHistoryUv(float3 worldPosition)
@@ -484,7 +609,10 @@ float reservoirTemporalValidationWeight(
     float confidenceWeight = lerp(0.45, 1.0, min(reservoirSampleConfidence(currentSample), reservoirSampleConfidence(previousSample)));
     float domainWeight = reservoirSampleDomainValidity(currentSample) * reservoirSampleDomainValidity(previousSample);
     float supportOverlap = fieldReservoirDomainSupportOverlap(currentSample, previousSample, dimensions);
-    return travelWeight * fieldWeight * normalWeight * colorWeight * coverageWeight * coverageContinuityWeight * detailWeight * confidenceWeight * domainWeight * supportOverlap;
+    float replayWeight = fieldReservoirSampleRequiresExplicitMotion(currentSample)
+        ? tubeFieldReplayValidationWeight(currentSample, previousSample, (uint2)pixelFromUv(currentSample.domainSample.xy))
+        : 1.0;
+    return travelWeight * fieldWeight * normalWeight * colorWeight * coverageWeight * coverageContinuityWeight * detailWeight * confidenceWeight * domainWeight * supportOverlap * replayWeight;
 }
 
 float reservoirTemporalRejectionCode(
@@ -522,6 +650,12 @@ float reservoirTemporalRejectionCode(
     if (fieldReservoirDomainSupportOverlap(currentSample, previousSample, dimensions) <= 0.0)
     {
         return 8.0;
+    }
+
+    if (fieldReservoirSampleRequiresExplicitMotion(currentSample) &&
+        tubeFieldReplayValidationWeight(currentSample, previousSample, (uint2)pixelFromUv(currentSample.domainSample.xy)) <= 0.0)
+    {
+        return 9.0;
     }
 
     return 1.0;
@@ -713,9 +847,21 @@ float4 reservoirDebugOrColor(FieldReservoirSample candidate)
         {
             color = float3(0.0, 1.0, 1.0);
         }
-        else
+        else if (invalidation < 6.5)
         {
             color = float3(0.9, 0.0, 1.0);
+        }
+        else if (invalidation < 7.5)
+        {
+            color = float3(1.0, 0.35, 0.0);
+        }
+        else if (invalidation < 8.5)
+        {
+            color = float3(0.5, 0.15, 1.0);
+        }
+        else
+        {
+            color = float3(1.0, 0.0, 0.25);
         }
 
         return float4(color, candidate.colorTravel.w);

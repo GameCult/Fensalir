@@ -547,10 +547,15 @@ metadata, control, guide, motion, domain sample, domain support, proposal, and
 stats.  The domain sample lane stores selected pixel/sample UV plus packed
 producer coordinates; the domain support lane stores support footprint, domain
 kind, and shift kind.  TubeField proposals write selected subpixel UV,
-physical rolling column, curve coordinate, tube support, and explicit motion
-when available.  SDF proposals reconstruct object-local hit coordinates and
-mark object-motion replay.  Temporal and spatial reuse now reject missing
-domain state and include support overlap in the validation weight.
+logical source column, curve coordinate, tube support, and explicit motion when
+available.  Field id still carries physical rolling-column identity.  SDF
+proposals reconstruct object-local hit coordinates and mark object-motion
+replay.  Temporal and spatial reuse now reject missing domain state and include
+support overlap in the validation weight.  The first TubeField replay path
+also re-evaluates the shifted selected logical column/curve coordinate against
+the live TubeField buffer when exactly one replay batch is bound.  Multi-batch
+TubeField replay remains invalid until a producer-keyed replay manifest maps
+selected samples to the correct source buffer and constants.
 
 \section{Reconstruction and Denoising}
 
@@ -642,11 +647,12 @@ validated reservoirs.  Neither mode lets a pixel row become truth.
 \end{itemize}
 
 The known architectural gap has moved forward: the current row ABI now carries
-domain/sample-coordinate authority, but temporal reuse still needs full
-producer re-evaluation after support overlap rather than treating overlap as
-the whole legal shift story.  The system has cut the false
-``nearest-travel-minus-coverage'' priority owner and the side-cache temptation;
-the next proof cut is producer-domain replay with measured rejection precision.
+domain/sample-coordinate authority, and the first TubeField replay path
+re-evaluates a selected logical column/curve coordinate in the current frame for
+the single-batch proof case.  The next proof cuts are SDF object-hit replay,
+producer-keyed multi-batch replay manifests, and measured rejection precision.
+The system has cut the false ``nearest-travel-minus-coverage'' priority owner
+and the side-cache temptation.
 
 \section{Evaluation Plan}
 

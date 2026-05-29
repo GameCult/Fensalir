@@ -128,11 +128,13 @@ next_actions:
     residency, and learned-priority work waits behind that gate.
   - Cut the rendering rebuild through explicit field-domain/field-claim
     contracts before adding another backend-specific visual path.
-  - Before more occlusion-threshold tuning, extend the first native-domain ABI
-    cut into producer replay/re-evaluation. TubeField and SDF proposals now
-    include selected domain/sample-coordinate and support data, and reuse
-    validates support overlap; the next cut is to re-evaluate the shifted
-    TubeField/SDF sample in the target domain before merge.
+  - Before more occlusion-threshold tuning, extend native-domain replay beyond
+    the first TubeField proof path. TubeField and SDF proposals now include
+    selected domain/sample-coordinate and support data, reuse validates support
+    overlap, and single-batch TubeField history re-evaluates the shifted logical
+    column/curve coordinate against the live producer buffer. The next cuts are
+    SDF replay and a producer-keyed replay manifest for multi-batch TubeField
+    reuse.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then
@@ -276,15 +278,19 @@ next_actions:
     TubeField now writes a one-sample reservoir proposal into row 0 with target
     derived from projected coverage, guide confidence, and luminance relevance;
     sourcePdf is 1.0 for deterministic structural proposals. TubeField row-0
-    proposals also write selected subpixel UV, physical rolling column, curve
+    proposals also write selected subpixel UV, logical source column, curve
     coordinate, tube support footprint, and explicit motion shift kind when
-    available; SDF scene proposals reconstruct object-local hit coordinates and
-    mark object-motion replay. The old nearest-travel-minus-coverage priority
+    available; field id still carries physical rolling-column identity. SDF
+    scene proposals reconstruct object-local hit coordinates and mark
+    object-motion replay. The old nearest-travel-minus-coverage priority
     authority is cut from both TubeField injection and final resolve. Shared
     temporal reuse validates only the previous frame's row-3 final reservoir by
     field id, travel, normal, domain validity, motion/previous UV, guide
-    confidence, and support overlap before RIS merge; rejected history cannot
-    become visible fallback by itself. Spatial reuse validates neighboring
+    confidence, support overlap, and single-batch TubeField producer
+    re-evaluation before RIS merge; rejected history cannot become visible
+    fallback by itself. Multi-batch TubeField replay is invalid until a
+    producer-keyed replay manifest maps selected samples to their source buffer
+    and constants. Spatial reuse validates neighboring
     current reservoirs by field id, travel, normal, support overlap, and domain
     before merge. Current-frame structural proposal assembly has a
     visibility gate before RIS: if two valid proposals at the same pixel differ

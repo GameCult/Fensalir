@@ -2,8 +2,8 @@
 
 ## Current Slice
 
-Extend the first Perfect Fensalir Machine reservoir cut from native-domain row
-state into producer-domain replay/re-evaluation.
+Extend native-domain reservoir replay from the first single-batch TubeField
+proof path into SDF replay and producer-keyed multi-batch replay.
 
 ## Hot Lesson
 
@@ -17,14 +17,20 @@ semantic domains and a dynamic contribution tree into bounded GPU reservoirs.
 The current nine-lane row ABI now carries first-class selected
 domain/sample-coordinate authority. A row keyed only by pixel, travel, field id,
 guide, proposal, and stats is no longer accepted as valid reservoir evidence.
+TubeField row samples store selected UV, logical column, curve coordinate,
+support footprint, domain kind, and shift kind; field id carries physical
+rolling-column identity. The history pass can bind exactly one TubeField replay
+batch and re-evaluate shifted TubeField history against that live source buffer.
+Multiple TubeField batches are intentionally not replay-authoritative yet.
 
 ## Next Bounded Move
 
 Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Implement producer re-evaluation after the support-overlap gate for
-   TubeField rolling-column replay.
-2. Implement SDF object-hit replay/re-evaluation for shifted history.
+1. Implement SDF object-hit replay/re-evaluation for shifted history.
+2. Add a producer-keyed TubeField replay manifest so multi-batch TubeField
+   history can bind the correct source buffer/constants instead of being
+   rejected.
 3. Capture the occluded-spectrum-tubes scene in baseline/native-domain modes
    after replay is real, not merely support-overlap filtered.
 

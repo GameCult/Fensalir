@@ -39,6 +39,19 @@ public sealed class FieldReservoirAbiTests
         Assert.Contains("float fieldReservoirDomainSupportOverlap", hlsl);
     }
 
+    [Fact]
+    public void PostHistoryValidationHasProducerReplayGates()
+    {
+        var repoRoot = FindRepoRoot();
+        var post = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "Render", "Shaders", "D3D12Post.hlsl"));
+
+        Assert.Contains("float tubeFieldReplayValidationWeight", post);
+        Assert.Contains("float sdfObjectReplayValidationWeight", post);
+        Assert.Contains("previousCameraPosition", post);
+        Assert.Contains("sdfObject.previousCenterPad", post);
+        Assert.Contains("return 10.0;", post);
+    }
+
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

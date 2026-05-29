@@ -361,6 +361,11 @@ support overlap in the selected-domain lane.  The first TubeField replay path
 re-evaluates the selected logical column/curve coordinate against the live
 producer buffer when exactly one TubeField replay batch is bound; ambiguous
 multi-batch replay is invalid until a producer-keyed replay manifest exists.
+SDF temporal reuse reconstructs the previous selected world hit from stored
+sample UV/travel, carries the hit through object center motion, and rejects the
+history unless the replayed hit still matches the current camera ray, travel,
+and conservative object support.  Exact client SDF distance re-evaluation
+remains producer-owned work rather than a generic postprocess authority.
 Debug modes expose selected coordinates, support footprint/domain kind, and
 shift/rejection state from the same row-3 layer consumed by presentation.
 

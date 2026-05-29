@@ -290,6 +290,58 @@ float tubeFieldReplayValidationWeight(FieldReservoirSample currentSample, FieldR
     return support * travelWeight;
 }
 
+bool fieldReservoirSampleIsSdfObject(FieldReservoirSample sample)
+{
+    return sample.metadata.x >= FIELD_ID_SDF_OBJECT_BASE &&
+        sample.domainSupport.z > FieldDomainKindSdf - 0.25 &&
+        sample.domainSupport.z < FieldDomainKindSdf + 0.25;
+}
+
+float3 sdfObjectWorldPositionFromSample(FieldReservoirSample sample, float3 sampleCamera, float3 sampleTarget, float2 sampleJitter)
+{
+    float2 pixel = clamp(sample.domainSample.xy, float2(0.0, 0.0), float2(1.0, 1.0)) * max(resolution, float2(1.0, 1.0));
+    float3 ray = rayDirectionForPixel(pixel, sampleJitter, sampleCamera, sampleTarget);
+    return sampleCamera + ray * sample.colorTravel.w;
+}
+
+float sdfObjectReplayValidationWeight(FieldReservoirSample currentSample, FieldReservoirSample previousSample, uint2 pixel)
+{
+    if (!fieldReservoirSampleIsSdfObject(currentSample) || !fieldReservoirSampleIsSdfObject(previousSample))
+    {
+        return 0.0;
+    }
+
+    if (abs(previousSample.metadata.x - currentSample.metadata.x) >= 0.001)
+    {
+        return 0.0;
+    }
+
+    int sdfIndex = clamp((int)round(currentSample.metadata.x - FIELD_ID_SDF_OBJECT_BASE), 0, AQUARIUM_SDF_OBJECT_CAPACITY - 1);
+    SdfObject sdfObject = sdfObjects[sdfIndex];
+    float3 previousWorld = sdfObjectWorldPositionFromSample(
+        previousSample,
+        previousCameraPosition,
+        previousCameraTarget,
+        previousJitterPixels);
+    float3 localOffset = previousWorld - sdfObject.previousCenterPad.xyz;
+    float3 replayWorld = sdfObject.centerRadius.xyz + localOffset;
+    float3 ray = rayDirectionForPixel((float2)pixel, jitterPixels, cameraPosition, cameraTarget);
+    float3 delta = replayWorld - cameraPosition;
+    float replayTravel = dot(delta, ray);
+    if (replayTravel <= 0.0 || replayTravel > farDistance)
+    {
+        return 0.0;
+    }
+
+    float rayDistance = length(delta - ray * replayTravel);
+    float objectRadius = max(sdfObject.centerRadius.w, 0.0001);
+    float supportRadius = max(objectRadius * 0.012, max(currentSample.colorTravel.w * 0.0015, 0.003));
+    float support = 1.0 - smoothstep(supportRadius, supportRadius * 4.0, rayDistance);
+    float travelTolerance = max(0.045, currentSample.colorTravel.w * 0.018);
+    float travelWeight = 1.0 - smoothstep(travelTolerance, travelTolerance * 4.0, abs(replayTravel - currentSample.colorTravel.w));
+    return support * travelWeight;
+}
+
 float2 projectWorldToPreviousHistoryUv(float3 worldPosition)
 {
     float3 forward;
@@ -609,9 +661,12 @@ float reservoirTemporalValidationWeight(
     float confidenceWeight = lerp(0.45, 1.0, min(reservoirSampleConfidence(currentSample), reservoirSampleConfidence(previousSample)));
     float domainWeight = reservoirSampleDomainValidity(currentSample) * reservoirSampleDomainValidity(previousSample);
     float supportOverlap = fieldReservoirDomainSupportOverlap(currentSample, previousSample, dimensions);
+    uint2 currentPixel = (uint2)pixelFromUv(currentSample.domainSample.xy);
     float replayWeight = fieldReservoirSampleRequiresExplicitMotion(currentSample)
-        ? tubeFieldReplayValidationWeight(currentSample, previousSample, (uint2)pixelFromUv(currentSample.domainSample.xy))
-        : 1.0;
+        ? tubeFieldReplayValidationWeight(currentSample, previousSample, currentPixel)
+        : (fieldReservoirSampleIsSdfObject(currentSample)
+            ? sdfObjectReplayValidationWeight(currentSample, previousSample, currentPixel)
+            : 1.0);
     return travelWeight * fieldWeight * normalWeight * colorWeight * coverageWeight * coverageContinuityWeight * detailWeight * confidenceWeight * domainWeight * supportOverlap * replayWeight;
 }
 
@@ -656,6 +711,12 @@ float reservoirTemporalRejectionCode(
         tubeFieldReplayValidationWeight(currentSample, previousSample, (uint2)pixelFromUv(currentSample.domainSample.xy)) <= 0.0)
     {
         return 9.0;
+    }
+
+    if (fieldReservoirSampleIsSdfObject(currentSample) &&
+        sdfObjectReplayValidationWeight(currentSample, previousSample, (uint2)pixelFromUv(currentSample.domainSample.xy)) <= 0.0)
+    {
+        return 10.0;
     }
 
     return 1.0;
@@ -859,9 +920,13 @@ float4 reservoirDebugOrColor(FieldReservoirSample candidate)
         {
             color = float3(0.5, 0.15, 1.0);
         }
-        else
+        else if (invalidation < 9.5)
         {
             color = float3(1.0, 0.0, 0.25);
+        }
+        else
+        {
+            color = float3(1.0, 0.55, 0.05);
         }
 
         return float4(color, candidate.colorTravel.w);

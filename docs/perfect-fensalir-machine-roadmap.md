@@ -49,7 +49,11 @@ and shift kind, and temporal/spatial validation uses support overlap. TubeField
 history can now re-evaluate a shifted selected logical column/curve coordinate
 against the live producer buffer when exactly one TubeField replay batch is
 bound. Multi-batch replay still needs a producer-keyed replay manifest before it
-can claim authority.
+can claim authority. SDF history now carries previous object hits through
+object motion and validates the replayed hit against the current camera ray,
+travel, and conservative object support before temporal reuse may merge it.
+Exact client SDF distance re-evaluation is still producer-owned work; the
+native post pass does not pretend to own every client distance function.
 
 ## Invariants
 
@@ -224,7 +228,9 @@ Initial shift modes:
 - TubeField random replay: reuse selected curve/source coordinate under rolling
   motion, then re-evaluate the tube support at the current pixel/sample.
 - SDF primary hit replay: map previous world/object hit forward and validate
-  visibility/travel/normal in the current domain.
+  visibility/travel/normal in the current domain. The live proof validates the
+  object-motion hit against current ray/support; exact per-producer distance
+  re-evaluation waits for producer replay manifests or shared replay includes.
 - Splat local-frame replay: transform selected local coordinate through the
   domain lineage and validate support/footprint.
 
@@ -482,7 +488,10 @@ Work packet:
    TubeField rolling-column replay. The first path is intentionally limited to
    one replay-bound TubeField batch; multi-batch replay is rejected until a
    producer-keyed replay manifest exists.
-7. Next: implement SDF object-hit replay/re-evaluation.
+7. Done: implement SDF object-hit replay validation. Previous SDF hits are
+   reconstructed from stored selected UV/travel, carried through object center
+   motion, and checked against the current camera ray/travel/support before
+   reuse can merge them.
 8. Capture the occluded-spectrum-tubes scene in baseline and native-domain
    modes.
 

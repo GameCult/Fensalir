@@ -555,7 +555,11 @@ support overlap in the validation weight.  The first TubeField replay path
 also re-evaluates the shifted selected logical column/curve coordinate against
 the live TubeField buffer when exactly one replay batch is bound.  Multi-batch
 TubeField replay remains invalid until a producer-keyed replay manifest maps
-selected samples to the correct source buffer and constants.
+selected samples to the correct source buffer and constants.  SDF object-hit
+replay reconstructs the previous selected world hit from stored UV/travel,
+carries it through object center motion, and validates current ray/travel/support
+before temporal reuse can merge it; exact client SDF distance replay remains a
+producer-owned extension point.
 
 \section{Reconstruction and Denoising}
 
@@ -649,8 +653,10 @@ validated reservoirs.  Neither mode lets a pixel row become truth.
 The known architectural gap has moved forward: the current row ABI now carries
 domain/sample-coordinate authority, and the first TubeField replay path
 re-evaluates a selected logical column/curve coordinate in the current frame for
-the single-batch proof case.  The next proof cuts are SDF object-hit replay,
-producer-keyed multi-batch replay manifests, and measured rejection precision.
+the single-batch proof case.  SDF object-hit replay now carries the previous
+selected hit through object motion and validates it against current
+ray/travel/support.  The next proof cuts are producer-keyed multi-batch replay
+manifests, exact producer SDF replay, and measured rejection precision.
 The system has cut the false ``nearest-travel-minus-coverage'' priority owner
 and the side-cache temptation.
 

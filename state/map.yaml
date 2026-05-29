@@ -131,10 +131,11 @@ next_actions:
   - Before more occlusion-threshold tuning, extend native-domain replay beyond
     the first TubeField proof path. TubeField and SDF proposals now include
     selected domain/sample-coordinate and support data, reuse validates support
-    overlap, and single-batch TubeField history re-evaluates the shifted logical
-    column/curve coordinate against the live producer buffer. The next cuts are
-    SDF replay and a producer-keyed replay manifest for multi-batch TubeField
-    reuse.
+    overlap, single-batch TubeField history re-evaluates the shifted logical
+    column/curve coordinate against the live producer buffer, and SDF history
+    carries the previous selected hit through object motion before validating
+    current ray/travel/support. The next cut is a producer-keyed replay manifest
+    for multi-batch TubeField reuse and future exact producer SDF replay.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then
@@ -282,12 +283,15 @@ next_actions:
     coordinate, tube support footprint, and explicit motion shift kind when
     available; field id still carries physical rolling-column identity. SDF
     scene proposals reconstruct object-local hit coordinates and mark
-    object-motion replay. The old nearest-travel-minus-coverage priority
+    object-motion replay. SDF temporal reuse reconstructs the previous selected
+    world hit from stored UV/travel, carries it through object center motion,
+    and rejects it unless it still lands on the current ray/travel/support
+    envelope. The old nearest-travel-minus-coverage priority
     authority is cut from both TubeField injection and final resolve. Shared
     temporal reuse validates only the previous frame's row-3 final reservoir by
     field id, travel, normal, domain validity, motion/previous UV, guide
-    confidence, support overlap, and single-batch TubeField producer
-    re-evaluation before RIS merge; rejected history cannot become visible
+    confidence, support overlap, single-batch TubeField producer re-evaluation,
+    and SDF object-hit replay before RIS merge; rejected history cannot become visible
     fallback by itself. Multi-batch TubeField replay is invalid until a
     producer-keyed replay manifest maps selected samples to their source buffer
     and constants. Spatial reuse validates neighboring

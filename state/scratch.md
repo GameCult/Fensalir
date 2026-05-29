@@ -21,18 +21,23 @@ TubeField row samples store selected UV, logical column, curve coordinate,
 support footprint, domain kind, and shift kind; field id carries physical
 rolling-column identity. The history pass can bind exactly one TubeField replay
 batch and re-evaluate shifted TubeField history against that live source buffer.
-Multiple TubeField batches are intentionally not replay-authoritative yet.
+SDF history reconstructs the previous selected world hit from stored UV/travel,
+carries it through object center motion, and validates current ray/travel/support
+before temporal reuse can merge it. Multiple TubeField batches are intentionally
+not replay-authoritative yet.
 
 ## Next Bounded Move
 
 Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Implement SDF object-hit replay/re-evaluation for shifted history.
-2. Add a producer-keyed TubeField replay manifest so multi-batch TubeField
+1. Add a producer-keyed TubeField replay manifest so multi-batch TubeField
    history can bind the correct source buffer/constants instead of being
    rejected.
-3. Capture the occluded-spectrum-tubes scene in baseline/native-domain modes
+2. Capture the occluded-spectrum-tubes scene in baseline/native-domain modes
    after replay is real, not merely support-overlap filtered.
+3. Add exact SDF producer replay only when client SDF distance functions have a
+   shared replay include or manifest instead of duplicating shader policy in
+   post.
 
 ## Verification
 

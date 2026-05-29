@@ -38,6 +38,8 @@ historical branch scar.
   transparent field rendering notes.
 - `planetary-flow-organ.md`: architecture and ownership map for reusable
   cube-sphere stochastic ocean/atmosphere flow fields.
+- `planetary-flow-nn-architecture.md`: concrete neural-network parameter
+  budgets, layers, losses, training curriculum, and runtime export shape.
 - `planetary-flow-implementation-plan.md`: staged execution plan for dataset
   provenance, cube-sphere bakes, model training, and runtime integration.
 

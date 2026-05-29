@@ -131,6 +131,12 @@ next_actions:
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then
     PlasticAdrift transition validation and hierarchical arbitrary-LOD
     streaming.
+  - For planetary flow modeling, treat FlowNet-S (8-15M params) as the local
+    contract/inference baseline, FlowNet-M (40-60M params) as the first serious
+    runtime/distillation model with local tile encoders plus cube-sphere graph
+    transformer blocks, and FlowNet-T (150-300M params) as an offline teacher
+    only if global coherence needs it. Do not let an oversized teacher become
+    the runtime authority before the packet contract and LOD path are proven.
   - Extend the D3D12 field packet/resource resolver beyond its first
     structured/curve-buffer cut. Current contracts, DSL, and renderer registry
     can validate and plan resource-backed TubeField packets, import shared GPU

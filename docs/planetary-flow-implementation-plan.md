@@ -88,7 +88,7 @@ Verification:
 Deliverables:
 
 - Python training workspace or external tool boundary with sharded data loader;
-- baseline local tile-pyramid model;
+- FlowNet-S local tile-pyramid model, targeting 8-15M parameters;
 - outputs: mean tangent velocity and covariance;
 - losses: vector regression, negative log likelihood, smoothness, and
   parent-child scale consistency;
@@ -132,7 +132,8 @@ Verification:
 
 Deliverables:
 
-- hierarchical graph or neural-operator model over cube-sphere tiles;
+- FlowNet-M hierarchical graph/operator model over cube-sphere tiles, targeting
+  40-60M parameters;
 - parent/child and same-level neighbor edges;
 - streaming evaluation for requested selected cuts;
 - cache/page residency keyed by model and conditioning versions;
@@ -142,6 +143,7 @@ Architecture hypotheses to test:
 
 - local patch encoder plus graph head for first production model;
 - hierarchical graph neural operator for long-term arbitrary LOD;
+- optional 150-300M FlowNet-T global teacher for distillation, not hot runtime;
 - sparse transition logits only where PlasticAdrift-style debris transport
   needs them;
 - covariance output via Cholesky factors to guarantee positive semidefinite

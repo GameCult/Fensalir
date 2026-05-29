@@ -140,6 +140,13 @@ See `../research/planetary-flow-organ-literature.md` for source-backed notes.
 
 ## Model Hypotheses
 
+See `planetary-flow-nn-architecture.md` for the concrete parameter budgets,
+layer stacks, losses, and training curriculum. The short version: use an
+8-15M-parameter local baseline, a 40-60M-parameter hierarchical cube-sphere
+graph model as the first serious runtime target, and a 150-300M-parameter
+global teacher only for offline distillation if the smaller model cannot carry
+global coherence.
+
 ### Baseline
 
 Use deterministic interpolation and simple stochastic residuals first:

@@ -429,6 +429,66 @@ public sealed class FieldEvidenceContractTests
     }
 
     [Fact]
+    public void ValidatorAcceptsStereoDepthLoweringWithComputeWritableDisparity()
+    {
+        var frame = BuildValidStereoDepthEvidenceFrame();
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.False(report.HasErrors);
+        Assert.Empty(report.Issues);
+        Assert.True(frame.HasInput);
+        Assert.Equal(AquariumFieldShaderAccess.UnorderedAccess, frame.Resources[2].Access);
+    }
+
+    [Fact]
+    public void ValidatorRejectsStereoDepthLoweringClaimEncodingMismatch()
+    {
+        var frame = BuildValidStereoDepthEvidenceFrame();
+        frame = new AquariumFieldEvidenceFrame
+        {
+            Resources = frame.Resources,
+            Domains = frame.Domains,
+            Claims = [frame.Claims[0] with { Encoding = AquariumFieldEncoding.Mesh }],
+            Candidates = frame.Candidates,
+            StereoDepthLowerings = frame.StereoDepthLowerings,
+            AccumulationWindowSeconds = frame.AccumulationWindowSeconds,
+            PresentationDelaySeconds = frame.PresentationDelaySeconds,
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.True(report.HasErrors);
+        Assert.Contains(report.Issues, issue => issue.Key == "stereo-depth:mimir:leap:libsgm");
+    }
+
+    [Fact]
+    public void ValidatorRejectsStereoDepthLoweringWithoutUnorderedAccessDisparity()
+    {
+        var frame = BuildValidStereoDepthEvidenceFrame();
+        frame = new AquariumFieldEvidenceFrame
+        {
+            Resources =
+            [
+                frame.Resources[0],
+                frame.Resources[1],
+                frame.Resources[2] with { Access = AquariumFieldShaderAccess.ShaderResource },
+            ],
+            Domains = frame.Domains,
+            Claims = frame.Claims,
+            Candidates = frame.Candidates,
+            StereoDepthLowerings = frame.StereoDepthLowerings,
+            AccumulationWindowSeconds = frame.AccumulationWindowSeconds,
+            PresentationDelaySeconds = frame.PresentationDelaySeconds,
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.True(report.HasErrors);
+        Assert.Contains(report.Issues, issue => issue.Key == "stereo-depth:mimir:leap:libsgm");
+    }
+
+    [Fact]
     public void NormalizerBuildsPendingLoweringRequestsWithoutChoosingBackend()
     {
         var frame = BuildValidTubeEvidenceFrame();
@@ -839,6 +899,133 @@ tubeclaim id=spectrum-trail resource=spectrum domain=mimir:spectrum:asio-ch0 con
                     RampResourceKey: "",
                     EmissionScale: 10.0f,
                     CatmullRomSubdivisions: 4)
+            ],
+        };
+    }
+
+    private static AquariumFieldEvidenceFrame BuildValidStereoDepthEvidenceFrame()
+    {
+        var support = new AquariumFieldSupport(
+            Center: new Vector3(320.0f, 240.0f, 2.0f),
+            Radius: new Vector3(320.0f, 240.0f, 2.0f),
+            LocalFrame: Matrix4x4.Identity,
+            ConservativeRadius: 320.0f,
+            ProjectedError: 1.0f / 128.0f,
+            Curvature: 0.0f,
+            TemporalUncertainty: 0.0f);
+
+        var proposal = new AquariumFieldProposalPolicy(
+            AquariumFieldProposalKind.SensorObservation,
+            SourcePdf: 1.0f,
+            TargetContribution: 1.0f,
+            RepresentedCandidateCount: 1,
+            Seed: 9u);
+
+        return new AquariumFieldEvidenceFrame
+        {
+            Resources =
+            [
+                new AquariumFieldResourceDeclaration(
+                    "mimir:resource:leap:left-ir",
+                    AquariumFieldResourceKind.Texture2D,
+                    AquariumFieldResourceResidency.SharedGpu,
+                    AquariumFieldShaderAccess.ShaderResource,
+                    "R8_UNorm",
+                    Width: 640,
+                    Height: 480,
+                    DepthOrCount: 1,
+                    StrideBytes: 1,
+                    ValidFromNs: 42,
+                    ValidUntilNs: 42,
+                    Version: 42,
+                    NativeHandle: new IntPtr(0x1001),
+                    NativeHandleKind: "shared-d3d12-texture"),
+                new AquariumFieldResourceDeclaration(
+                    "mimir:resource:leap:right-ir",
+                    AquariumFieldResourceKind.Texture2D,
+                    AquariumFieldResourceResidency.SharedGpu,
+                    AquariumFieldShaderAccess.ShaderResource,
+                    "R8_UNorm",
+                    Width: 640,
+                    Height: 480,
+                    DepthOrCount: 1,
+                    StrideBytes: 1,
+                    ValidFromNs: 42,
+                    ValidUntilNs: 42,
+                    Version: 42,
+                    NativeHandle: new IntPtr(0x1002),
+                    NativeHandleKind: "shared-d3d12-texture"),
+                new AquariumFieldResourceDeclaration(
+                    "mimir:resource:leap:disparity-r16f",
+                    AquariumFieldResourceKind.SurfacePage,
+                    AquariumFieldResourceResidency.GpuResident,
+                    AquariumFieldShaderAccess.UnorderedAccess,
+                    "R16Float",
+                    Width: 640,
+                    Height: 480,
+                    DepthOrCount: 1,
+                    StrideBytes: 2,
+                    ValidFromNs: 42,
+                    ValidUntilNs: 42,
+                    Version: 42,
+                    NativeHandle: IntPtr.Zero,
+                    NativeHandleKind: "fensalir-stereo-depth-disparity"),
+            ],
+            Domains =
+            [
+                new AquariumFieldDomain(
+                    "mimir:stereo-depth:leap:libsgm",
+                    "mimir:leap",
+                    AquariumFieldDomainKind.Surface2D,
+                    Matrix4x4.Identity,
+                    Matrix4x4.Identity,
+                    Vector3.Zero,
+                    new Vector3(640.0f, 480.0f, 4.0f),
+                    Vector3.Zero,
+                    "Mimir.Runtime")
+            ],
+            Claims =
+            [
+                new AquariumFieldClaim(
+                    "claim:mimir:stereo-depth:leap:libsgm",
+                    "mimir:stereo-depth:leap:libsgm",
+                    "mimir:leap",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Height,
+                    support,
+                    proposal,
+                    "mimir:resource:leap:disparity-r16f",
+                    ObservedTimeNs: 42,
+                    Confidence: 0.8f)
+            ],
+            Candidates =
+            [
+                new AquariumFieldCandidate(
+                    "candidate:mimir:stereo-depth:leap:libsgm",
+                    "claim:mimir:stereo-depth:leap:libsgm",
+                    AquariumFieldLayer.Form,
+                    AquariumFieldEncoding.Height,
+                    proposal,
+                    AquariumFieldGuide.Valid(0.8f))
+            ],
+            StereoDepthLowerings =
+            [
+                new AquariumFieldStereoDepthLowering(
+                    "stereo-depth:mimir:leap:libsgm",
+                    "claim:mimir:stereo-depth:leap:libsgm",
+                    "d3d12-sgm-libsgm-provenance",
+                    "leap-calibration",
+                    "leap-ir-pair",
+                    "mimir:resource:leap:left-ir",
+                    "mimir:resource:leap:right-ir",
+                    "mimir:resource:leap:disparity-r16f",
+                    "",
+                    Width: 640,
+                    Height: 480,
+                    DisparityLevels: 128,
+                    AggregationPathCount: 4,
+                    MinDepthMeters: 0.15f,
+                    MaxDepthMeters: 4.0f)
             ],
         };
     }

@@ -169,9 +169,11 @@ next_actions:
     work-grid pixel writes current/temporal rows, while a deterministic phase
     spends 3x3 neighbor sampling. Smoke `reservoir-sequence-20260530-003006-*`
     proves native scale 0.5 / spatial budget 0.5 against reference scale 0.75 /
-    spatial budget 1.0. The next cut is turning budget-pressure evidence into a
-    renderer-owned per-tile adaptive update contract plus future exact producer
-    SDF replay.
+    spatial budget 1.0. Debug mode 20, `Reservoir Spatial Budget`, now exposes
+    the active spatial reuse phase at the visible layer; smoke
+    `reservoir-sequence-20260530-003746-*` proves it. The next cut is turning
+    budget-pressure evidence into a renderer-owned per-tile adaptive update
+    contract plus future exact producer SDF replay.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then
@@ -247,7 +249,14 @@ next_actions:
     D3D12 registry allocates/imports them as shader-readable page textures or
     compute-writable UAV-backed pages. Empty SurfacePage version is content
     freshness, not texture identity, so compute outputs can update without
-    reallocating when shape/format/access are unchanged. VolumeTexture
+    reallocating when shape/format/access are unchanged. FieldEvidence now has
+    an explicit `AquariumFieldStereoDepthLowering` sidecar for future calibrated
+    stereo compute dispatch: validation requires a Height claim whose payload is
+    the compute-writable disparity SurfacePage, shader-readable left/right
+    Texture2D or RollingTexture resources, profile/calibration/camera-pair
+    identity, and coherent output shape/range. This keeps Mimir's libSGM-shaped
+    D3D12 depth path inside typed field/resource authority instead of a private
+    texture or CUDA/TensorRT dependency. VolumeTexture
     resources now have the same
     first resolver shape: contracts and DSL can declare GPU-resident 3D
     textures with dimensions, depth, format, and version, and the D3D12 registry

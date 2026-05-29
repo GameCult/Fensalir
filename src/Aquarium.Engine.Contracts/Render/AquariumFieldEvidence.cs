@@ -385,6 +385,48 @@ public readonly record struct AquariumFieldTubeSplineLowering(
     };
 }
 
+public readonly record struct AquariumFieldStereoDepthLowering(
+    string LoweringKey,
+    string ClaimKey,
+    string ProfileKey,
+    string CalibrationKey,
+    string CameraPairKey,
+    string LeftResourceKey,
+    string RightResourceKey,
+    string DisparityResourceKey,
+    string ConfidenceResourceKey,
+    int Width,
+    int Height,
+    int DisparityLevels,
+    int AggregationPathCount,
+    float MinDepthMeters,
+    float MaxDepthMeters)
+{
+    public bool IsValid =>
+        !string.IsNullOrWhiteSpace(LoweringKey) &&
+        !string.IsNullOrWhiteSpace(ClaimKey) &&
+        !string.IsNullOrWhiteSpace(ProfileKey) &&
+        !string.IsNullOrWhiteSpace(CalibrationKey) &&
+        !string.IsNullOrWhiteSpace(CameraPairKey) &&
+        !string.IsNullOrWhiteSpace(LeftResourceKey) &&
+        !string.IsNullOrWhiteSpace(RightResourceKey) &&
+        !string.IsNullOrWhiteSpace(DisparityResourceKey) &&
+        Width > 0 &&
+        Height > 0 &&
+        DisparityLevels > 0 &&
+        AggregationPathCount > 0 &&
+        MaxDepthMeters > MinDepthMeters;
+
+    public AquariumFieldStereoDepthLowering Normalized() => this with
+    {
+        Width = Math.Max(1, Width),
+        Height = Math.Max(1, Height),
+        DisparityLevels = Math.Max(1, DisparityLevels),
+        AggregationPathCount = Math.Max(1, AggregationPathCount),
+        MaxDepthMeters = MaxDepthMeters <= MinDepthMeters ? MinDepthMeters + 0.001f : MaxDepthMeters,
+    };
+}
+
 public readonly record struct AquariumFieldResourceDeclaration(
     string ResourceKey,
     AquariumFieldResourceKind Kind,
@@ -558,6 +600,8 @@ public sealed class AquariumFieldEvidenceFrame
 
     public IReadOnlyList<AquariumFieldTubeSplineLowering> TubeSplineLowerings { get; init; } = [];
 
+    public IReadOnlyList<AquariumFieldStereoDepthLowering> StereoDepthLowerings { get; init; } = [];
+
     public float AccumulationWindowSeconds { get; init; }
 
     public float PresentationDelaySeconds { get; init; }
@@ -569,7 +613,8 @@ public sealed class AquariumFieldEvidenceFrame
         BackendPackets.Count > 0 ||
         Resources.Count > 0 ||
         ResourceUploads.Count > 0 ||
-        TubeSplineLowerings.Count > 0;
+        TubeSplineLowerings.Count > 0 ||
+        StereoDepthLowerings.Count > 0;
 }
 
 public readonly record struct AquariumFieldEvidenceIssue(
@@ -850,9 +895,85 @@ public static class AquariumFieldEvidenceValidator
             }
         }
 
+        foreach (var lowering in frame.StereoDepthLowerings)
+        {
+            if (!lowering.IsValid)
+            {
+                issues.Add(Error(string.IsNullOrWhiteSpace(lowering.LoweringKey) ? "stereo-depth-lowering" : lowering.LoweringKey, "Stereo depth lowering is missing identity, inputs, output, shape, profile, calibration, or depth range."));
+                continue;
+            }
+
+            if (!claimsByKey.TryGetValue(lowering.ClaimKey, out var claim))
+            {
+                issues.Add(Error(lowering.LoweringKey, $"Stereo depth lowering references unknown claim '{lowering.ClaimKey}'."));
+            }
+            else
+            {
+                if (claim.Encoding != AquariumFieldEncoding.Height)
+                {
+                    issues.Add(Error(lowering.LoweringKey, $"Stereo depth lowering claim '{lowering.ClaimKey}' is encoded as {claim.Encoding}, not Height."));
+                }
+
+                if (!string.Equals(claim.PayloadHandle, lowering.DisparityResourceKey, StringComparison.Ordinal))
+                {
+                    issues.Add(Error(lowering.LoweringKey, $"Stereo depth disparity resource '{lowering.DisparityResourceKey}' does not match claim payload '{claim.PayloadHandle}'."));
+                }
+            }
+
+            ValidateStereoDepthInputResource(issues, resourcesByKey, lowering, lowering.LeftResourceKey, "left");
+            ValidateStereoDepthInputResource(issues, resourcesByKey, lowering, lowering.RightResourceKey, "right");
+
+            if (!resourcesByKey.TryGetValue(lowering.DisparityResourceKey, out var disparity))
+            {
+                issues.Add(Error(lowering.LoweringKey, $"Stereo depth lowering references unknown disparity resource '{lowering.DisparityResourceKey}'."));
+            }
+            else
+            {
+                if (disparity.Kind != AquariumFieldResourceKind.SurfacePage)
+                {
+                    issues.Add(Error(lowering.LoweringKey, $"Stereo depth disparity resource '{lowering.DisparityResourceKey}' is {disparity.Kind}, not SurfacePage."));
+                }
+
+                if (disparity.Access != AquariumFieldShaderAccess.UnorderedAccess)
+                {
+                    issues.Add(Error(lowering.LoweringKey, $"Stereo depth disparity resource '{lowering.DisparityResourceKey}' must be compute-writable UnorderedAccess."));
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(lowering.ConfidenceResourceKey) &&
+                !resourcesByKey.TryGetValue(lowering.ConfidenceResourceKey, out _))
+            {
+                issues.Add(Error(lowering.LoweringKey, $"Stereo depth lowering references unknown confidence resource '{lowering.ConfidenceResourceKey}'."));
+            }
+        }
+
         return issues.Count == 0
             ? AquariumFieldEvidenceValidationReport.Empty
             : new AquariumFieldEvidenceValidationReport(issues);
+    }
+
+    private static void ValidateStereoDepthInputResource(
+        ICollection<AquariumFieldEvidenceIssue> issues,
+        IReadOnlyDictionary<string, AquariumFieldResourceDeclaration> resourcesByKey,
+        AquariumFieldStereoDepthLowering lowering,
+        string resourceKey,
+        string role)
+    {
+        if (!resourcesByKey.TryGetValue(resourceKey, out var resource))
+        {
+            issues.Add(Error(lowering.LoweringKey, $"Stereo depth lowering references unknown {role} input resource '{resourceKey}'."));
+            return;
+        }
+
+        if (resource.Kind is not (AquariumFieldResourceKind.Texture2D or AquariumFieldResourceKind.RollingTexture))
+        {
+            issues.Add(Error(lowering.LoweringKey, $"Stereo depth {role} input resource '{resourceKey}' is {resource.Kind}, not Texture2D or RollingTexture."));
+        }
+
+        if (resource.Access != AquariumFieldShaderAccess.ShaderResource)
+        {
+            issues.Add(Error(lowering.LoweringKey, $"Stereo depth {role} input resource '{resourceKey}' must be shader-readable."));
+        }
     }
 
     private static AquariumFieldEvidenceIssue Error(string key, string message) =>

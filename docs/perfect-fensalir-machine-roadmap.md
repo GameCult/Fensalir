@@ -386,7 +386,11 @@ Add contributors in this order:
 4. Density/extinction volume: transparent Form, separate resolve semantics.
 5. SurfacePage/VolumeTexture resources: resource-backed claims. SurfacePage can
    now be shader-readable or UAV-backed; use the UAV path for compute-produced
-   depth/height pages instead of allocating a private output texture.
+   depth/height pages instead of allocating a private output texture. Stereo
+   depth dispatch metadata is now typed as `AquariumFieldStereoDepthLowering`:
+   it must bind the Height claim to shader-readable left/right texture
+   resources, a calibrated camera pair/profile, and a compute-writable disparity
+   `SurfacePage`.
 
 Exit gate:
 
@@ -455,6 +459,10 @@ Mimir path:
 
 - raw capture stays in Mimir;
 - calibrated features become Form/Appearance/Transport claims;
+- calibrated stereo depth starts as a Fensalir D3D12 compute lowering contract:
+  Mimir declares rectified left/right texture resources and profile/calibration
+  metadata, while Fensalir owns the UAV disparity `SurfacePage` output and any
+  eventual SGM-shaped HLSL kernel;
 - confidence/density fields are first-class fields;
 - stable surfaces emerge only after multi-view/acoustic evidence earns them.
 
@@ -579,6 +587,13 @@ Work packet:
     0.75 / spatial budget 1.0; masked reference-error-native covered 3.8261%
     of pixels, and budget pressure found the top 5 of 50 tiles carried
     90.8321% of measured reference-error delta.
+15. Partial: expose the spatial budget phase at the visible layer. Debug mode
+    20, `Reservoir Spatial Budget`, renders pixels that spend spatial reuse in
+    green and pixels that skip it in blue. Sequence capture names this mode
+    `spatial-budget`. Smoke `reservoir-sequence-20260530-003746-*` captured the
+    debug view at native scale 0.5 / spatial budget 0.5; a whole-image probe
+    counted 32078 green pixels and 6818 blue pixels in the 304x141 present
+    output, with remaining pixels from filtering/black margins.
 
 Required verification:
 

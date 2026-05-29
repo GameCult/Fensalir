@@ -2,11 +2,20 @@
 
 ## Current Slice
 
-Extend native-domain reservoir replay from single-batch TubeField/SDF proof
-paths into measured baseline/native-domain capture. The first comparison set is
+Turn the native-domain reservoir from a native-resolution cache into a
+budgeted spatiotemporal sampler. The work grid now defaults to half present
+resolution and is clamped below native presentation scale; scene evidence,
+reservoir candidate/history, resolve, bloom, and match-window graph targets use
+that grid. The final present buffer is the only full-resolution surface.
+
+The first comparison set is
 `artifacts/fensalir-captures/reservoir-compare-20260529-231904-*`: native versus
 texel-baseline changed 10.8208% of final-frame pixels, 0.0165% of
-rejection-debug pixels, and 0.2976% of shift-debug pixels.
+rejection-debug pixels, and 0.2976% of shift-debug pixels. The repeatable
+measurement script is `scripts/measure-reservoir-mode-comparison.ps1`.
+First half-scale live capture:
+`artifacts/fensalir-captures/budgeted-reservoir-20260529-234039-final.png`
+at 1264x681 present output, nonblank by sampled pixel probe.
 
 ## Hot Lesson
 
@@ -20,6 +29,10 @@ semantic domains and a dynamic contribution tree into bounded GPU reservoirs.
 The current nine-lane row ABI now carries first-class selected
 domain/sample-coordinate authority. A row keyed only by pixel, travel, field id,
 guide, proposal, and stats is no longer accepted as valid reservoir evidence.
+That authority now lives on a budgeted work grid, not on the final present grid:
+native-domain state describes selected field samples, while final resolution is
+reconstructed from bounded evidence instead of allocating native-res
+reservoirs.
 TubeField row samples store selected UV, logical column, curve coordinate,
 support footprint, domain kind, and shift kind; field id carries physical
 rolling-column identity. The old single-batch replay binding has been replaced
@@ -35,12 +48,14 @@ cap remain intentionally non-authoritative.
 
 Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Add a real metric harness for temporal leakage/ghosting instead of relying
-   on single-frame image deltas.
+1. Add a real metric harness for temporal leakage/ghosting over motion and
+   disocclusion sequences instead of relying on single-frame image deltas.
 2. Add exact SDF producer replay only when client SDF distance functions have a
    shared replay include or manifest instead of duplicating shader policy in
    post.
-3. Replace the bounded TubeField replay source descriptor table with a replay
+3. Add adaptive update/sample budget allocation only after the leakage harness
+   can tell whether extra samples buy visible stability.
+4. Replace the bounded TubeField replay source descriptor table with a replay
    atlas only if real scenes hit the cap.
 
 ## Verification

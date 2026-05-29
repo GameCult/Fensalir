@@ -83,6 +83,24 @@ public sealed class FieldReservoirAbiTests
         Assert.Contains("FieldReservoirMode", capture);
     }
 
+    [Fact]
+    public void ReservoirWorkGridIsBudgetedBelowPresentationResolution()
+    {
+        var repoRoot = FindRepoRoot();
+        var settings = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine.Contracts", "GraphicsSettings.cs"));
+        var renderer = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "Render", "D3D12Renderer.cs"));
+        var capture = File.ReadAllText(Path.Combine(repoRoot, "scripts", "capture-fensalir-frame.ps1"));
+
+        Assert.Contains("MaxFieldReservoirScale = 0.75f", settings);
+        Assert.Contains("FieldReservoirScale: 0.5f", settings);
+        Assert.Contains("ResolveReservoirWorkGrid", renderer);
+        Assert.Contains("reservoirWidth", renderer);
+        Assert.Contains("new Vector2(reservoirWidth, reservoirHeight)", renderer);
+        Assert.Contains("RSSetViewports(reservoirViewport)", renderer);
+        Assert.Contains("RSSetViewports(viewport)", renderer);
+        Assert.Contains("--field-reservoir-scale", capture);
+    }
+
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

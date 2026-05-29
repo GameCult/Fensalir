@@ -15,7 +15,8 @@ public static class AquariumHost
             ParseHeadless(args),
             ParseCachePath(args),
             ParseRenderDebugMode(args),
-            ParseFieldReservoirMode(args));
+            ParseFieldReservoirMode(args),
+            ParseFieldReservoirScale(args));
         using var runtimeLoader = new ClientRuntimeLoader(runtimeOptions, ParseClientAssemblyPath(args), ParseClientReloadPointerPath(args));
         var runtime = runtimeLoader.Load();
         if (runtimeOptions.RenderDebugModeOverride is { } renderDebugModeOverride)
@@ -30,6 +31,13 @@ public static class AquariumHost
             runtime.GraphicsSettings = (runtime.GraphicsSettings with
             {
                 FieldReservoirMode = fieldReservoirModeOverride,
+            }).Normalized();
+        }
+        if (runtimeOptions.FieldReservoirScaleOverride is { } fieldReservoirScaleOverride)
+        {
+            runtime.GraphicsSettings = (runtime.GraphicsSettings with
+            {
+                FieldReservoirScale = fieldReservoirScaleOverride,
             }).Normalized();
         }
         var input = new InputState();
@@ -287,6 +295,23 @@ public static class AquariumHost
         }
 
         return ParseFieldReservoirModeValue(Environment.GetEnvironmentVariable("AQUARIUM_FIELD_RESERVOIR_MODE"));
+    }
+
+    private static float? ParseFieldReservoirScale(IReadOnlyCollection<string> args)
+    {
+        var values = args.ToArray();
+        for (var index = 0; index < values.Length - 1; index++)
+        {
+            if (string.Equals(values[index], "--field-reservoir-scale", StringComparison.OrdinalIgnoreCase)
+                && float.TryParse(values[index + 1], out var scale))
+            {
+                return scale;
+            }
+        }
+
+        return float.TryParse(Environment.GetEnvironmentVariable("AQUARIUM_FIELD_RESERVOIR_SCALE"), out var environmentScale)
+            ? environmentScale
+            : null;
     }
 
     private static int? ParseFieldReservoirModeValue(string? value)

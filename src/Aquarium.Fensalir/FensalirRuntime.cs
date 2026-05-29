@@ -23,7 +23,8 @@ public sealed class FensalirRuntime : IAquariumRuntime
         1.04f,
         0.52f,
         0.08f,
-        GraphicsSettings.FieldReservoirModeNativeDomain);
+        GraphicsSettings.FieldReservoirModeNativeDomain,
+        0.5f);
 
     public AquariumRenderPlan RenderPlan { get; } = FensalirRenderPlan.Create();
 

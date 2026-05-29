@@ -310,9 +310,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private int activeFieldResourceUploadCount;
     private int activeFieldResourceUploadSkippedCount;
     private Viewport viewport;
+    private Viewport reservoirViewport;
     private RawRect scissorRect;
+    private RawRect reservoirScissorRect;
     private int width;
     private int height;
+    private int reservoirWidth;
+    private int reservoirHeight;
     private ulong fenceValue;
     private int temporalFrameIndex;
     private int frameIndex;
@@ -360,6 +364,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         ApplyGraphicsSettings(graphicsSettings ?? GraphicsSettings.Default);
         this.width = width;
         this.height = height;
+        RefreshReservoirWorkGrid();
         programOutputEnabled = string.Equals(
             Environment.GetEnvironmentVariable(ProgramOutputEnabledEnvironmentVariable),
             "1",
@@ -496,6 +501,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         StartPipelineBuild("initial");
         viewport = new Viewport(0.0f, 0.0f, width, height);
         scissorRect = new RawRect(0, 0, width, height);
+        RefreshReservoirWorkGrid();
         Console.WriteLine($"D3D12 resource registry: {resourceRegistry.Describe()}");
         Console.WriteLine($"Aquarium render graph declared: {renderGraph.Describe()}");
         Console.WriteLine("D3D12 device and swapchain created.");
@@ -578,6 +584,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 .Options("Render Debug", () => RenderDebugMode, value => RenderDebugMode = Math.Clamp(value, GraphicsSettings.MinRenderDebugMode, GraphicsSettings.MaxRenderDebugMode), RenderDebugOptions, "Selects the active renderer debug view.", () => activeDebugTab == 0)
                 .Button("Reset View", () => RenderDebugMode = 0, "Returns to the final presented frame.", () => activeDebugTab == 0)
                 .Options("Reservoir Mode", () => settings.FieldReservoirMode, value => settings = (settings with { FieldReservoirMode = Math.Clamp(value, GraphicsSettings.FieldReservoirModeNativeDomain, GraphicsSettings.FieldReservoirModeTexelBaseline) }).Normalized(), FieldReservoirModeOptions, "Selects native-domain validation or texel-owned baseline reuse.", () => activeDebugTab == 0)
+                .Slider("Reservoir Scale", () => settings.FieldReservoirScale, value => settings = (settings with { FieldReservoirScale = Math.Clamp(value, GraphicsSettings.MinFieldReservoirScale, GraphicsSettings.MaxFieldReservoirScale) }).Normalized(), GraphicsSettings.MinFieldReservoirScale, GraphicsSettings.MaxFieldReservoirScale, "0.##", "Controls the internal reservoir work grid; presentation remains full resolution.", () => activeDebugTab == 0)
+                .Readout("Reservoir Grid", () => $"{reservoirWidth}x{reservoirHeight} / present {width}x{height}", "Internal reservoir work grid and final present size.", () => activeDebugTab == 0)
                 .Section("HDR", () => activeDebugTab == 0)
                 .Slider("Exposure", () => settings.SceneExposure, value => settings = (settings with { SceneExposure = Math.Clamp(value, GraphicsSettings.MinSceneExposure, GraphicsSettings.MaxSceneExposure) }).Normalized(), GraphicsSettings.MinSceneExposure, GraphicsSettings.MaxSceneExposure, "0.###", "Manual scene exposure before display transform.", () => activeDebugTab == 0)
                 .Slider("Bloom Intensity", () => settings.BloomIntensity, value => settings = (settings with { BloomIntensity = Math.Clamp(value, GraphicsSettings.MinBloomIntensity, GraphicsSettings.MaxBloomIntensity) }).Normalized(), GraphicsSettings.MinBloomIntensity, GraphicsSettings.MaxBloomIntensity, "0.###", "Strength of pre-tonemap bloom energy.", () => activeDebugTab == 0)
@@ -832,6 +840,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var frameCpuStart = Stopwatch.GetTimestamp();
         UpdateVisibleFrameRate(frameCpuStart);
         ResizeIfNeeded(width, height);
+        ResizeReservoirWorkGridIfNeeded();
         ApplyCompletedPipelineBuild();
         TryHotReloadShaders();
         var frameResources = frames[frameIndex];
@@ -880,7 +889,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             ? frame.Scene.GpuFusionField.PresentationDelaySeconds
             : frame.Scene.TemporalGaussianField.PresentationDelaySeconds;
         var frameConstants = frameResources.UploadRing.WriteConstant(new FrameConstants(
-            new Vector2(width, height),
+            new Vector2(reservoirWidth, reservoirHeight),
             frame.TimeSeconds,
             frame.View.Radius,
             frame.CameraPosition,
@@ -1932,6 +1941,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
         width = newWidth;
         height = newHeight;
+        RefreshReservoirWorkGrid();
         renderTargetViewArena.Dispose();
         depthStencilViewArena.Dispose();
         staticShaderDescriptorArena.Dispose();
@@ -1961,15 +1971,86 @@ public sealed class D3D12Renderer : IAquariumRenderer
         CreateGraphRenderTargets();
         viewport = new Viewport(0.0f, 0.0f, width, height);
         scissorRect = new RawRect(0, 0, width, height);
+        RefreshReservoirWorkGrid();
         Console.WriteLine($"D3D12 resized: {width}x{height}; {resourceRegistry.Describe()}");
+    }
+
+    private void RefreshReservoirWorkGrid()
+    {
+        var (workWidth, workHeight) = ResolveReservoirWorkGrid();
+        reservoirWidth = workWidth;
+        reservoirHeight = workHeight;
+        reservoirViewport = new Viewport(0.0f, 0.0f, reservoirWidth, reservoirHeight);
+        reservoirScissorRect = new RawRect(0, 0, reservoirWidth, reservoirHeight);
+    }
+
+    private void ResizeReservoirWorkGridIfNeeded()
+    {
+        var (workWidth, workHeight) = ResolveReservoirWorkGrid();
+        if (workWidth == reservoirWidth && workHeight == reservoirHeight)
+        {
+            return;
+        }
+
+        WaitForGpu();
+        RemoveBloomRenderTargets();
+        resourceRegistry.RemoveRenderTarget("scene-hdr-target");
+        resourceRegistry.RemoveRenderTarget("scene-metadata-target");
+        resourceRegistry.RemoveRenderTarget("scene-control-target");
+        resourceRegistry.RemoveRenderTarget("scene-reservoir-guide-target");
+        resourceRegistry.RemoveRenderTarget("scene-candidate-target");
+        resourceRegistry.RemoveRenderTarget("scene-candidate-metadata-target");
+        resourceRegistry.RemoveRenderTarget("scene-candidate-control-target");
+        resourceRegistry.RemoveRenderTarget("scene-candidate-reservoir-guide-target");
+        resourceRegistry.RemoveRenderTarget("reservoir-resolved-target");
+        resourceRegistry.RemoveResource("scene-depth-target");
+        DisposeBloomRenderTargets();
+        sceneRenderTarget.Dispose();
+        sceneMetadataRenderTarget.Dispose();
+        sceneControlRenderTarget.Dispose();
+        sceneReservoirGuideRenderTarget.Dispose();
+        sceneCandidateRenderTarget.Dispose();
+        sceneCandidateMetadataRenderTarget.Dispose();
+        sceneCandidateControlRenderTarget.Dispose();
+        sceneCandidateReservoirGuideRenderTarget.Dispose();
+        reservoirResolvedRenderTarget.Dispose();
+        fieldReservoirCandidateBuffer.Dispose();
+        fieldReservoirLockBuffer.Dispose();
+        DisposeFieldReservoirHistoryBuffers();
+        sceneDepthTarget.Dispose();
+
+        reservoirWidth = workWidth;
+        reservoirHeight = workHeight;
+        reservoirViewport = new Viewport(0.0f, 0.0f, reservoirWidth, reservoirHeight);
+        reservoirScissorRect = new RawRect(0, 0, reservoirWidth, reservoirHeight);
+        sceneRenderTarget = CreateSceneRenderTarget();
+        sceneMetadataRenderTarget = CreateSceneAuxiliaryRenderTarget("scene-metadata-target", "Aquarium D3D12 Scene Metadata Target");
+        sceneControlRenderTarget = CreateSceneAuxiliaryRenderTarget("scene-control-target", "Aquarium D3D12 Scene Control Target");
+        sceneReservoirGuideRenderTarget = CreateSceneAuxiliaryRenderTarget("scene-reservoir-guide-target", "Aquarium D3D12 Scene Reservoir Guide Target");
+        sceneCandidateRenderTarget = CreateSceneAuxiliaryRenderTarget("scene-candidate-target", "Aquarium D3D12 Scene Candidate Target");
+        sceneCandidateMetadataRenderTarget = CreateSceneAuxiliaryRenderTarget("scene-candidate-metadata-target", "Aquarium D3D12 Scene Candidate Metadata Target");
+        sceneCandidateControlRenderTarget = CreateSceneAuxiliaryRenderTarget("scene-candidate-control-target", "Aquarium D3D12 Scene Candidate Control Target");
+        sceneCandidateReservoirGuideRenderTarget = CreateSceneAuxiliaryRenderTarget("scene-candidate-reservoir-guide-target", "Aquarium D3D12 Scene Candidate Reservoir Guide Target");
+        reservoirResolvedRenderTarget = CreateReservoirResolvedRenderTarget();
+        CreateFieldReservoirBuffers();
+        sceneDepthTarget = CreateSceneDepthTarget(sceneDepthStencilView);
+        CreateBloomRenderTargets();
+    }
+
+    private (int Width, int Height) ResolveReservoirWorkGrid()
+    {
+        var scale = Math.Clamp(settings.FieldReservoirScale, GraphicsSettings.MinFieldReservoirScale, GraphicsSettings.MaxFieldReservoirScale);
+        return (
+            Math.Max(1, (int)MathF.Ceiling(Math.Max(1, width) * scale)),
+            Math.Max(1, (int)MathF.Ceiling(Math.Max(1, height) * scale)));
     }
 
     private D3D12RenderTarget CreateSceneRenderTarget()
     {
         var target = new D3D12RenderTarget(
             device,
-            width,
-            height,
+            reservoirWidth,
+            reservoirHeight,
             SceneHdrFormat,
             renderTargetViewArena.Allocate(),
             staticShaderDescriptorArena.Allocate(),
@@ -1985,8 +2066,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     {
         var target = new D3D12RenderTarget(
             device,
-            width,
-            height,
+            reservoirWidth,
+            reservoirHeight,
             SceneHdrFormat,
             renderTargetViewArena.Allocate(),
             staticShaderDescriptorArena.Allocate(),
@@ -2002,8 +2083,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     {
         var target = new D3D12RenderTarget(
             device,
-            width,
-            height,
+            reservoirWidth,
+            reservoirHeight,
             SceneHdrFormat,
             renderTargetViewArena.Allocate(),
             null,
@@ -2036,7 +2117,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private int FieldReservoirElementCount()
     {
-        return checked(Math.Max(1, width) * Math.Max(1, height) * FieldReservoirSlotsPerPixel);
+        return checked(Math.Max(1, reservoirWidth) * Math.Max(1, reservoirHeight) * FieldReservoirSlotsPerPixel);
     }
 
     private D3D12StructuredBuffer CreateFieldReservoirCandidateBuffer()
@@ -2052,7 +2133,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private D3D12StructuredBuffer CreateFieldReservoirLockBuffer()
     {
-        var elementCount = checked(Math.Max(1, width) * Math.Max(1, height));
+        var elementCount = checked(Math.Max(1, reservoirWidth) * Math.Max(1, reservoirHeight));
         return new D3D12StructuredBuffer(
             device,
             elementCount,
@@ -2114,8 +2195,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     {
         var target = new D3D12RenderTarget(
             device,
-            Math.Max(1, width >> (level + 1)),
-            Math.Max(1, height >> (level + 1)),
+            Math.Max(1, reservoirWidth >> (level + 1)),
+            Math.Max(1, reservoirHeight >> (level + 1)),
             SceneHdrFormat,
             renderTargetViewArena.Allocate(),
             staticShaderDescriptorArena.Allocate(),
@@ -2351,8 +2432,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         {
             AquariumTargetSizeKind.Fixed => (Math.Max(1, size.Width), Math.Max(1, size.Height)),
             AquariumTargetSizeKind.MatchWindow => (
-                Math.Max(1, (int)MathF.Ceiling(width * MathF.Max(size.Scale, 0.001f))),
-                Math.Max(1, (int)MathF.Ceiling(height * MathF.Max(size.Scale, 0.001f)))),
+                Math.Max(1, (int)MathF.Ceiling(reservoirWidth * MathF.Max(size.Scale, 0.001f))),
+                Math.Max(1, (int)MathF.Ceiling(reservoirHeight * MathF.Max(size.Scale, 0.001f)))),
             _ => throw new ArgumentOutOfRangeException(nameof(size), size.Kind, "Unsupported render target size policy."),
         };
     }
@@ -2408,8 +2489,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             context.CommandList.SetGraphicsRootDescriptorTable(RootSdfObjects, frameResources.SdfObjectDescriptor.Gpu);
             context.CommandList.SetGraphicsRootDescriptorTable(RootTemporalGaussians, frameResources.TemporalGaussianDescriptor.Gpu);
             context.CommandList.SetGraphicsRootDescriptorTable(RootBlueNoise, frameResources.BlueNoiseDescriptor.Gpu);
-            context.CommandList.RSSetViewports(viewport);
-            context.CommandList.RSSetScissorRects(scissorRect);
+            context.CommandList.RSSetViewports(reservoirViewport);
+            context.CommandList.RSSetScissorRects(reservoirScissorRect);
             context.CommandList.OMSetRenderTargets(
             [
                 sceneCandidateRenderTarget.RenderTargetView.Cpu,
@@ -2545,8 +2626,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             activeCommandList.SetGraphicsRootDescriptorTable(RootCurrentSceneControl, frameResources.SceneCandidateControlDescriptor.Gpu);
             activeCommandList.SetGraphicsRootDescriptorTable(RootCurrentReservoirGuide, frameResources.SceneCandidateReservoirGuideDescriptor.Gpu);
             activeCommandList.SetGraphicsRootShaderResourceView(RootFieldReservoirCandidates, fieldReservoirCandidateBuffer.Resource.GPUVirtualAddress);
-            activeCommandList.RSSetViewports(viewport);
-            activeCommandList.RSSetScissorRects(scissorRect);
+            activeCommandList.RSSetViewports(reservoirViewport);
+            activeCommandList.RSSetScissorRects(reservoirScissorRect);
             activeCommandList.OMSetRenderTargets(
             [
                 sceneRenderTarget.RenderTargetView.Cpu,
@@ -2622,7 +2703,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             activeCommandList.SetComputeRootDescriptorTable(RootReservoirResolvedOutput, frameResources.ReservoirResolvedUnorderedAccessDescriptor.Gpu);
             activeCommandList.SetComputeRootShaderResourceView(RootTubeFieldReplayManifest, tubeFieldReplayManifestBuffer.Resource.GPUVirtualAddress);
             activeCommandList.SetComputeRootDescriptorTable(RootTubeFieldReplaySources, replaySourceDescriptors.Gpu);
-            activeCommandList.Dispatch((uint)((width + 7) / 8), (uint)((height + 7) / 8), 1);
+            activeCommandList.Dispatch((uint)((reservoirWidth + 7) / 8), (uint)((reservoirHeight + 7) / 8), 1);
             activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(historyWriteBuffer.Resource));
             activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(reservoirResolvedRenderTarget.Resource));
         }

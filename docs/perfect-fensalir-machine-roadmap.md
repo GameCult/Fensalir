@@ -14,10 +14,10 @@ producer intent / DSL / resource / sensor input
 -> semantic field and radiance claims
 -> domain binding and conservative summaries
 -> bounded proposals with target and proposal measure
--> native-domain reservoir
--> temporal and spatial domain shifts
+-> budgeted native-domain reservoir work grid
+-> temporal and spatial domain shifts under sampling/update budgets
 -> TSR-grade rejection and reconstruction
--> denoiser-integrated resolved HDR field output
+-> denoiser-integrated full-present HDR field output
 -> contribution/residency feedback
 ```
 
@@ -42,6 +42,12 @@ Fensalir already has the first shared GPU field-reservoir spine:
   final authority have been cut.
 - Debug modes now inspect the compute-owned reservoir layer rather than stale
   guide textures.
+- The reservoir work grid is now explicitly budgeted below presentation
+  resolution by default. Scene evidence targets, reservoir candidate/history
+  rows, reservoir resolve, bloom, and match-window graph targets follow the
+  internal grid; the full-resolution buffer is the final presentation surface
+  where reconstruction, denoising, bloom, tone mapping, and debug display spend
+  their visible-output budget.
 
 The surviving flaw has moved one layer downstream: the live ABI now stores
 selected sample UV, packed producer coordinate, support footprint, domain kind,
@@ -65,6 +71,10 @@ native post pass does not pretend to own every client distance function.
 - Reuse passes own shift mappings, support overlap, and producer re-evaluation.
 - TSR-style resolve owns rejection, reconstruction, and history trust over the
   resolved field output.
+- Native-domain reservoirs are not native-resolution buffers. Domain cache
+  updates, proposal injection, temporal/spatial reuse, bloom sources, and graph
+  intermediate targets run under an explicit work-grid budget; only final
+  presentation is allowed to be full resolution.
 - The denoiser consumes reservoir diagnostics and can feed sampling pressure
   back into future probe selection.
 - Conservative summaries own safety. Stochastic or learned priority may rank
@@ -77,13 +87,16 @@ native post pass does not pretend to own every client distance function.
 - Inputs: current producer proposals, previous final reservoirs, domain
   mappings, producer support footprints, current/previous motion, scene/SDF
   evidence, guide confidence, reconstruction feedback.
-- Outputs: current/temporal/spatial/final reservoir stages, resolved HDR field
-  texture, rejection/debug layers, contribution/residency feedback signals.
-- Derived state: pixel rows, MRTs, proxy raster output, debug palettes, and
-  presentation history are projections or diagnostics.
-- Forbidden writers: proxy rasterization, presentation, old TubeField-local
-  paths, stale history rows, nearest-depth priority, and generic postprocess
-  history cannot decide final field visibility.
+- Outputs: budgeted current/temporal/spatial/final reservoir stages, budgeted
+  resolved HDR field texture, full-resolution presented frame,
+  rejection/debug layers, contribution/residency feedback signals.
+- Derived state: work-grid pixel rows, MRTs, proxy raster output, debug
+  palettes, upscaled presentation, and presentation history are projections or
+  diagnostics.
+- Forbidden writers: native-resolution intermediate caches, proxy
+  rasterization, presentation, old TubeField-local paths, stale history rows,
+  nearest-depth priority, and generic postprocess history cannot decide final
+  field visibility.
 - Shared paths: TubeField, SDF, compact splats, meshes, volumes, fractal probes,
   and future sensor fields must enter through bounded proposals with target,
   proposal measure, selected domain coordinates, and support metadata.
@@ -210,6 +223,17 @@ Exit gate:
 ## Phase 3: Native Temporal Reuse
 
 Purpose: replace texel history trust with support-aware domain replay.
+
+Budget law:
+
+- Temporal reuse operates over the internal reservoir work grid, not the final
+  present grid.
+- Work-grid scale is clamped below native presentation scale by engine
+  settings; present resolution may increase, but cache/update work may not
+  silently become native resolution.
+- Any future adaptive planner may spend more samples on high-pressure regions,
+  but it must do so by explicit budget allocation, not by allocating another
+  full-resolution native reservoir buffer.
 
 Algorithm:
 
@@ -499,6 +523,15 @@ Work packet:
    Native versus baseline changed 10.8208% of final-frame pixels, 0.0165% of
    rejection-debug pixels, and 0.2976% of shift-debug pixels. That proves the
    switch is live; it is not yet a quality metric.
+9. Done: make the reservoir work grid explicitly budgeted below final
+   presentation resolution. `GraphicsSettings.FieldReservoirScale` clamps the
+   internal scene evidence, reservoir candidate/history, resolve, bloom, and
+   match-window graph targets to 0.25-0.75 of present size, with 0.5 as the
+   default. Headless capture accepts `--field-reservoir-scale`; debug UI reports
+   the live work-grid size beside present size.
+10. Current: add temporal leakage/ghosting metrics over motion/disocclusion
+    sequences, then use those metrics to decide where the sampler spends its
+    bounded update budget.
 
 Required verification:
 

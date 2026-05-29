@@ -74,6 +74,12 @@ invariants:
     authority. Sampling budget may scale with target frame time and resolution,
     but identity, support, contribution mass, and visibility authority remain
     domain-native.
+  - Native-domain reservoirs are not native-resolution buffers. The reservoir
+    work grid is an explicit budgeted sampler below final present resolution;
+    scene evidence targets, candidate/history rows, resolve, bloom sources, and
+    match-window graph targets follow that grid. The final present buffer is
+    the only full-resolution surface, where reconstruction and denoising spend
+    visible-output budget.
   - Rendering backends are lowerings, not truth owners. Heightfields, splines,
     direct SDF proxies, meshes, volumes, fractal probes, and Mimir sensor
     observations must publish bounded Form/Appearance/Transport field claims
@@ -138,7 +144,12 @@ next_actions:
     current ray/travel/support. A field-reservoir mode switch now captures
     native-domain validation against a texel-owned baseline; the first paired
     set is `reservoir-compare-20260529-231904-*`, where native versus baseline
-    changed 10.8208% of final-frame pixels. The next cut is a temporal
+    changed 10.8208% of final-frame pixels, and
+    `scripts/measure-reservoir-mode-comparison.ps1` now repeats those
+    single-frame deltas. The reservoir work grid is now clamped below present
+    resolution by `GraphicsSettings.FieldReservoirScale` (0.5 default, 0.75
+    maximum), so native-domain replay spends bounded fill/compute before the
+    full-resolution presentation pass. The next cut is a temporal
     leakage/ghosting metric harness plus future exact producer SDF replay.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection

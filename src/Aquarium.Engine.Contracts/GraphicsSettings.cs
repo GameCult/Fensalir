@@ -5,12 +5,15 @@ public readonly record struct GraphicsSettings(
     float SceneExposure,
     float BloomIntensity,
     float BloomVeilIntensity,
-    int FieldReservoirMode)
+    int FieldReservoirMode,
+    float FieldReservoirScale)
 {
     public const int MinRenderDebugMode = 0;
     public const int MaxRenderDebugMode = 18;
     public const int FieldReservoirModeNativeDomain = 0;
     public const int FieldReservoirModeTexelBaseline = 1;
+    public const float MinFieldReservoirScale = 0.25f;
+    public const float MaxFieldReservoirScale = 0.75f;
     public const float MinSceneExposure = 0.02f;
     public const float MaxSceneExposure = 1.2f;
     public const float MinBloomIntensity = 0.0f;
@@ -23,7 +26,8 @@ public readonly record struct GraphicsSettings(
         SceneExposure: 0.16f,
         BloomIntensity: 0.072f,
         BloomVeilIntensity: 0.014f,
-        FieldReservoirMode: FieldReservoirModeNativeDomain);
+        FieldReservoirMode: FieldReservoirModeNativeDomain,
+        FieldReservoirScale: 0.5f);
 
     public GraphicsSettings Normalized()
     {
@@ -32,6 +36,7 @@ public readonly record struct GraphicsSettings(
             Math.Clamp(SceneExposure, MinSceneExposure, MaxSceneExposure),
             Math.Clamp(BloomIntensity, MinBloomIntensity, MaxBloomIntensity),
             Math.Clamp(BloomVeilIntensity, MinBloomVeilIntensity, MaxBloomVeilIntensity),
-            Math.Clamp(FieldReservoirMode, FieldReservoirModeNativeDomain, FieldReservoirModeTexelBaseline));
+            Math.Clamp(FieldReservoirMode, FieldReservoirModeNativeDomain, FieldReservoirModeTexelBaseline),
+            Math.Clamp(FieldReservoirScale, MinFieldReservoirScale, MaxFieldReservoirScale));
     }
 }

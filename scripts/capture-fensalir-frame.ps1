@@ -6,6 +6,7 @@ param(
     [int]$RenderDebugMode = -1,
     [ValidateSet("native", "baseline")]
     [string]$FieldReservoirMode = "native",
+    [double]$FieldReservoirScale = 0.5,
     [int]$RetainSlots = 4,
     [int]$TimeoutSeconds = 120
 )
@@ -60,6 +61,7 @@ if ($RenderDebugMode -ge 0) {
 if ($FieldReservoirMode -eq "baseline") {
     $arguments += @("--field-reservoir-mode", "baseline")
 }
+$arguments += @("--field-reservoir-scale", $FieldReservoirScale)
 
 $env:AQUARIUM_HEADLESS_READY_FRAMES = [string][Math]::Max(1, $ReadyFrames)
 $process = Start-Process -FilePath $exePath -ArgumentList $arguments -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog

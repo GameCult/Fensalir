@@ -370,13 +370,20 @@ and conservative object support.  Exact client SDF distance re-evaluation
 remains producer-owned work rather than a generic postprocess authority.
 Debug modes expose selected coordinates, support footprint/domain kind, and
 shift/rejection state from the same row-3 layer consumed by presentation.
+The reservoir is also now a budgeted work grid rather than a native-resolution
+buffer: \texttt{GraphicsSettings.FieldReservoirScale} clamps scene evidence,
+candidate/history rows, reservoir resolve, bloom sources, and match-window graph
+targets below final presentation resolution by default.  The full-resolution
+surface is reserved for presentation reconstruction and diagnostics.
 The renderer also exposes a field-reservoir mode switch for comparison: native
 mode enables domain validity, support overlap, and producer replay during
 temporal reuse, while texel-baseline mode keeps the same rows but disables those
 native-domain gates.  The first paired capture set
 \texttt{reservoir-compare-20260529-231904-*} changed 10.8208\% of final-frame
-pixels between modes.  This proves the comparison switch is live; it is not yet
-a temporal leakage or ghosting metric.
+pixels between modes, and
+\texttt{scripts/measure-reservoir-mode-comparison.ps1} now repeats that
+measurement.  This proves the comparison switch is live; it is not yet a
+temporal leakage or ghosting metric.
 
 \section{Required Evaluation}
 

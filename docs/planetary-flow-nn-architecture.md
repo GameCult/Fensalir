@@ -55,11 +55,17 @@ Conditioning tokens:
 
 - day-of-year Fourier features;
 - hour/diurnal Fourier features when using hourly atmosphere data;
-- sun direction in planet-centered coordinates and local tangent coordinates;
-- sun elevation/azimuth at the sample point;
-- moon direction in planet-centered coordinates and local tangent coordinates;
-- moon elevation/azimuth at the sample point;
-- lunar phase or normalized sun-moon angle;
+- Coriolis parameters in the local frame, including `f`, beta/gradient terms
+  when available, and rotation-axis direction;
+- external forcing source tokens for arbitrary energy, mass, and momentum
+  inputs;
+- per-source direction in planet-centered coordinates and local tangent
+  coordinates;
+- per-source local elevation/azimuth at the sample point when directional;
+- per-source intensity, spectral/thermal class, radius/angular size, distance
+  or attenuation, and time profile;
+- source relation features such as phase angles between dominant directional
+  sources;
 - lead time;
 - layer id: ocean surface, atmosphere near-surface, or pressure level;
 - dataset/model/provenance id embedding;
@@ -69,14 +75,17 @@ Do not make elevation the protagonist. It is one channel group. The dynamic
 state and time phase are not optional decoration; they are the difference
 between a flow model and a coastline horoscope.
 
-Sun and moon conditioning are evaluator inputs, not derived afterthoughts. The
-model should receive the same celestial forcing basis the runtime evaluator will
-use: global direction vectors for coherent planetary phase, local elevation and
-azimuth for terrain/atmosphere response, and lunar phase/sun-moon geometry for
-tidal and coastal-current regimes. Early atmosphere training can mostly learn
-from sun terms and calendar/hour features. Ocean training should keep moon terms
-present from the start so the packet schema does not need surgery when tides
-stop being optional.
+External forcing is an evaluator input, not a derived afterthought. Earth sun
+and moon terms are just two source records in a general forcing set. The same
+interface must support multiple suns, artificial heat sources, nuclear or
+volcanic eruptions, injected momentum, gas-giant irradiation, extreme pressure
+regimes, and non-Earth rotation. A forcing source can be directional,
+point-like, area-like, volumetric, transient, periodic, or persistent.
+
+Coriolis is also explicit. Latitude-derived `f` is fine for Earth data bakes,
+but the model must receive rotation-derived Coriolis features directly so a
+client can evaluate fast rotators, tilted axes, retrograde planets, gas giants,
+or fictional worlds without smuggling the answer through Earth latitude.
 
 ## FlowNet-S: Local Baseline
 
@@ -98,7 +107,7 @@ encoder:
   stage 3: downsample + 3 residual blocks, width 192
 
 conditioning:
-  FiLM or adaptive layer norm from celestial/time/layer/LOD embeddings
+  FiLM or adaptive layer norm from forcing/Coriolis/time/layer/LOD embeddings
 
 decoder:
   FPN/U-Net upsample to 64x64
@@ -200,6 +209,33 @@ The graph processor is the organ that makes arbitrary LOD coherent. It lets a
 near-camera child tile know about parent context, adjacent seams, and coarse
 basin/planetary signals without forcing the renderer to evaluate the whole
 planet at full resolution.
+
+### Forcing Encoder
+
+Use a permutation-invariant source encoder before FiLM/adaptive normalization:
+
+```text
+per-source MLP:
+  input: type, direction, local basis, intensity, spectrum/thermal class,
+         attenuation, time profile, source radius, momentum/mass injection
+  width: 128
+  layers: 3
+
+source attention:
+  4 cross-attention blocks
+  query: tile token
+  keys/values: forcing source tokens
+  heads: 4
+  width: 128
+
+pooled forcing embedding:
+  concatenate mean/max/attention-pooled source state
+  project to graph width 256
+```
+
+This handles zero sources, one Earth-like sun, binary suns, nearby eruptions,
+orbital mirrors, artificial heat columns, or gas-giant energy bands without
+changing the packet schema. Source count is data, not architecture.
 
 ### Decoder
 

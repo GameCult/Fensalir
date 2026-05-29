@@ -137,9 +137,12 @@ next_actions:
     transformer blocks, and FlowNet-T (150-300M params) as an offline teacher
     only if global coherence needs it. Do not let an oversized teacher become
     the runtime authority before the packet contract and LOD path are proven.
-    Sun and moon direction are first-class conditioning inputs to both training
-    and runtime evaluation, carried in planet/global and local tangent bases so
-    atmosphere, insolation, tides, and coastal-current regimes do not become
+    External forcing and Coriolis are first-class conditioning inputs to both
+    training and runtime evaluation. Do not hardcode Earth sun/moon semantics:
+    represent arbitrary directional, point, area, volumetric, transient, and
+    periodic energy/mass/momentum sources in planet/global and local tangent
+    bases, and pass explicit rotation/Coriolis features so fast rotators, gas
+    giants, multiple suns, eruptions, and extreme atmospheres do not become
     hidden side channels.
   - Extend the D3D12 field packet/resource resolver beyond its first
     structured/curve-buffer cut. Current contracts, DSL, and renderer registry

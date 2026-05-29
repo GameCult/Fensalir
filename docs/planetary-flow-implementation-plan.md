@@ -40,8 +40,9 @@ Deliverables:
 - baked static channels: elevation, bathymetry, land/sea mask, slope,
   curvature, coastline distance, source quality;
 - baked dynamic channel fixture from a small ERA5/OSCAR subset;
-- metric metadata per tile: area scale, local tangent frame, latitude/Coriolis,
-  sun/moon local direction basis, projection id, and missing-data mask.
+- metric metadata per tile: area scale, local tangent frame, explicit
+  Coriolis/rotation features, forcing-source local basis, projection id, and
+  missing-data mask.
 
 Verification:
 
@@ -99,8 +100,8 @@ Training plan:
 - start with ERA5 10m wind over a small temporal window;
 - add OSCAR surface currents as the first ocean target;
 - train on cube-sphere pages, not raw lat/lon;
-- feed the evaluator's sun and moon direction inputs through the same
-  conditioning path used by training;
+- feed the evaluator's arbitrary forcing-source records and Coriolis features
+  through the same conditioning path used by training;
 - normalize per variable and preserve masks;
 - keep model identity, source versions, and normalization stats with every
   checkpoint.
@@ -146,6 +147,8 @@ Architecture hypotheses to test:
 - local patch encoder plus graph head for first production model;
 - hierarchical graph neural operator for long-term arbitrary LOD;
 - optional 150-300M FlowNet-T global teacher for distillation, not hot runtime;
+- variable-cardinality forcing-source encoder for multiple suns, eruptions,
+  artificial heat sources, and gas-giant/extreme-atmosphere regimes;
 - sparse transition logits only where PlasticAdrift-style debris transport
   needs them;
 - covariance output via Cholesky factors to guarantee positive semidefinite

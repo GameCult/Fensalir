@@ -15,6 +15,9 @@ historical branch scar.
 
 - `papers/fensalir-pipeline.tex`: living MiKTeX paper for the Fensalir
   pipeline, research spine, domain reservoir model, and evaluation plan.
+- `papers/fensalir-native-domain-reservoirs.tex`: focused SIGGRAPH-shaped
+  draft around the single testable invariant that reusable mixed-field samples
+  must carry native-domain coordinates, support, and legal shift metadata.
 - `perfect-machine-architecture.md`: end-to-end map for authored/sensor field
   input, domain binding, evidence candidates, reservoir reuse, residency, and
   renderer lowering.

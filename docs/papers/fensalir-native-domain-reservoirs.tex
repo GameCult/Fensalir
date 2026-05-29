@@ -1,0 +1,518 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\emergencystretch=2em
+\Urlmuskip=0mu plus 2mu
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black,
+  pdftitle={Native-Domain Reservoirs for Mixed Field Reuse},
+  pdfauthor={GameCult / Fensalir}
+}
+
+\newcommand{\Fensalir}{\textsc{Fensalir}}
+\newcommand{\ReSTIR}{ReSTIR}
+\newcommand{\AreaReSTIR}{Area ReSTIR}
+\newcommand{\TSR}{TSR}
+\newcommand{\GRIS}{GRIS}
+\newcommand{\Target}{\hat{p}}
+\newcommand{\Pdf}{q}
+\newcommand{\Measure}{\mu}
+\newcommand{\WeightSum}{W}
+
+\title{Native-Domain Reservoirs for Mixed Field Reuse}
+\author{GameCult / Fensalir}
+\date{Focused Technical Draft, May 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Reservoir reuse in real-time rendering is usually applied after a visible
+surface or pixel sample has already been chosen.  This paper studies a narrower
+but important case: mixed field renderers where the reusable sample is the
+visible field claim itself.  In \Fensalir, tube fields, SDF surfaces, compact
+splat fields, and later density or sensor fields compete for presentation
+through one temporal/spatial reservoir.  A texel-owned reservoir can store
+field id, depth, color, confidence, and RIS weights, but it cannot prove that a
+selected sample remains inside the target domain support after motion,
+occlusion, disocclusion, or resolution changes.
+
+We propose a native-domain reservoir contract: every selected sample stores its
+producer-domain coordinate, support footprint, proposal measure, target value,
+and legal shift metadata.  Pixels are consumers of this selected domain
+evidence, not owners of sample identity.  The falsifiable claim is that this
+contract reduces temporal leakage and ghosting for mixed tube/SDF/splat fields
+compared with texel-owned reuse at similar sample budgets.  We define the
+sample contract, target/proposal measures for heterogeneous field claims, reuse
+validation rules, required baselines, ablations, and visual diagnostics.  This
+draft intentionally does not claim final results; it is the submission-shaped
+paper that the implementation must satisfy.
+\end{abstract}
+
+\section{Introduction}
+
+\ReSTIR{} and \GRIS{} showed that a renderer can reuse a small number of
+representative samples by preserving their target and proposal probability
+story \cite{bitterli2020restir,lin2022gris}.  \AreaReSTIR{} sharpened the
+lesson for antialiasing and depth of field: when the integration domain is an
+area, the selected sample's actual subpixel and lens coordinates are part of
+the reservoir state \cite{zhang2024arearestir}.  A reservoir that forgets where
+inside the domain its selected sample lives is not allowed to reuse that sample
+as though support overlap were obvious.
+
+\Fensalir{} applies that lesson to primary field evidence.  The current engine
+contains a shared four-row GPU field reservoir for current-frame RIS, temporal
+reuse, spatial/domain reuse, and final resolve.  TubeField and SDF contributors
+already share target/source-PDF proposal lanes, and an older
+nearest-depth-minus-coverage priority path has been cut.  The remaining fault
+is precise: the live row ABI is still too texel-shaped.  It carries field id,
+travel, normal, support scalar, guide confidence, proposal weights, and stats,
+but it does not yet make the selected native-domain coordinate and support
+footprint a first-class invariant.
+
+This paper narrows the previous architecture manifesto into one testable claim:
+
+\begin{quote}
+For mixed tube/SDF/splat field rendering, storing selected native-domain
+coordinates, support, and legal shift metadata in the reservoir reduces
+temporal leakage and ghosting under motion, occlusion, and resolution changes
+relative to texel-owned reuse with the same target/source-PDF RIS update.
+\end{quote}
+
+The claim is deliberately small enough to kill.  It can fail if the metadata
+cost outweighs the quality gain, if support validation rejects too much useful
+history, if target measures are incomparable across producers, or if a simpler
+\TSR-style resolver plus producer-specific validation performs as well.
+
+\section{Scope}
+
+We evaluate only the core invariant.  The broader \Fensalir{} architecture also
+includes semantic grammars, contribution trees, residency scheduling, sensor
+fusion, planetary flow, HDR presentation, and D3D12 resource discipline.  Those
+systems motivate the domain model but are not the submission claim.
+
+The first evaluated contributors are:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{TubeField}: texture- or buffer-backed Catmull-Rom curve/tube
+  fields with rolling-column identity, curve-local support, emission, and
+  explicit motion when available;
+  \item \textbf{SDF surface}: bounded analytic or proxy-evaluated signed
+  distance surfaces with world/object-domain hit position, normal, material
+  class, and travel;
+  \item \textbf{compact splat field}: bounded anisotropic Form/Appearance
+  splats with local support and projected footprint.
+\end{itemize}
+
+Density/extinction, sensor confidence, cube-sphere terrain, and learned
+residency are deferred.  They are allowed to influence the data model, not the
+result claims.
+
+\section{Related Work}
+
+\paragraph{Reservoir reuse.}
+\ReSTIR{} DI and GI provide the practical reservoir shape for real-time
+candidate reuse \cite{bitterli2020restir,ouyang2021restirgi}.  \GRIS{}
+generalizes the estimator to varied domains and shift mappings
+\cite{lin2022gris}.  RTXDI documents production pass boundaries for initial,
+temporal, and spatial reuse \cite{rtxdiRestirGI,rtxdiRestirPT}.
+
+\paragraph{Area and reconstruction.}
+\AreaReSTIR{} is closest in spirit because it treats subpixel and lens
+coordinates as sample identity for area-domain reuse \cite{zhang2024arearestir,
+areaRestirCode}.  \TSR{} and modern TAA systems emphasize rejection,
+disocclusion classification, sample-age accounting, and debug visualizations
+\cite{unrealTSR,unrealTSRFAQ}.  Our distinction is that those diagnostics attach
+to selected field evidence before final presentation, not only to color
+history.
+
+\paragraph{Field representations.}
+Hart's sphere tracing gives the conservative-bound contract for implicit
+surfaces \cite{hart1996sphere}.  EWA splatting and 3D Gaussian Splatting show
+why anisotropic projected support is a useful primitive
+\cite{zwicker2001ewa,ren2002objectewa,kerbl2023gaussian}.  Geometry clipmaps
+and Nanite show the value of hierarchy cuts and resident summaries
+\cite{asirvatham2005gpuclipmaps,karis2021nanite}.  We do not claim a new
+hierarchy algorithm here; we use these systems to constrain the support and
+baseline vocabulary.
+
+\section{Native-Domain Reservoir Contract}
+
+A texel-owned field reservoir stores a selected sample as though the pixel were
+the native domain.  A native-domain reservoir instead stores a tuple
+
+\begin{equation}
+  r = (s, d, u, \Omega_s, \Target(s), \Pdf(s), M, \WeightSum, C, \sigma),
+\end{equation}
+
+where \(s\) is the selected sample, \(d\) is its producer domain, \(u\) is the
+selected coordinate inside that domain, \(\Omega_s\) is its support footprint,
+\(\Target\) is the target importance, \(\Pdf\) is the proposal density or
+finite proposal probability, \(M\) is represented candidate count,
+\(\WeightSum\) is accumulated weight, \(C\) is final contribution weight, and
+\(\sigma\) stores legal shift and validation metadata.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{p{0.18\linewidth}p{0.27\linewidth}p{0.25\linewidth}p{0.18\linewidth}}
+\toprule
+Contributor & Native coordinate \(u\) & Support \(\Omega_s\) & Shift metadata \\
+\midrule
+TubeField & subpixel position, source row/column, curve parameter, segment id
+& tube core radius, feather, projected curve support
+& rolling-column motion, curve replay/re-eval policy \\
+SDF surface & object/world hit position, local object coordinate
+& SDF bound radius, normal cone, proxy extent
+& object motion, previous hit projection, visibility gate \\
+Splat field & local splat center/sample coordinate, orientation frame
+& anisotropic envelope, projected footprint
+& domain lineage, local-frame transform, Jacobian if measure changes \\
+\bottomrule
+\end{tabular}
+\caption{Minimum native-domain state for the first evaluated contributors.}
+\label{tab:sample-contract}
+\end{table}
+
+\subsection{Target Measures}
+
+The hard part is not the RIS update; it is defining comparable target measures
+for heterogeneous field claims.  We use a projected expected-contribution
+target:
+
+\begin{equation}
+  \Target_i(c) =
+    \int_{\Pi(\Omega_c)}
+      \rho_i(x,c)\,
+      e_i(x,c)\,
+      v_i(x,c)\,
+      q_i(x,c)\,dx,
+\end{equation}
+
+where \(\Pi(\Omega_c)\) is the projected support of candidate \(c\), \(\rho_i\)
+is support/filter density for contributor \(i\), \(e_i\) is estimated visible
+field or radiance change, \(v_i\) is visibility/occlusion validity, and
+\(q_i\) is producer confidence.  This converts different producer domains into
+one unit: expected contribution to the resolved field over projected support.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{p{0.17\linewidth}p{0.35\linewidth}p{0.34\linewidth}}
+\toprule
+Contributor & Practical target approximation & Proposal measure \\
+\midrule
+TubeField & projected core coverage \(\times\) confidence \(\times\)
+linear luminance/emission relevance \(\times\) visibility
+& finite structural proposal set from proxy/raster coverage or producer curve
+samples \\
+SDF surface & projected covered area \(\times\) depth/normal confidence
+\(\times\) material/radiance relevance \(\times\) visibility
+& one deterministic structural proposal per valid hit or finite proxy hit set \\
+Splat field & projected anisotropic footprint \(\times\) confidence
+\(\times\) Form/Appearance contribution bound
+& stochastic or finite selected-cut proposal set over resident splats \\
+\bottomrule
+\end{tabular}
+\caption{Initial target/proposal definitions.  Continuous PDFs are used only
+when a producer actually samples from a continuous measure.  Deterministic
+structural proposals use explicit finite-set proposal probabilities rather than
+a magic free sample.}
+\label{tab:target}
+\end{table}
+
+For a finite proposal set \(P_i\), the source probability is
+
+\begin{equation}
+  \Pdf(c) = \Pr(c \mid c \in P_i),
+\end{equation}
+
+usually \(1/|P_i|\) for uniform finite structural proposals, with represented
+count preserving how many candidates the selected sample stands for.  A producer
+may use \(\Pdf=1\) only for a singleton proposal measure whose represented
+count and target are already normalized to that singleton.  This is the part of
+the machine that must stay boring and explicit.  Otherwise different producer
+families launder incomparable units through the reservoir.
+
+\subsection{Update and Merge}
+
+The update is conventional:
+
+\begin{align}
+  w(c) &= \frac{\Target(c)}{\Pdf(c)},\\
+  \WeightSum &\leftarrow \WeightSum + w(c),\\
+  M &\leftarrow M + m_c,\\
+  P(c\text{ selected}) &= \frac{w(c)}{\WeightSum}.
+\end{align}
+
+The contribution weight is
+
+\begin{equation}
+  C = \frac{\WeightSum}{M\Target(s)}.
+\end{equation}
+
+Merging another reservoir \(r_o\) is allowed only after shifting/re-evaluating
+its selected sample into the target domain.  The merge probability is
+
+\begin{equation}
+  P(r_o\text{ selected}) =
+  \frac{\WeightSum_o}{\WeightSum+\WeightSum_o}.
+\end{equation}
+
+\section{Reuse Validation}
+
+\subsection{Texel-Owned Baseline}
+
+The baseline stores selected field id, travel/depth, normal, confidence,
+target/source-PDF lanes, and RIS stats per pixel row.  Temporal reuse validates
+previous row-3 history by reprojected UV, field id, travel, normal, domain
+validity, and guide confidence.  Spatial reuse samples neighboring rows and
+validates by field id, travel, normal, scalar support, and domain tag.  This is
+stronger than naive TAA, but weaker than native-domain reuse because it cannot
+ask whether the selected sample coordinate still lies inside target support.
+
+\subsection{Native-Domain Reuse}
+
+Native-domain temporal reuse adds three checks:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Support overlap.}  The previous selected coordinate \(u_p\) is
+  transformed into the current domain.  Reuse requires
+  \(T_{p\rightarrow c}(u_p) \in \Omega_c\), or a legal shift that creates a
+  current-domain coordinate.
+
+  \item \textbf{Producer re-evaluation.}  TubeField and SDF samples are
+  re-evaluated at the shifted coordinate.  A stored depth or color is not enough
+  authority; the producer-domain sample must still produce a compatible claim.
+
+  \item \textbf{Measure correction.}  If the shift changes measure, the sample
+  carries a Jacobian or an explicit finite-set/MIS correction.  If no correction
+  is defined, the shift is invalid.
+\end{enumerate}
+
+Spatial reuse follows the same rule with neighbor domains: sample first,
+validate domain mapping second, merge third.  A neighbor row is never a visible
+fallback by itself.
+
+\section{Prototype Evidence}
+
+Figure~\ref{fig:prototype-debug} shows current \Fensalir{} debug captures from
+the row-stage reservoir rebuild.  These captures are not the final evaluation:
+they show the current diagnostic surface and the failure class that motivates
+native-domain state.  The final paper must replace this figure with controlled
+side-by-side comparisons and ablations.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.32\linewidth]{../../artifacts/fensalir-captures/reservoir-rebuild-weighted-final.png}
+\includegraphics[width=0.32\linewidth]{../../artifacts/fensalir-captures/reservoir-rebuild-weighted-proposal.png}
+\includegraphics[width=0.32\linewidth]{../../artifacts/fensalir-captures/reservoir-rebuild-rejection-codes.png}
+\caption{Prototype debug captures from the current shared field reservoir:
+final weighted resolve, proposal debug, and rejection codes.  The key
+observation is not that these prove the method; they expose why support overlap
+and selected producer-domain coordinates must become visible state.}
+\label{fig:prototype-debug}
+\end{figure}
+
+\section{Required Evaluation}
+
+This paper is not submission-ready until the following evaluation exists.
+Reviewers should reject the claim without it.  That sentence stays here until
+the figures and tables replace it.
+
+\subsection{Scenes}
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Occluded spectrum tubes}: dense rolling TubeField columns
+  passing behind/through an SDF occluder.
+  \item \textbf{Mixed SDF and splat surface}: an analytic SDF object with
+  compact splat detail and camera/subpixel motion.
+  \item \textbf{Resolution sweep}: identical field content at multiple output
+  resolutions with fixed world-space support.
+  \item \textbf{Disocclusion stress}: fast camera/object motion exposing and
+  hiding curve/SDF intersections.
+  \item \textbf{Near-equal-depth conflict}: overlapping field claims at similar
+  travel to test RIS selection versus structural occlusion gates.
+\end{enumerate}
+
+\subsection{Baselines}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item raw current-frame rendering without temporal reuse;
+  \item conventional TAA/TSR-style texel history using depth/normal/field-id
+  validation;
+  \item texel-owned field reservoir with target/source-PDF lanes but no
+  selected native coordinate;
+  \item producer-specific TubeField reuse path;
+  \item native-domain reservoir with support/shift metadata.
+\end{itemize}
+
+\subsection{Ablations}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item no selected domain coordinate;
+  \item selected coordinate but no support overlap test;
+  \item support overlap but no producer re-evaluation;
+  \item no measure/Jacobian/MIS correction for shifted samples;
+  \item no confidence/variance feedback to reconstruction;
+  \item no current-frame structural occlusion gate before RIS.
+\end{itemize}
+
+\subsection{Metrics}
+
+The evaluation must report:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item temporal leakage pixels in occluded/background regions;
+  \item ghosting duration after disocclusion;
+  \item support-miss rejection precision/recall against ground-truth producer
+  evaluation;
+  \item resolved image error against high-sample offline or high-budget
+  reference;
+  \item stochastic speckle variance over stable regions;
+  \item GPU time, memory per reservoir row, bandwidth, and candidate counts;
+  \item failure cases where native-domain validation rejects useful history.
+\end{itemize}
+
+\section{Novelty Boundary}
+
+The estimator itself is not novel.  The RIS update is standard.  The idea of
+shift mappings is not novel after \GRIS.  Area support is not novel after
+\AreaReSTIR.  Hierarchical fields are not novel after clipmaps, Nanite, and
+splat hierarchies.
+
+The claimed contribution is their boundary in a mixed field renderer:
+primary-visible field claims from heterogeneous producers share one reservoir
+only if the selected sample stores producer-domain coordinate, support, and
+legal shift metadata.  The reservoir is earlier than a lighting/path reservoir
+and deeper than a texel history cache.  That is the thing the evaluation must
+prove useful.
+
+\section{Limitations}
+
+The contract increases reservoir state.  It may be too expensive for simple
+opaque scenes where conventional velocity/depth history already works.  Target
+normalization across heterogeneous producers is an open risk; bad targets can
+make the reservoir mathematically clean and visually wrong.  Finite structural
+proposal measures must be specified carefully, especially when proxy
+rasterization creates deterministic candidates.  Finally, native-domain
+validation can increase shimmer if it rejects history more aggressively than
+the reconstruction pass can repair.
+
+\section{Conclusion}
+
+The paper lives or dies on one invariant: a reusable field reservoir sample
+must remember where it was selected in its producer domain and what support it
+represents.  Without that, temporal/spatial reuse is a texel-owned cache with
+better vocabulary.  With it, mixed tube/SDF/splat fields can be validated,
+shifted, rejected, reconstructed, and debugged at the layer where the visible
+claim actually lives.  The next implementation pass must build the missing lane
+and produce the baselines, ablations, and images listed above.  Until then, this
+is a sharp claim with unpaid proof obligations, not a finished paper.
+
+\clearpage
+\begin{thebibliography}{20}
+\small
+
+\bibitem{bitterli2020restir}
+B. Bitterli, C. Wyman, M. Pharr, P. Shirley, A. Lefohn, and W. Jarosz.
+\newblock Spatiotemporal reservoir resampling for real-time ray tracing with dynamic direct lighting.
+\newblock \emph{ACM Transactions on Graphics}, 2020.
+\newblock \url{https://research.nvidia.com/labs/rtr/publication/bitterli2020spatiotemporal/}
+
+\bibitem{ouyang2021restirgi}
+Y. Ouyang, S. Liu, M. Kettunen, M. Pharr, and J. Pantaleoni.
+\newblock ReSTIR GI: Path resampling for real-time path tracing.
+\newblock \emph{Computer Graphics Forum}, 2021.
+\newblock \url{https://research.nvidia.com/publication/2021-06_restir-gi-path-resampling-real-time-path-tracing}
+
+\bibitem{lin2022gris}
+D. Lin, M. Kettunen, B. Bitterli, J. Pantaleoni, C. Yuksel, and C. Wyman.
+\newblock Generalized resampled importance sampling: Foundations of ReSTIR.
+\newblock \emph{ACM Transactions on Graphics}, 2022.
+\newblock \url{https://graphics.cs.utah.edu/research/projects/gris/sig22_GRIS.pdf}
+
+\bibitem{zhang2024arearestir}
+S. Zhang, D. Lin, M. Kettunen, C. Yuksel, and C. Wyman.
+\newblock Area ReSTIR: Resampling for real-time defocus and antialiasing.
+\newblock \emph{ACM Transactions on Graphics}, 2024.
+\newblock \url{https://graphics.cs.utah.edu/research/projects/area-restir/AreaReSTIR-SIGGRAPH2024.pdf}
+
+\bibitem{areaRestirCode}
+S. Zhang.
+\newblock Area-ReSTIR source code repository.
+\newblock \url{https://github.com/guiqi134/Area-ReSTIR}
+
+\bibitem{rtxdiRestirGI}
+NVIDIA.
+\newblock RTXDI ReSTIR GI documentation.
+\newblock \url{https://github.com/NVIDIA-RTX/RTXDI/blob/main/Doc/RestirGI.md}
+
+\bibitem{rtxdiRestirPT}
+NVIDIA.
+\newblock RTXDI ReSTIR PT documentation.
+\newblock \url{https://github.com/NVIDIA-RTX/RTXDI/blob/main/Doc/RestirPT.md}
+
+\bibitem{unrealTSR}
+Epic Games.
+\newblock Temporal Super Resolution in Unreal Engine.
+\newblock \url{https://dev.epicgames.com/documentation/unreal-engine/temporal-super-resolution-in-unreal-engine}
+
+\bibitem{unrealTSRFAQ}
+Epic Games.
+\newblock Temporal Super Resolution Frequently Asked Questions.
+\newblock \url{https://dev.epicgames.com/documentation/unreal-engine/temporal-super-resolution-frequently-asked-questions-for-unreal-engine}
+
+\bibitem{hart1996sphere}
+J. C. Hart.
+\newblock Sphere tracing: A geometric method for the antialiased ray tracing of implicit surfaces.
+\newblock \emph{The Visual Computer}, 1996.
+\newblock \url{https://experts.illinois.edu/en/publications/sphere-tracing-a-geometric-method-for-the-antialiased-ray-tracing/}
+
+\bibitem{zwicker2001ewa}
+M. Zwicker, H. Pfister, J. van Baar, and M. Gross.
+\newblock EWA splatting.
+\newblock \emph{IEEE Visualization}, 2001.
+\newblock \url{https://dash.harvard.edu/bitstream/handle/1/4138240/Zwicker_EWA.pdf}
+
+\bibitem{ren2002objectewa}
+L. Ren, H. Pfister, and M. Zwicker.
+\newblock Object space EWA surface splatting.
+\newblock \emph{Computer Graphics Forum}, 2002.
+\newblock \href{https://publications.ri.cmu.edu/object-space-ewa-surface-splatting-a-hardware-accelerated-approach-to-high-quality-point-rendering/}{CMU publication page}
+
+\bibitem{kerbl2023gaussian}
+B. Kerbl, G. Kopanas, T. Leimkuehler, and G. Drettakis.
+\newblock 3D Gaussian Splatting for Real-Time Radiance Field Rendering.
+\newblock \emph{ACM Transactions on Graphics}, 2023.
+\newblock \url{https://arxiv.org/abs/2308.04079}
+
+\bibitem{asirvatham2005gpuclipmaps}
+A. Asirvatham and H. Hoppe.
+\newblock Terrain rendering using GPU-based geometry clipmaps.
+\newblock \emph{GPU Gems 2}, 2005.
+\newblock \url{https://developer.nvidia.com/gpugems/gpugems2/part-i-geometric-complexity/chapter-2-terrain-rendering-using-gpu-based-geometry}
+
+\bibitem{karis2021nanite}
+B. Karis, R. Stubbe, and G. Wihlidal et al.
+\newblock A deep dive into Nanite virtualized geometry.
+\newblock \emph{Advances in Real-Time Rendering}, SIGGRAPH 2021.
+\newblock \url{https://advances.realtimerendering.com/s2021/Karis_Nanite_SIGGRAPH_Advances_2021_final.pdf}
+
+\end{thebibliography}
+
+\end{document}

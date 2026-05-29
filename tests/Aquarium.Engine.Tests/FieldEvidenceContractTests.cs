@@ -75,6 +75,7 @@ public sealed class FieldEvidenceContractTests
                     AquariumFieldEncoding.Tube,
                     AquariumFieldBackendKind.TubeField,
                     support,
+                    proposal,
                     AquariumFieldGuide.Valid(0.91f, sampleAgeSeconds: 0.016f),
                     "rolling-window:asio-ch0:spectrum")
             ],
@@ -101,6 +102,7 @@ public sealed class FieldEvidenceContractTests
             Encoding: AquariumFieldEncoding.Unknown,
             Backend: AquariumFieldBackendKind.DebugOverlay,
             Support: default,
+            Proposal: default,
             Guide: default,
             PayloadHandle: "");
 
@@ -116,6 +118,34 @@ public sealed class FieldEvidenceContractTests
 
         Assert.False(report.HasErrors);
         Assert.Empty(report.Issues);
+    }
+
+    [Fact]
+    public void ValidatorRejectsNonFiniteOrZeroReservoirProposalPolicy()
+    {
+        var frame = BuildValidTubeEvidenceFrame();
+        var badProposal = frame.Claims[0].Proposal with
+        {
+            SourcePdf = float.NaN,
+            TargetContribution = 0.0f,
+        };
+        frame = new AquariumFieldEvidenceFrame
+        {
+            Resources = frame.Resources,
+            Domains = frame.Domains,
+            Claims = [frame.Claims[0] with { Proposal = badProposal }],
+            Candidates = [frame.Candidates[0] with { Proposal = badProposal }],
+            TubeSplineLowerings = frame.TubeSplineLowerings,
+            AccumulationWindowSeconds = frame.AccumulationWindowSeconds,
+            PresentationDelaySeconds = frame.PresentationDelaySeconds,
+        };
+
+        var report = AquariumFieldEvidenceValidator.Validate(frame);
+
+        Assert.True(report.HasErrors);
+        Assert.Contains(report.Issues, issue => issue.Key == "claim:mimir:spectrum:asio-ch0:42");
+        Assert.Contains(report.Issues, issue => issue.Key == "candidate:mimir:spectrum:asio-ch0:42");
+        Assert.Empty(AquariumFieldEvidenceNormalizer.BuildLoweringRequests(frame));
     }
 
     [Fact]
@@ -159,6 +189,7 @@ public sealed class FieldEvidenceContractTests
                     AquariumFieldLayer.Unknown,
                     AquariumFieldEncoding.Unknown,
                     AquariumFieldBackendKind.Unknown,
+                    default,
                     default,
                     default,
                     "")
@@ -408,6 +439,9 @@ public sealed class FieldEvidenceContractTests
         Assert.True(requests[0].IsPendingBackendSelection);
         Assert.Equal("claim:mimir:spectrum:asio-ch0:42", requests[0].ClaimKey);
         Assert.Equal(AquariumFieldEncoding.Tube, requests[0].Encoding);
+        Assert.Equal(frame.Claims[0].Proposal.SourcePdf, requests[0].Proposal.SourcePdf);
+        Assert.Equal(frame.Claims[0].Proposal.TargetContribution, requests[0].Proposal.TargetContribution);
+        Assert.Equal(frame.Claims[0].Proposal.RepresentedCandidateCount, requests[0].Proposal.RepresentedCandidateCount);
     }
 
     [Fact]
@@ -443,6 +477,9 @@ public sealed class FieldEvidenceContractTests
         Assert.Empty(plan.DeferredRequests);
         Assert.Single(plan.Packets);
         Assert.Equal(AquariumFieldBackendKind.TubeField, plan.Packets[0].Backend);
+        Assert.Equal(frame.Claims[0].Proposal.SourcePdf, plan.Packets[0].Proposal.SourcePdf);
+        Assert.Equal(frame.Claims[0].Proposal.TargetContribution, plan.Packets[0].Proposal.TargetContribution);
+        Assert.Equal(frame.Claims[0].Proposal.RepresentedCandidateCount, plan.Packets[0].Proposal.RepresentedCandidateCount);
         Assert.True(plan.Packets[0].IsEvidenceWriter);
     }
 
@@ -769,6 +806,7 @@ tubeclaim id=spectrum-trail resource=spectrum domain=mimir:spectrum:asio-ch0 con
                     AquariumFieldEncoding.Tube,
                     AquariumFieldBackendKind.TubeField,
                     support,
+                    proposal,
                     AquariumFieldGuide.Valid(0.91f, sampleAgeSeconds: 0.016f),
                     "mimir:resource:native-ring:asio-ch0")
             ],

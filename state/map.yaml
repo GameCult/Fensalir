@@ -66,9 +66,10 @@ invariants:
     before they can participate in reusable field evidence.
   - Final composition reads the resolved HDR field texture produced by the
     shared reservoir history update pass. TubeField render lowerings inject
-    opaque SDF candidates into the shared field reservoir; they must not regain
+    visibility proposals into the shared field reservoir; they must not regain
     private final-visibility authority through blend order, proxy depth, a
-    presentation-shader history writer, or a TubeField-local K-buffer.
+    presentation-shader history writer, a TubeField-local K-buffer, or a
+    priority-sorted visibility list.
   - Field packet payload handles are not authority. Resource-backed claims and
     packets must reference declared AquariumFieldResourceDeclaration rows with
     kind, GPU residency, shader access, format, shape, validity, version, and
@@ -202,30 +203,35 @@ next_actions:
     carries a stable field id derived from the planned claim key instead of one
     flat family constant, so temporal/reprojection/reservoir consumers can
     distinguish source-lane claims while preserving the TubeField family range.
-    D3D12 now has the first shared field-reservoir resolve cut: legacy/direct
-    scene contributors render into scene-candidate MRTs, TubeField injects
-    four-slot-per-pixel opaque SDF candidates into a shared UAV, and a
-    fullscreen resolve writes canonical scene color/travel/metadata/control/
-    reservoir-guide lanes. A shared compute pass then updates ping-ponged
-    structured reservoir history, emits the resolved HDR field texture, and
-    bloom/presentation consume that texture without owning history. TubeField
-    candidate discovery is the fixed-function raster path: compute emits
-    conservative GPU-resident segment proxy geometry and indirect draw packets,
-    the proxy raster only schedules covered pixels, the proxy pixel shader
-    analytically intersects the camera ray with the generated tube
-    frustum/cap neighborhood in world space, samples the rolling source buffer
-    for material, and writes candidates directly into the shared field
-    reservoir inlet. Shared reservoir history carries prior opaque field
-    candidates only as latent validation memory across current-frame subpixel
-    misses; unsupported carried rows cannot resolve visible color by
-    themselves. Shared field candidates now include a motion lane. TubeField
-    writes previous history UV and previous travel from rolling-buffer offset
-    motion, encodes physical rolling-column identity into metadata, bypasses
-    raw RGB clamp for tube validation, and uses a gated current-frame spatial
-    fallback/2x2 previous-history search for low-support samples. Reservoir
-    debug modes 13-15 inspect compute-owned rejection/invalidation state,
-    evidence age/confidence, represented sample count, and explicit motion
-    support. The deleted TubeField-local compute
+    D3D12 now has the first real shared field-reservoir spine. The HLSL
+    reservoir ABI is a seven-lane `FieldReservoirSample`
+    colorTravel/metadata/control/guide/motion/proposal/stats record. Proposal
+    stores target, sourcePdf, representedCandidateCount, and proposalKind;
+    stats stores selectedTarget, weightSum, candidateCount, and contribution
+    weight. The four rows per pixel are no longer a private top-four visible
+    list: row 0 is current-frame initial RIS, row 1 is temporal reuse, row 2 is
+    spatial/domain reuse, and row 3 is the final resolved reservoir consumed by
+    bloom/presentation. Direct scene/SDF contributors are normalized into the
+    same deterministic structural one-sample proposal shape as TubeField before
+    RIS merge, so the SDF/scene path and TubeField path share target/sourcePdf
+    and history semantics. TubeField candidate discovery is still the
+    fixed-function raster path: compute emits conservative GPU-resident segment
+    proxy geometry and indirect draw packets, the proxy raster only schedules
+    covered pixels, and the proxy pixel shader analytically intersects the
+    camera ray with the generated tube frustum/cap neighborhood in world space.
+    TubeField now writes a one-sample reservoir proposal into row 0 with target
+    derived from projected coverage, guide confidence, and luminance relevance;
+    sourcePdf is 1.0 for deterministic structural proposals. The old
+    nearest-travel-minus-coverage priority authority is cut from both TubeField
+    injection and final resolve. Shared temporal reuse validates only the
+    previous frame's row-3 final reservoir by field id, travel, normal, domain
+    validity, motion/previous UV, and guide confidence before RIS merge; rejected
+    history cannot become visible fallback by itself. Spatial reuse validates
+    neighboring current reservoirs by field id, travel, normal, support, and
+    domain before merge. Reservoir debug modes 13-15 inspect the compute-owned
+    final/reuse layer: rejection state, selectedTarget, weightSum,
+    candidateCount, proposal target/sourcePdf, and contribution weight. The
+    deleted TubeField-local compute
     ReSTIR/tile-bin path is not a live authority, fallback, or hidden mode. Any
     future temporal/spatial reuse for tubes must extend the shared reservoir
     organ rather than resurrecting a payload-local reservoir renderer.

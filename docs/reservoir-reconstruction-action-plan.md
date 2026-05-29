@@ -32,23 +32,40 @@ Reference anchors:
   sample count controls minimum current-frame contribution.
   https://dev.epicgames.com/documentation/unreal-engine/temporal-super-resolution-frequently-asked-questions-for-unreal-engine
 
-## Current Failure
+## Previous Failure
 
 The live reservoir history pass is too forgiving. It can carry previous field
 candidates into the current frame even when the current pixel has no supporting
 scene or field candidate. That creates harsh ghosts on the background and lets
 old occluded tubes leak through nearby missed tube samples.
 
-## Implemented Cut: 2026-05-29
+## Rebuilt Cut: 2026-05-29
 
-- Carried history is now latent validation memory. It may remain in structured
-  history rows with decayed confidence, but it cannot win visible resolve unless
-  current-frame evidence validates it.
-- Current-frame spatial fallback is allowed only when the pixel has local latent
-  history to adjudicate, avoiding a full-screen background scan.
-- Shared field reservoir candidates now include a motion lane. TubeField writes
-  previous history UV and expected previous travel from rolling-buffer offset
-  motion.
+- The shared GPU reservoir ABI is now `FieldReservoirSample`, not
+  `FieldReservoirCandidate`. Its lanes are colorTravel, metadata, control,
+  guide, motion, proposal, and stats.
+- Proposal stores target, sourcePdf, representedCandidateCount, and
+  proposalKind. Stats stores selectedTarget, weightSum, candidateCount, and
+  contributionWeight.
+- The four rows per pixel have explicit ownership: row 0 current-frame initial
+  RIS, row 1 temporal reuse, row 2 spatial/domain reuse, row 3 final resolved
+  reservoir.
+- TubeField no longer replaces "worst" slots by nearest-travel-minus-coverage
+  priority. Proxy rasterization only generates proposals; row 0 owns RIS merge.
+- Direct scene/SDF evidence is normalized into the same one-sample proposal
+  shape as TubeField before merge.
+- RIS update uses `weight = target / sourcePdf`; merge selection uses
+  `other.weightSum / (current.weightSum + other.weightSum)`; contribution
+  weight is `weightSum / (candidateCount * selectedTarget)`.
+- Carried history is validation input only. It cannot become visible fallback by
+  itself.
+- Temporal reuse validates only previous row-3 final reservoirs by field id,
+  travel, normal, domain validity, motion/previous UV, and guide confidence
+  before merge.
+- Spatial reuse validates neighboring current reservoirs by field id, travel,
+  normal, support, and domain before merge.
+- TubeField writes previous history UV and expected previous travel from
+  rolling-buffer offset motion.
 - TubeField metadata includes physical rolling-column identity, so different
   age columns from the same source lane cannot validate as the same surface.
 - TubeField samples without explicit motion do not fall back to generic
@@ -56,46 +73,43 @@ old occluded tubes leak through nearby missed tube samples.
 - TubeField validation bypasses raw RGB neighborhood clamp and relaxes coverage
   continuity; travel, physical-column identity, normal agreement, and support
   now own reuse.
-- Low-support TubeField samples may search a 2x2 previous-history footprint so
-  subpixel jitter can find nearby valid history without paying for a 3x3 search
-  across every tube pixel.
-- Debug modes 13-15 now inspect the compute-owned reservoir result rather than
-  old current-frame guide textures: rejection/invalidation state, evidence
-  age/confidence, and explicit motion support.
-- Explicit-motion candidates now track represented sample count separately from
-  history age in the motion lane. TubeField history authority can ramp from
-  accumulated evidence instead of treating age alone as trust.
+- Debug modes 13-15 inspect the compute-owned reservoir result rather than old
+  current-frame guide textures: rejection state, selectedTarget, weightSum,
+  candidateCount, proposal target/sourcePdf, and contribution weight.
+- Field evidence lowering now preserves proposal policy through backend packets,
+  and validation rejects zero or non-finite target/sourcePdf before backend
+  emission.
 
 ## Authority Map
 
-- Owner: `D3D12ReservoirHistoryUpdateCS` owns visible field-history contribution.
-- Inputs: current shared field candidates, current scene candidate, previous
-  reservoir rows, camera reprojection inputs, current metadata/control/guide.
-- Outputs: next reservoir history rows and resolved HDR field texture.
-- Derived state: carried history rows are latent validation memory, not visible
-  evidence by themselves.
-- Forbidden writers: TubeField, presentation, and raw carried history rows must
-  not decide final color without current support or validated reprojection.
-- Shared path: direct scene candidates, TubeField candidates, SDF candidates,
-  and future field producers must all pass through the same support/rejection
-  policy.
-- Deletion line: remove visible priority for unsupported carried candidates
-  before adding new reconstruction heuristics.
+- Owner: `D3D12ReservoirHistoryUpdateCS` owns temporal/spatial reuse and row-3
+  final reservoir output; `D3D12FieldReservoirResolvePS` owns only current-frame
+  normalization and initial RIS merge.
+- Inputs: scene/SDF MRT evidence, TubeField row-0 proposals, previous row-3
+  final reservoirs, camera reprojection inputs, current metadata/control/guide.
+- Outputs: row 0 current, row 1 temporal, row 2 spatial, row 3 final, plus the
+  resolved HDR field texture.
+- Derived state: proxy raster output and scene MRTs are proposal inputs; carried
+  history rows are validation inputs; debug guide lanes are diagnostics.
+- Forbidden writers: TubeField proxy rasterization, presentation, prior history
+  rows, and priority-sorted visibility buffers must not decide final color.
+- Shared path: direct scene/SDF, TubeField, and future producers must emit
+  target/sourcePdf/represented proposal state before reservoir update/reuse.
+- Deletion line: the old nearest-travel-minus-coverage replacement path is gone
+  from TubeField injection and final resolve.
 
 ## Action Items
 
-1. Done: stop unsupported carried history from resolving visibly.
-2. Done: split latent history storage from current-frame contribution.
-3. Done: add TubeField previous-position/motion mapping for rolling-buffer deformation.
-4. Done: emit TubeField previous-UV/previous-travel guide data.
-5. Partial: add disocclusion and occlusion rejection against nearer current candidates.
-6. Partial: make TubeField support deterministic enough for validation even when
-   stochastic material/sample jitter misses.
-7. Partial: replace raw RGB neighborhood clamp with field/depth-aware clamp.
-8. Done: add a current-frame spatial fallback for rejected history.
-9. Done: track represented/accumulated sample count separately from age.
-10. Partial: add TSR-style debug views for current support, occupancy, reprojection,
-    disocclusion, rejection, clamp, unsupported carry, sample count, and final
-    history weight.
-11. Defer history resurrection until support, motion, rejection, and spatial
-    fallback are correct.
+1. Done: cut unsupported carried history from visible fallback.
+2. Done: cut top-four visibility candidate rows.
+3. Done: add proposal/stats lanes and RIS merge math.
+4. Done: make TubeField and scene/SDF share one-sample proposal normalization.
+5. Done: assign row 0/1/2/3 to current/temporal/spatial/final reservoir stages.
+6. Done: preserve proposal policy through field evidence lowering/backend
+   packets and reject invalid proposal weights.
+7. Partial: expose every requested TSR diagnostic as a named UI label; the GPU
+   data is present in modes 13-15, but the debug UI still uses older labels.
+8. Partial: tune occlusion/disocclusion thresholds against fresh captures after
+   this architecture cut.
+9. Next: capture final color and row-3 debug views against the noisy/occlusion
+   screenshot class and tune target/support policy from those diagnostics.

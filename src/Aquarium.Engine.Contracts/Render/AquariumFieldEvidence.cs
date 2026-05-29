@@ -182,8 +182,10 @@ public readonly record struct AquariumFieldProposalPolicy(
 {
     public bool IsValid =>
         Kind != AquariumFieldProposalKind.Unknown &&
+        float.IsFinite(SourcePdf) &&
+        float.IsFinite(TargetContribution) &&
         SourcePdf > 0.0f &&
-        TargetContribution >= 0.0f &&
+        TargetContribution > 0.0f &&
         RepresentedCandidateCount > 0;
 }
 
@@ -249,6 +251,7 @@ public readonly record struct AquariumFieldBackendPacket(
     AquariumFieldEncoding Encoding,
     AquariumFieldBackendKind Backend,
     AquariumFieldSupport Support,
+    AquariumFieldProposalPolicy Proposal,
     AquariumFieldGuide Guide,
     string PayloadHandle)
 {
@@ -259,6 +262,7 @@ public readonly record struct AquariumFieldBackendPacket(
         Layer != AquariumFieldLayer.Unknown &&
         Encoding != AquariumFieldEncoding.Unknown &&
         Backend != AquariumFieldBackendKind.Unknown &&
+        Proposal.IsValid &&
         Support.HasSupport;
 }
 
@@ -579,18 +583,20 @@ public readonly record struct AquariumFieldLoweringRequest(
     string DomainKey,
     AquariumFieldLayer Layer,
     AquariumFieldEncoding Encoding,
-    AquariumFieldProposalKind ProposalKind,
+    AquariumFieldProposalPolicy Proposal,
     AquariumFieldSupport Support,
     AquariumFieldGuide Guide,
     string PayloadHandle)
 {
+    public AquariumFieldProposalKind ProposalKind => Proposal.Kind;
+
     public bool IsPendingBackendSelection =>
         !string.IsNullOrWhiteSpace(RequestKey) &&
         !string.IsNullOrWhiteSpace(ClaimKey) &&
         !string.IsNullOrWhiteSpace(DomainKey) &&
         Layer != AquariumFieldLayer.Unknown &&
         Encoding != AquariumFieldEncoding.Unknown &&
-        ProposalKind != AquariumFieldProposalKind.Unknown &&
+        Proposal.IsValid &&
         Support.HasSupport &&
         Guide.IsReusable;
 }
@@ -891,7 +897,7 @@ public static class AquariumFieldEvidenceNormalizer
                 DomainKey: claim.DomainKey,
                 Layer: claim.Layer,
                 Encoding: claim.Encoding,
-                ProposalKind: claim.Proposal.Kind,
+                Proposal: claim.Proposal,
                 Support: claim.Support,
                 Guide: candidate.Guide,
                 PayloadHandle: claim.PayloadHandle));
@@ -955,6 +961,7 @@ public static class AquariumFieldLoweringPlanner
                 Encoding: request.Encoding,
                 Backend: backend,
                 Support: request.Support,
+                Proposal: request.Proposal,
                 Guide: request.Guide,
                 PayloadHandle: request.PayloadHandle));
         }

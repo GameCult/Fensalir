@@ -24,14 +24,7 @@ struct TubeFieldSegment
     float4 tubeData;
 };
 
-struct FieldReservoirCandidate
-{
-    float4 colorTravel;
-    float4 metadata;
-    float4 control;
-    float4 reservoirGuide;
-    float4 motion;
-};
+#include "D3D12FieldReservoir.hlsli"
 
 cbuffer AquariumFrame : register(b0)
 {
@@ -87,9 +80,8 @@ RWStructuredBuffer<uint> TubeFieldIndices : register(u11);
 RWStructuredBuffer<uint> TubeFieldStats : register(u12);
 RWStructuredBuffer<uint> TubeFieldDrawArguments : register(u13);
 RWStructuredBuffer<TubeFieldSegment> TubeFieldSegments : register(u16);
-static const uint FieldReservoirSlotsPerPixel = 4u;
 
-RWStructuredBuffer<FieldReservoirCandidate> FieldReservoirCandidates : register(u14);
+RWStructuredBuffer<FieldReservoirSample> FieldReservoirCandidates : register(u14);
 RWByteAddressBuffer FieldReservoirLocks : register(u15);
 
 uint PositiveModulo(int value, uint modulo)
@@ -662,26 +654,7 @@ float blueNoiseAt(float2 pixel, uint salt)
     return TubeFieldBlueNoise.Load(int3(coord, 0));
 }
 
-bool candidateIsValid(FieldReservoirCandidate candidate)
-{
-    return candidate.metadata.x > 0.5 &&
-        candidate.colorTravel.w > 0.0 &&
-        candidate.colorTravel.w <= farDistance &&
-        saturate(candidate.control.x) > 0.0 &&
-        saturate(candidate.reservoirGuide.z) > 0.0;
-}
-
-float candidatePriority(FieldReservoirCandidate candidate)
-{
-    if (!candidateIsValid(candidate))
-    {
-        return 1.0e20;
-    }
-
-    return candidate.colorTravel.w - saturate(candidate.control.x) * 0.025;
-}
-
-void injectFieldReservoirCandidate(FieldReservoirCandidate candidate, float2 pixel)
+void injectFieldReservoirSample(FieldReservoirSample sample, float2 pixel)
 {
     uint2 clampedPixel = min((uint2)max(pixel, float2(0.0, 0.0)), (uint2)max(resolution - 1.0, float2(0.0, 0.0)));
     uint pixelIndex = clampedPixel.y * (uint)max(resolution.x, 1.0) + clampedPixel.x;
@@ -706,25 +679,12 @@ void injectFieldReservoirCandidate(FieldReservoirCandidate candidate, float2 pix
     }
 
     uint baseIndex = pixelIndex * FieldReservoirSlotsPerPixel;
-    float priorityNew = candidatePriority(candidate);
-    float worstPriority = -1.0;
-    uint worstSlot = 0u;
-
-    [unroll]
-    for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
-    {
-        float priority = candidatePriority(FieldReservoirCandidates[baseIndex + slot]);
-        if (priority > worstPriority)
-        {
-            worstPriority = priority;
-            worstSlot = slot;
-        }
-    }
-
-    if (priorityNew < worstPriority)
-    {
-        FieldReservoirCandidates[baseIndex + worstSlot] = candidate;
-    }
+    FieldReservoirSample current = FieldReservoirCandidates[baseIndex + FieldReservoirRowCurrent];
+    FieldReservoirCandidates[baseIndex + FieldReservoirRowCurrent] = mergeFieldReservoirSamples(
+        current,
+        sample,
+        fieldReservoirRandom01(clampedPixel, (uint)frameIndex, 211u + (uint)round(sample.metadata.x)),
+        farDistance);
 
     FieldReservoirLocks.Store(lockAddress, 0u);
 }
@@ -918,12 +878,17 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     output.control = float4(claimCoverage, coverage, saturate(radiusWorld / max(viewRadius, 0.0001)), value);
     output.reservoirGuide = float4(claimCoverage, 0.0, coverage, value);
     output.depth = saturate(travel / max(farDistance, 0.0001));
-    FieldReservoirCandidate candidate;
-    candidate.colorTravel = output.colorTravel;
-    candidate.metadata = output.metadata;
-    candidate.control = output.control;
-    candidate.reservoirGuide = output.reservoirGuide;
-    candidate.motion = motion;
-    injectFieldReservoirCandidate(candidate, baseSamplePx);
+    float target = fieldReservoirDefaultTarget(output.colorTravel, output.control, output.reservoirGuide);
+    FieldReservoirSample sample = makeFieldReservoirSample(
+        output.colorTravel,
+        output.metadata,
+        output.control,
+        output.reservoirGuide,
+        motion,
+        target,
+        1.0,
+        1.0,
+        FieldProposalKindDeterministicStructural);
+    injectFieldReservoirSample(sample, baseSamplePx);
     return output;
 }

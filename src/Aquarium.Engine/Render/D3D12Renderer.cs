@@ -44,8 +44,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int MaxTubeFieldIndices = MaxTubeFieldSegments * 6;
     private const int MaxTubeFieldDrawBatches = 4_096;
     private const int FieldReservoirSlotsPerPixel = 4;
-    private const int FieldReservoirCandidateStrideBytes = 80;
-    private const int FieldReservoirHistoryStrideBytes = 80;
+    private const int FieldReservoirCandidateStrideBytes = 112;
+    private const int FieldReservoirHistoryStrideBytes = 112;
     private const int GeneratedMeshDrawArgumentUIntCount = 5;
     private const int GeneratedMeshDrawArgumentBytes = GeneratedMeshDrawArgumentUIntCount * sizeof(uint);
     private const float SurfaceTransparentMinZ = -1.85f;

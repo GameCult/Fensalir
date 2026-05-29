@@ -18,6 +18,9 @@ historical branch scar.
 - `papers/fensalir-native-domain-reservoirs.tex`: focused SIGGRAPH-shaped
   draft around the single testable invariant that reusable mixed-field samples
   must carry native-domain coordinates, support, and legal shift metadata.
+- `perfect-fensalir-machine-roadmap.md`: implementation roadmap from the
+  focused native-domain reservoir proof through fractal hierarchy, residency,
+  sensor/flow organs, and learned priority.
 - `perfect-machine-architecture.md`: end-to-end map for authored/sensor field
   input, domain binding, evidence candidates, reservoir reuse, residency, and
   renderer lowering.

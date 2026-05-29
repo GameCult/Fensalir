@@ -116,6 +116,10 @@ invariants:
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.
   - Keep `dotnet build Fensalir.sln` green after the split.
+  - Use docs/perfect-fensalir-machine-roadmap.md as the controlling
+    implementation roadmap. The first proof is native-domain reservoir state
+    for mixed TubeField/SDF/splat reuse; broader fractal, sensor, flow,
+    residency, and learned-priority work waits behind that gate.
   - Cut the rendering rebuild through explicit field-domain/field-claim
     contracts before adding another backend-specific visual path.
   - Before more occlusion-threshold tuning, update the live GPU reservoir ABI or

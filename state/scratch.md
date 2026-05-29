@@ -2,8 +2,8 @@
 
 ## Current Slice
 
-Reorient the reservoir rebuild around the fractal domain reservoir, not
-screen-space texel rows.
+Implement the first Perfect Fensalir Machine roadmap packet: add native-domain
+sample coordinate/support authority to the shared field reservoir.
 
 ## Hot Lesson
 
@@ -20,10 +20,16 @@ by pixel, travel, field id, guide, proposal, and stats is still too texel-like.
 
 ## Next Bounded Move
 
-Before tuning occlusion thresholds, add or repack reservoir state so TubeField
-and SDF proposals carry selected subpixel/domain coordinate plus support. Then
-make temporal/spatial debug views show support overlap, shift legality, and
-selected domain sample position.
+Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1 and the immediate
+work packet:
+
+1. Add or repack `FieldReservoirSample` with selected domain/sample coordinate
+   and support footprint.
+2. Write TubeField row-0 selected subpixel/source/curve support.
+3. Write SDF row-0 selected hit/domain support.
+4. Add debug modes for selected coordinate, support overlap, and shift kind.
+5. Implement temporal support-overlap validation before further threshold
+   tuning.
 
 ## Verification
 

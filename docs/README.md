@@ -21,6 +21,9 @@ historical branch scar.
 - `temporal-spatial-evidence-reservoir.md`: stable-key temporal evidence cache
   for fractal rendering, Mimir-style sensor fusion, direct SDF contributors,
   and mesh-backed field evidence.
+- `fractal-domain-reservoir.md`: Area ReSTIR/TSR reorientation for the Perfect
+  Machine reservoir as a domain-native evidence organ rather than a
+  screen-space texel cache.
 - `temporal-sdf-gaussian-field.md`: temporal Form-field evidence lane.
 - `tsr-inspired-taa-spec.md`: temporal resolve design and guide-buffer intent.
 - `stochastic-transparent-surface-pipeline.md`: density/extinction and

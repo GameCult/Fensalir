@@ -31,6 +31,24 @@ Reference anchors:
   increases current-frame authority when history is untrustworthy; history
   sample count controls minimum current-frame contribution.
   https://dev.epicgames.com/documentation/unreal-engine/temporal-super-resolution-frequently-asked-questions-for-unreal-engine
+- Area ReSTIR: reservoir samples over pixel/lens/filter area domains must store
+  selected sample coordinates and support, then reuse by overlap, shifting,
+  visibility/PDF validation, and MIS/Jacobian accounting where required.
+  https://graphics.cs.utah.edu/research/projects/area-restir/
+
+## Higher-Level Reorientation
+
+The rebuild target is not a better screen-space reservoir. The target is the
+fractal domain reservoir described by the Perfect Machine architecture:
+semantic field and radiance claims lower from DSL/producers into a dynamic
+contribution tree, are probed under bounded stochastic budgets, become
+reservoir proposals, and are then reprojected, pruned, shifted, resampled, and
+reconstructed every frame.
+
+Per-pixel rows are an execution ABI for the current D3D12 resolve. They are not
+the foundation. Sampling must remain decoupled from output resolution: lower
+frame budgets reduce probes, node depth, candidate count, and reconstruction
+quality, but they do not move authority back to texels.
 
 ## Previous Failure
 
@@ -139,3 +157,9 @@ old occluded tubes leak through nearby missed tube samples.
    and visibility cuts.
 12. Next: capture final color and row-3 debug views against the noisy/occlusion
    screenshot class and tune target/support policy from those diagnostics.
+13. Next: add or repack a domain/sample-coordinate lane. TubeField and SDF
+    proposals must carry selected subpixel/domain coordinates plus support
+    before temporal/spatial reuse is tuned further.
+14. Next: make debug modes expose selected domain sample position, support
+    overlap, shift legality, and whether rejection came from support miss,
+    occlusion/disocclusion, field mismatch, or invalid producer-domain mapping.

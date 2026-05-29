@@ -61,6 +61,15 @@ belong to the shared spatiotemporal field reservoir.
   Sources:
   https://github.com/NVIDIA-RTX/RTXDI/blob/main/Doc/RestirGI.md
   https://github.com/NVIDIA-RTX/RTXDI/blob/main/Doc/RestirPT.md
+- Area ReSTIR is the missing area-domain reference. It stores the selected
+  sample's actual pixel/lens coordinates and reuses history only when the
+  previous sample lies in, or can be shifted into, the target support with valid
+  target/PDF/visibility/Jacobian accounting. For Fensalir this generalizes to
+  TubeField, SDF, mesh, volume, sensor, and fractal-domain support: selected
+  domain coordinates are part of reservoir identity, not optional debug data.
+  Sources:
+  https://graphics.cs.utah.edu/research/projects/area-restir/
+  https://github.com/guiqi134/Area-ReSTIR
 
 ## Fensalir Divergence
 
@@ -86,6 +95,14 @@ filters the resolved reservoir; it does not repair it. If a field surface only
 becomes stable because a downstream pixel-history pass smears unstable pixels
 until they look acceptable, the field producer or reservoir validation is
 wrong.
+
+The next divergence is more important: the reservoir is not fundamentally a
+screen-space texel structure. Texel rows are the current GPU execution surface.
+The actual reservoir domain is fractal and field-native: semantic claims lower
+through ownership trees, conservative summaries, stochastic contribution
+caches, and bounded proposals before a per-frame row projection exists. Pixel
+resolution is therefore a budget and resolve target, not the source of sampling
+truth.
 
 ## Pipeline Map
 
@@ -113,6 +130,17 @@ producer observations
 - number of source candidates represented by the reservoir;
 - selected sample target value;
 - final contribution weight `weightSum / (candidateCount * selectedTarget)`.
+
+The sample type owns selected domain identity:
+
+- domain key and producer kind;
+- selected coordinate inside the domain, including subpixel or local support
+  coordinates when the producer has area support;
+- support/filter footprint and conservative bounds;
+- legal shift/reconnection metadata needed by temporal and spatial reuse.
+
+If those values are absent, the reservoir cannot prove area-domain reuse. It
+may still be a useful cache, but it is not the Perfect Machine reservoir.
 
 Candidate generators own proposal distributions. A fractal renderer may propose
 form probe candidates from projected error, node bounds, blue-noise screen
@@ -236,6 +264,11 @@ LOD pressure, or route oversized fields through the reservoir path.
 - Reservoir math is a pure, testable core before it becomes HLSL.
 - A reservoir is not a dictionary of tracks. A track layer may use reservoirs,
   but it does not replace candidate resampling.
+- A reservoir is not a texel dictionary either. Pixel rows are row-stage
+  projections of selected domain evidence; they do not define the native
+  sampling domain.
+- Selected sample coordinates and support are part of reservoir identity for
+  any area, tube, SDF, volume, sensor, or fractal-domain contributor.
 - Reuse is invalid until a pass proves the shift/validation contract for the
   source and target domains.
 - Conservative bounds remain the safety authority. Learned or stochastic

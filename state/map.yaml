@@ -60,6 +60,14 @@ invariants:
     terrain should be a quadtree of brush-painted surface tiles, subdivided by
     projected footprint, curvature, brush/material detail, silhouettes, and
     temporal uncertainty before SDF probes emit detail-adaptive surface splats.
+  - The shared reservoir is a fractal domain reservoir, not a texel cache.
+    Pixel rows are the current D3D12 execution projection of selected domain
+    evidence. Area-domain contributors must carry selected subpixel or local
+    domain coordinates, support/filter footprint, proposal policy, and legal
+    shift/reconnection metadata before temporal or spatial reuse can claim
+    authority. Sampling budget may scale with target frame time and resolution,
+    but identity, support, contribution mass, and visibility authority remain
+    domain-native.
   - Rendering backends are lowerings, not truth owners. Heightfields, splines,
     direct SDF proxies, meshes, volumes, fractal probes, and Mimir sensor
     observations must publish bounded Form/Appearance/Transport field claims
@@ -110,6 +118,10 @@ next_actions:
   - Keep `dotnet build Fensalir.sln` green after the split.
   - Cut the rendering rebuild through explicit field-domain/field-claim
     contracts before adding another backend-specific visual path.
+  - Before more occlusion-threshold tuning, update the live GPU reservoir ABI or
+    packing plan so TubeField and SDF proposals include selected
+    domain/sample-coordinate and support data. Then debug temporal/spatial reuse
+    in terms of support overlap and legal shifts, not nearest previous texels.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then

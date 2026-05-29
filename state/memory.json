@@ -53,6 +53,7 @@
     "fractal_field_architecture": [
       "The Perfect Machine field architecture lives in docs/perfect-machine-architecture.md. It is the design authority before expanding SDF splat backends, sensor-fusion adapters, reservoir guide buffers, occupancy graph state, resource residency, or learned priority.",
       "The consolidated fractal brush architecture lives in research/rendering/fractal-brush-architecture-plan.md. Pipeline: client intent -> domain roots -> semantic IFS brush grammar -> ownership tree -> node summaries -> contribution cache/residency scheduler -> backend packets -> renderer passes -> debug/evidence.",
+      "The fractal domain reservoir doctrine lives in docs/fractal-domain-reservoir.md. Area ReSTIR makes selected sample coordinates and support part of reservoir identity; TSR-style reconstruction then consumes that validated domain evidence. Pixel rows are execution projections, not the native sampling domain.",
       "The actionable implementation checklist lives in research/rendering/fractal-brush-implementation-roadmap.md.",
       "The .aquageo DSL carries semantic domains and Form claims before backend lowering. Height, SignedDistance, Density, and Extinction must not be collapsed into one payload lane.",
       "Fractal summaries carry FormEncodingMask so selected-cut structural probes do not silently default transparent form nodes back into SDF.",
@@ -86,6 +87,7 @@
     "research_notes": [
       "Renderer notes live under docs/ and research/rendering/ in this repo after the split.",
       "docs/perfect-machine-architecture.md is the broad field/reservoir architecture authority.",
+      "docs/fractal-domain-reservoir.md records the Area ReSTIR/TSR reorientation: Fensalir's reservoir is domain-native and resolution-decoupled, with texel rows only as current D3D12 resolve ABI.",
       "docs/temporal-spatial-evidence-reservoir.md owns the stable-key temporal evidence cache contract.",
       "docs/temporal-sdf-gaussian-field.md is historically named but now represents temporal Form-field evidence, not only SDF surfaces.",
       "research/rendering/fractal-reference-oracles.md owns flame/IFS external reference strategy.",

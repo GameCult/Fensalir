@@ -82,12 +82,24 @@ old occluded tubes leak through nearby missed tube samples.
 - Field evidence lowering now preserves proposal policy through backend packets,
   and validation rejects zero or non-finite target/sourcePdf before backend
   emission.
+- `D3D12FieldReservoirResolvePS` is demoted to a raw scene/SDF MRT carry pass.
+  It no longer calls the current-frame reservoir merge or imports TubeField
+  row-0 proposals. `D3D12ReservoirHistoryUpdateCS` is the only owner of row-0
+  current RIS merge, then temporal, spatial, row-3 final, and resolved HDR
+  field texture output.
+- TubeField separates conservative proxy discovery from reservoir support.
+  The proxy envelope can be broad enough to find analytic hits, but the emitted
+  proposal uses a narrow core support coverage for target/control/guide.
+- Current-frame visibility proposals now reject materially farther structural
+  samples before RIS merge. Near-equal-depth samples still use RIS; occluded
+  samples no longer compete merely because they have high luminance.
 
 ## Authority Map
 
 - Owner: `D3D12ReservoirHistoryUpdateCS` owns temporal/spatial reuse and row-3
-  final reservoir output; `D3D12FieldReservoirResolvePS` owns only current-frame
-  normalization and initial RIS merge.
+  final reservoir output. It also owns row-0 current-frame RIS merge.
+  `D3D12FieldReservoirResolvePS` owns only raw scene/SDF MRT carry-forward into
+  the compute-owned history update; it has no proposal selection authority.
 - Inputs: scene/SDF MRT evidence, TubeField row-0 proposals, previous row-3
   final reservoirs, camera reprojection inputs, current metadata/control/guide.
 - Outputs: row 0 current, row 1 temporal, row 2 spatial, row 3 final, plus the
@@ -95,7 +107,8 @@ old occluded tubes leak through nearby missed tube samples.
 - Derived state: proxy raster output and scene MRTs are proposal inputs; carried
   history rows are validation inputs; debug guide lanes are diagnostics.
 - Forbidden writers: TubeField proxy rasterization, presentation, prior history
-  rows, and priority-sorted visibility buffers must not decide final color.
+  rows, fullscreen resolve, and priority-sorted visibility buffers must not
+  decide final color.
 - Shared path: direct scene/SDF, TubeField, and future producers must emit
   target/sourcePdf/represented proposal state before reservoir update/reuse.
 - Deletion line: the old nearest-travel-minus-coverage replacement path is gone
@@ -115,7 +128,14 @@ old occluded tubes leak through nearby missed tube samples.
    unsupported instead of masquerading as accepted history. Rejection mode now
    separates temporal rejection, disocclusion/no previous support, spatial
    reuse, missing explicit motion, occlusion, and field-id mismatch.
-8. Partial: tune occlusion/disocclusion thresholds against fresh captures after
+8. Done: cut the surviving split owner where fullscreen resolve merged
+   current-frame proposals before the compute history pass merged them again.
+9. Done: add a current-frame visibility gate before RIS so farther structural
+   samples do not compete as visible proposals at the same pixel.
+10. Partial: tune occlusion/disocclusion thresholds against fresh captures after
    this architecture cut.
-9. Next: capture final color and row-3 debug views against the noisy/occlusion
+11. Next: add row-stage debug probes or tighten producer support semantics for
+   TubeField; fresh captures still show broad support bands after the ownership
+   and visibility cuts.
+12. Next: capture final color and row-3 debug views against the noisy/occlusion
    screenshot class and tune target/support policy from those diagnostics.

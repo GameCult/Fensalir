@@ -680,7 +680,7 @@ void injectFieldReservoirSample(FieldReservoirSample sample, float2 pixel)
 
     uint baseIndex = pixelIndex * FieldReservoirSlotsPerPixel;
     FieldReservoirSample current = FieldReservoirCandidates[baseIndex + FieldReservoirRowCurrent];
-    FieldReservoirCandidates[baseIndex + FieldReservoirRowCurrent] = mergeFieldReservoirSamples(
+    FieldReservoirCandidates[baseIndex + FieldReservoirRowCurrent] = mergeFieldReservoirVisibilityProposals(
         current,
         sample,
         fieldReservoirRandom01(clampedPixel, (uint)frameIndex, 211u + (uint)round(sample.metadata.x)),
@@ -831,9 +831,9 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     float closestT = baseHit.axisT;
     float radiusWorld = baseHit.radius;
     float3 tubeNormal = baseHit.normal;
-    float aa = max(fwidth(baseSdf), max(0.75, baseRadiusPx * max(input.feather, 0.0)));
-    float coverage = 1.0 - smoothstep(0.0, aa, baseSdf);
-    if (coverage > 0.02 && jitterSdf <= aa)
+    float supportAa = max(0.55, min(baseRadiusPx * 0.18, 1.75));
+    float supportCoverage = 1.0 - smoothstep(0.0, supportAa, baseSdf);
+    if (supportCoverage > 0.02 && jitterSdf <= supportAa)
     {
         closestT = lerp(baseHit.axisT, jitterClosestT, 0.35);
     }
@@ -845,7 +845,7 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     float normalFacing = saturate(-dot(ray, tubeNormal));
     float glowFacing = pow(normalFacing, max(input.material.z, 0.0001));
     float alphaFacing = pow(normalFacing, max(input.material.w, 0.0001));
-    float claimCoverage = saturate(input.color.a * coverage * alphaFacing);
+    float claimCoverage = saturate(input.color.a * supportCoverage * alphaFacing);
     if (claimCoverage <= 0.004)
     {
         discard;
@@ -875,8 +875,8 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     output.colorTravel = float4(color, min(travel, farDistance + 1.0));
     float candidateFieldId = abs(input.tubeData.w) + (float)PhysicalColumnWithOffset((uint)round(input.tubeData.x), currentRollingOffset) * 0.01;
     output.metadata = float4(candidateFieldId, tubeNormal);
-    output.control = float4(claimCoverage, coverage, saturate(radiusWorld / max(viewRadius, 0.0001)), value);
-    output.reservoirGuide = float4(claimCoverage, 0.0, coverage, value);
+    output.control = float4(claimCoverage, supportCoverage, saturate(radiusWorld / max(viewRadius, 0.0001)), value);
+    output.reservoirGuide = float4(claimCoverage, 0.0, supportCoverage, value);
     output.depth = saturate(travel / max(farDistance, 0.0001));
     float target = fieldReservoirDefaultTarget(output.colorTravel, output.control, output.reservoirGuide);
     FieldReservoirSample sample = makeFieldReservoirSample(

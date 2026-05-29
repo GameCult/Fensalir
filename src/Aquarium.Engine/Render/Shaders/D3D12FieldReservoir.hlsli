@@ -169,3 +169,32 @@ FieldReservoirSample mergeFieldReservoirSamples(
     merged.guide.z = saturate(min(current.guide.z, other.guide.z));
     return merged;
 }
+
+FieldReservoirSample mergeFieldReservoirVisibilityProposals(
+    FieldReservoirSample current,
+    FieldReservoirSample other,
+    float rng,
+    float farTravel)
+{
+    bool currentValid = fieldReservoirSampleValid(current, farTravel);
+    bool otherValid = fieldReservoirSampleValid(other, farTravel);
+    if (!currentValid || !otherValid)
+    {
+        return mergeFieldReservoirSamples(current, other, rng, farTravel);
+    }
+
+    float nearTravel = min(current.colorTravel.w, other.colorTravel.w);
+    float visibilityTolerance = max(0.025, nearTravel * 0.006);
+    float travelDelta = abs(current.colorTravel.w - other.colorTravel.w);
+    if (travelDelta > visibilityTolerance)
+    {
+        if (current.colorTravel.w <= other.colorTravel.w)
+        {
+            return current;
+        }
+
+        return other;
+    }
+
+    return mergeFieldReservoirSamples(current, other, rng, farTravel);
+}

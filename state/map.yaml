@@ -213,8 +213,11 @@ next_actions:
     spatial/domain reuse, and row 3 is the final resolved reservoir consumed by
     bloom/presentation. Direct scene/SDF contributors are normalized into the
     same deterministic structural one-sample proposal shape as TubeField before
-    RIS merge, so the SDF/scene path and TubeField path share target/sourcePdf
-    and history semantics. TubeField candidate discovery is still the
+    RIS merge inside `D3D12ReservoirHistoryUpdateCS`, so the SDF/scene path and
+    TubeField path share target/sourcePdf and history semantics. The fullscreen
+    field resolve pass is explicitly demoted to raw scene/SDF MRT carry-forward;
+    it does not call current-frame reservoir merge and cannot import TubeField
+    proposals before the compute pass. TubeField candidate discovery is still the
     fixed-function raster path: compute emits conservative GPU-resident segment
     proxy geometry and indirect draw packets, the proxy raster only schedules
     covered pixels, and the proxy pixel shader analytically intersects the
@@ -228,7 +231,13 @@ next_actions:
     validity, motion/previous UV, and guide confidence before RIS merge; rejected
     history cannot become visible fallback by itself. Spatial reuse validates
     neighboring current reservoirs by field id, travel, normal, support, and
-    domain before merge. Reservoir debug modes 13-15 inspect the compute-owned
+    domain before merge. Current-frame structural proposal assembly has a
+    visibility gate before RIS: if two valid proposals at the same pixel differ
+    materially in travel, the farther proposal is treated as occluded and cannot
+    compete by target/luminance. Near-equal-depth proposals still merge through
+    RIS. TubeField also separates conservative proxy discovery from reservoir
+    support; row-0 target/control/guide use narrow tube-core support rather than
+    the broad proxy envelope. Reservoir debug modes 13-15 inspect the compute-owned
     final/reuse layer: rejection state, selectedTarget, weightSum,
     candidateCount, proposal target/sourcePdf, and contribution weight. The
     deleted TubeField-local compute

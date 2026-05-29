@@ -161,9 +161,12 @@ next_actions:
     narrower mask path. The sequence harness can also capture a same-time
     native-domain reference at a higher reservoir work-grid scale through
     `-ReferenceFieldReservoirScale`; `reservoir-sequence-20260530-001046-*`
-    proves reference-error rows from scale 0.5 against scale 0.75. The next cut
-    is using those reference-error rows to drive adaptive sampling/update budget
-    policy plus future exact producer SDF replay.
+    proves reference-error rows from scale 0.5 against scale 0.75. The offline
+    budget-pressure probe `reservoir-budget-pressure-20260530-001046.*` ranks
+    masked reference error by tile; its first smoke found the top 5 of 50 tiles
+    carried 99.3305% of measured reference-error delta. The next cut is turning
+    that evidence into a renderer-owned adaptive update contract plus future
+    exact producer SDF replay.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then

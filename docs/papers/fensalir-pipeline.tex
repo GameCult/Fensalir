@@ -675,6 +675,9 @@ support loss; it localizes where an eventual high-budget reference score should
 look first.  It can also capture a same-time native-domain reference at a larger
 reservoir work-grid scale, producing reference-error rows without introducing a
 native-resolution intermediate reservoir.
+Those rows feed an offline budget-pressure probe that ranks fixed tiles by
+masked reference error, giving the future scheduler a concrete pressure signal
+without letting a debug script own runtime visibility.
 The system has cut the false ``nearest-travel-minus-coverage'' priority owner
 and the side-cache temptation.
 

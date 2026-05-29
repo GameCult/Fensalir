@@ -57,6 +57,16 @@ compared native scale 0.5 against reference scale 0.75 at 320x180, ready frame
 masked reference-error-native covered 3.0468% of frame pixels and changed
 42.0368%.
 
+Budget-pressure probe:
+`scripts/measure-reservoir-budget-pressure.ps1` reads a sequence manifest with a
+same-time `reference` capture and ranks fixed tiles by masked candidate versus
+reference final-color error. It uses the candidate/reference disocclusion masks
+when available, falling back to rejection masks. Smoke
+`artifacts/fensalir-captures/reservoir-budget-pressure-20260530-001046.*`
+measured 1306 of 42864 pixels and found the top 5 of 50 tiles carried 99.3305%
+of measured reference-error delta. This is offline allocator evidence, not a
+runtime scheduler.
+
 ## Hot Lesson
 
 Area ReSTIR confirms that reuse over an area domain is invalid unless the
@@ -88,9 +98,9 @@ cap remain intentionally non-authoritative.
 
 Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Use the same-time higher-work-grid reference rows to drive an adaptive
-   sampling/update budget policy. Do not add native-resolution reservoir
-   intermediates.
+1. Convert budget-pressure evidence into a renderer-owned adaptive update
+   contract only after the owner, inputs, outputs, and transition behavior are
+   explicit. Do not add native-resolution reservoir intermediates.
 2. Add exact SDF producer replay only when client SDF distance functions have a
    shared replay include or manifest instead of duplicating shader policy in
    post.

@@ -393,6 +393,10 @@ For same-time reference checks, the capture script can also emit a native-domain
 reference at a larger reservoir work-grid scale.  Reference-error rows therefore
 compare a candidate against a higher-budget work grid without allocating a
 native-resolution reservoir buffer.
+An offline budget-pressure probe now bins that masked reference error by fixed
+tiles and ranks tiles by mean error times mask coverage.  The probe is allocator
+evidence, not a runtime visibility owner: it says where additional reservoir
+updates may buy stability under a fixed budget.
 
 \section{Required Evaluation}
 

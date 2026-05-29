@@ -557,6 +557,14 @@ Work packet:
     reference scale 0.75 at 320x180, ready frame 2, final plus disocclusion.
     This is a higher-budget work-grid reference, not a native-resolution escape
     hatch.
+13. Partial: add offline budget-pressure ranking from masked reference error.
+    `scripts/measure-reservoir-budget-pressure.ps1` bins candidate-vs-reference
+    final-color error by fixed tiles, applies the disocclusion/rejection mask
+    union when present, and ranks tiles by mean reference error multiplied by
+    mask coverage. Smoke `reservoir-budget-pressure-20260530-001046.*` measured
+    1306 of 42864 pixels and found the top 5 of 50 tiles carried 99.3305% of
+    measured reference-error delta. This is allocator evidence only; it does
+    not own runtime visibility or scheduling.
 
 Required verification:
 

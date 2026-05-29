@@ -17,6 +17,15 @@ First half-scale live capture:
 `artifacts/fensalir-captures/budgeted-reservoir-20260529-234039-final.png`
 at 1264x681 present output, nonblank by sampled pixel probe.
 
+Temporal sequence harness smoke:
+`scripts/capture-reservoir-mode-sequence.ps1` and
+`scripts/measure-reservoir-sequence.ps1` produced
+`artifacts/fensalir-captures/reservoir-sequence-20260529-234414-*` at 640x360,
+final color only, ready frames 2 and 4. Native/baseline mode-delta changed
+82.9025% of sampled pixels at f2 and 20.0206% at f4; temporal-native changed
+78.5581%, temporal-baseline changed 48.9741%. These are probes, not a final
+ghosting score.
+
 ## Hot Lesson
 
 Area ReSTIR confirms that reuse over an area domain is invalid unless the
@@ -48,8 +57,8 @@ cap remain intentionally non-authoritative.
 
 Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Add a real metric harness for temporal leakage/ghosting over motion and
-   disocclusion sequences instead of relying on single-frame image deltas.
+1. Turn the temporal sequence probe into a real leakage/ghosting score using
+   disocclusion/rejection masks or a high-budget reference.
 2. Add exact SDF producer replay only when client SDF distance functions have a
    shared replay include or manifest instead of duplicating shader policy in
    post.

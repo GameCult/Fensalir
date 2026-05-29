@@ -529,7 +529,15 @@ Work packet:
    match-window graph targets to 0.25-0.75 of present size, with 0.5 as the
    default. Headless capture accepts `--field-reservoir-scale`; debug UI reports
    the live work-grid size beside present size.
-10. Current: add temporal leakage/ghosting metrics over motion/disocclusion
+10. Partial: add temporal sequence probes. `scripts/capture-reservoir-mode-sequence.ps1`
+    builds one disposable runtime slot and captures native/baseline sequences
+    across ready-frame counts, debug modes, and work-grid scale.
+    `scripts/measure-reservoir-sequence.ps1` reports per-frame native/baseline
+    disagreement and per-mode frame-to-frame temporal deltas. First smoke run:
+    `reservoir-sequence-20260529-234414-*` at 640x360, final color only, ready
+    frames 2 and 4. It proved the harness works; it is still a probe, not a
+    disocclusion-masked ghosting score.
+11. Current: add temporal leakage/ghosting metrics over motion/disocclusion
     sequences, then use those metrics to decide where the sampler spends its
     bounded update budget.
 

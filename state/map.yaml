@@ -149,8 +149,12 @@ next_actions:
     single-frame deltas. The reservoir work grid is now clamped below present
     resolution by `GraphicsSettings.FieldReservoirScale` (0.5 default, 0.75
     maximum), so native-domain replay spends bounded fill/compute before the
-    full-resolution presentation pass. The next cut is a temporal
-    leakage/ghosting metric harness plus future exact producer SDF replay.
+    full-resolution presentation pass. A sequence probe now captures
+    native/baseline timelines from one disposable slot and measures per-frame
+    mode disagreement plus frame-to-frame temporal deltas; the first smoke set
+    is `reservoir-sequence-20260529-234414-*`. The next cut is upgrading that
+    probe into a disocclusion/rejection-masked leakage/ghosting score plus
+    future exact producer SDF replay.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then

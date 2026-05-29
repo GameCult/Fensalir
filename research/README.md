@@ -14,6 +14,9 @@ Fensalir keeps engine-relevant research here.
   strategy and receipt ladder.
 - `rendering/fensalir-spine-emblem-ifs-demo.md`: Fensalir splash visual target.
 - `rendering/fractal-projection-report.md`: cube projection measurement notes.
+- `planetary-flow-organ-literature.md`: source-backed sidecar distillation for
+  stochastic transport, bathymetry/topography, reanalysis targets, model
+  literature, and architecture hypotheses for cube-sphere flow.
 - `d3d12/`: source synthesis and migration research for the renderer spine.
 
 Client-only visual grammar belongs in the client repos. Engine research stays

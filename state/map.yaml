@@ -97,12 +97,24 @@ invariants:
     resource in `Common` so OBS/EVE/native consumers can transition it for
     GPU-side reads without inheriting Fensalir's internal copy-destination
     state.
+  - Planetary ocean/atmosphere flow is an engine field organ when reduced to
+    reusable stochastic advection machinery. Fensalir owns cube-sphere flow
+    addressing, dataset provenance, model contracts, stochastic advection
+    parameter schema, selected-cut streaming, and renderer/simulation lowerings.
+    Client repos may choose planet meaning and consume flow, but must not own a
+    private planetary flow truth path. Lat/lon datasets are offline evidence;
+    runtime flow authority is cube-sphere native.
 
 next_actions:
   - Keep origin pointed at https://github.com/GameCult/Fensalir.git.
   - Keep `dotnet build Fensalir.sln` green after the split.
   - Cut the rendering rebuild through explicit field-domain/field-claim
     contracts before adding another backend-specific visual path.
+  - Build the planetary flow organ in staged cuts: provenance manifest, static
+    relief and reanalysis cube-sphere bake pipeline, stochastic advection
+    contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then
+    PlasticAdrift transition validation and hierarchical arbitrary-LOD
+    streaming.
   - Extend the D3D12 field packet/resource resolver beyond its first
     structured/curve-buffer cut. Current contracts, DSL, and renderer registry
     can validate and plan resource-backed TubeField packets, import shared GPU

@@ -25,6 +25,10 @@ historical branch scar.
 - `tsr-inspired-taa-spec.md`: temporal resolve design and guide-buffer intent.
 - `stochastic-transparent-surface-pipeline.md`: density/extinction and
   transparent field rendering notes.
+- `planetary-flow-organ.md`: architecture and ownership map for reusable
+  cube-sphere stochastic ocean/atmosphere flow fields.
+- `planetary-flow-implementation-plan.md`: staged execution plan for dataset
+  provenance, cube-sphere bakes, model training, and runtime integration.
 
 ## Migration And Demo Context
 

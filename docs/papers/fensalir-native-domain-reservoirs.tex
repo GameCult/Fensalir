@@ -80,11 +80,11 @@ as though support overlap were obvious.
 contains a shared four-row GPU field reservoir for current-frame RIS, temporal
 reuse, spatial/domain reuse, and final resolve.  TubeField and SDF contributors
 already share target/source-PDF proposal lanes, and an older
-nearest-depth-minus-coverage priority path has been cut.  The remaining fault
-is precise: the live row ABI is still too texel-shaped.  It carries field id,
-travel, normal, support scalar, guide confidence, proposal weights, and stats,
-but it does not yet make the selected native-domain coordinate and support
-footprint a first-class invariant.
+nearest-depth-minus-coverage priority path has been cut.  The live row ABI now
+stores selected sample coordinates, producer-domain coordinates, support
+footprint, domain kind, and shift kind alongside field id, travel, normal,
+guide confidence, proposal weights, and stats.  That makes support overlap a
+first-class validation input rather than an inference from a texel.
 
 This paper narrows the previous architecture manifesto into one testable claim:
 
@@ -327,6 +327,37 @@ observation is not that these prove the method; they expose why support overlap
 and selected producer-domain coordinates must become visible state.}
 \label{fig:prototype-debug}
 \end{figure}
+
+The first native-domain ABI cut expands each live \texttt{FieldReservoirSample}
+row from seven to nine \texttt{float4} lanes:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Lane & Meaning \\
+\midrule
+\texttt{colorTravel} & resolved HDR contribution and camera travel \\
+\texttt{metadata} & field id and normal/gradient payload \\
+\texttt{control} & coverage, scalar support, detail, age/value payload \\
+\texttt{guide} & confidence, sample age, domain validity, rejection code \\
+\texttt{motion} & previous UV, expected previous travel, explicit-motion flag \\
+\texttt{domainSample} & selected pixel/sample UV and packed producer coordinate \\
+\texttt{domainSupport} & support footprint, domain kind, shift kind \\
+\texttt{proposal} & target, source PDF, represented count, proposal kind \\
+\texttt{stats} & selected target, weight sum, candidate count, contribution weight \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+TubeField row-0 proposals write the selected subpixel UV, physical rolling
+column, curve sample coordinate, tube-core support footprint, and explicit
+motion shift kind when rolling-column replay is available.  SDF scene proposals
+reconstruct the current world hit, pack object-local coordinates, and mark the
+sample as object-replayable.  Reservoir validity now fails when a live sample
+lacks domain state, and temporal/spatial validation multiplies the existing
+field/travel/normal/confidence checks by support overlap in the selected-domain
+lane.  Debug modes expose selected coordinates, support footprint/domain kind,
+and shift/rejection state from the same row-3 layer consumed by presentation.
 
 \section{Required Evaluation}
 

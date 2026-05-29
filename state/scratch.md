@@ -2,8 +2,8 @@
 
 ## Current Slice
 
-Implement the first Perfect Fensalir Machine roadmap packet: add native-domain
-sample coordinate/support authority to the shared field reservoir.
+Extend the first Perfect Fensalir Machine reservoir cut from native-domain row
+state into producer-domain replay/re-evaluation.
 
 ## Hot Lesson
 
@@ -14,24 +14,23 @@ history trust at the layer that owns visible output. Fensalir needs both, but
 one level higher: selected samples are field and radiance claims lowered from
 semantic domains and a dynamic contribution tree into bounded GPU reservoirs.
 
-The current seven-lane row ABI can remain only as an execution projection if it
-gains first-class selected domain/sample-coordinate authority. A row keyed only
-by pixel, travel, field id, guide, proposal, and stats is still too texel-like.
+The current nine-lane row ABI now carries first-class selected
+domain/sample-coordinate authority. A row keyed only by pixel, travel, field id,
+guide, proposal, and stats is no longer accepted as valid reservoir evidence.
 
 ## Next Bounded Move
 
-Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1 and the immediate
-work packet:
+Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Add or repack `FieldReservoirSample` with selected domain/sample coordinate
-   and support footprint.
-2. Write TubeField row-0 selected subpixel/source/curve support.
-3. Write SDF row-0 selected hit/domain support.
-4. Add debug modes for selected coordinate, support overlap, and shift kind.
-5. Implement temporal support-overlap validation before further threshold
-   tuning.
+1. Implement producer re-evaluation after the support-overlap gate for
+   TubeField rolling-column replay.
+2. Implement SDF object-hit replay/re-evaluation for shifted history.
+3. Capture the occluded-spectrum-tubes scene in baseline/native-domain modes
+   after replay is real, not merely support-overlap filtered.
 
 ## Verification
 
 - `dotnet build Fensalir.sln`
+- `dotnet test tests/Aquarium.Engine.Tests/Aquarium.Engine.Tests.csproj`
+- `dotnet test tests/Aquarium.Engine.Fractal.Tests/Aquarium.Engine.Fractal.Tests.csproj`
 - `.\scripts\dev-reload.ps1 -Headless -RetainSlots 4 -ClientProject src\Aquarium.Fensalir\Aquarium.Fensalir.csproj`

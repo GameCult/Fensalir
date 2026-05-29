@@ -44,8 +44,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int MaxTubeFieldIndices = MaxTubeFieldSegments * 6;
     private const int MaxTubeFieldDrawBatches = 4_096;
     private const int FieldReservoirSlotsPerPixel = 4;
-    private const int FieldReservoirCandidateStrideBytes = 112;
-    private const int FieldReservoirHistoryStrideBytes = 112;
+    private const int FieldReservoirCandidateStrideBytes = 144;
+    private const int FieldReservoirHistoryStrideBytes = 144;
     private const int GeneratedMeshDrawArgumentUIntCount = 5;
     private const int GeneratedMeshDrawArgumentBytes = GeneratedMeshDrawArgumentUIntCount * sizeof(uint);
     private const float SurfaceTransparentMinZ = -1.85f;
@@ -132,6 +132,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         new(13, "Reservoir Rejection"),
         new(14, "Reservoir Stats"),
         new(15, "Reservoir Proposal"),
+        new(16, "Reservoir Domain"),
+        new(17, "Reservoir Support"),
+        new(18, "Reservoir Shift"),
     ];
     private static readonly DebugUi.DebugUiOption[] SynthPresetOptions = AquaSynth.Dsl.BuiltInScripts.ReferenceScripts()
         .Select((preset, index) => new DebugUi.DebugUiOption(index, $"{preset.Family}/{preset.Name}"))

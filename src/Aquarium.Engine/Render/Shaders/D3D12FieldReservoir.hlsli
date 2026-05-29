@@ -5,6 +5,8 @@ struct FieldReservoirSample
     float4 control;
     float4 guide;
     float4 motion;
+    float4 domainSample;
+    float4 domainSupport;
     float4 proposal;
     float4 stats;
 };
@@ -16,6 +18,13 @@ static const uint FieldReservoirRowSpatial = 2u;
 static const uint FieldReservoirRowFinal = 3u;
 static const float FieldReservoirEpsilon = 0.000001;
 static const float FieldProposalKindDeterministicStructural = 1.0;
+static const float FieldDomainKindNone = 0.0;
+static const float FieldDomainKindScreen = 1.0;
+static const float FieldDomainKindTube = 2.0;
+static const float FieldDomainKindSdf = 3.0;
+static const float FieldShiftKindNone = 0.0;
+static const float FieldShiftKindExplicitMotion = 1.0;
+static const float FieldShiftKindObjectReplay = 2.0;
 
 uint fieldReservoirHash(uint value)
 {
@@ -41,6 +50,8 @@ FieldReservoirSample emptyFieldReservoirSample(float farTravel)
     sample.control = 0.0;
     sample.guide = float4(1.0, 0.0, 1.0, 2.0);
     sample.motion = 0.0;
+    sample.domainSample = 0.0;
+    sample.domainSupport = 0.0;
     sample.proposal = 0.0;
     sample.stats = 0.0;
     return sample;
@@ -65,6 +76,8 @@ FieldReservoirSample makeFieldReservoirSample(
     float4 control,
     float4 guide,
     float4 motion,
+    float4 domainSample,
+    float4 domainSupport,
     float target,
     float sourcePdf,
     float representedCandidateCount,
@@ -80,9 +93,24 @@ FieldReservoirSample makeFieldReservoirSample(
     sample.control = control;
     sample.guide = guide;
     sample.motion = motion;
+    sample.domainSample = domainSample;
+    sample.domainSupport = domainSupport;
     sample.proposal = float4(safeTarget, safePdf, safeCount, proposalKind);
     sample.stats = float4(safeTarget, weight, safeCount, weight / max(safeCount * safeTarget, FieldReservoirEpsilon));
     return sample;
+}
+
+bool fieldReservoirDomainStateValid(FieldReservoirSample sample)
+{
+    float domainKind = sample.domainSupport.z;
+    if (domainKind <= FieldDomainKindNone + 0.5)
+    {
+        return false;
+    }
+
+    return all(sample.domainSample.xy >= 0.0) &&
+        all(sample.domainSample.xy <= 1.0) &&
+        all(sample.domainSupport.xy > 0.0);
 }
 
 bool fieldReservoirSampleValid(FieldReservoirSample sample, float farTravel)
@@ -92,11 +120,30 @@ bool fieldReservoirSampleValid(FieldReservoirSample sample, float farTravel)
         sample.colorTravel.w <= farTravel &&
         saturate(sample.control.x) > 0.0 &&
         saturate(sample.guide.z) > 0.0 &&
+        fieldReservoirDomainStateValid(sample) &&
         sample.proposal.x > 0.0 &&
         sample.proposal.y > 0.0 &&
         sample.stats.x > 0.0 &&
         sample.stats.y > 0.0 &&
         sample.stats.z > 0.0;
+}
+
+float fieldReservoirDomainSupportOverlap(FieldReservoirSample a, FieldReservoirSample b, float2 dimensions)
+{
+    if (!fieldReservoirDomainStateValid(a) || !fieldReservoirDomainStateValid(b))
+    {
+        return 0.0;
+    }
+
+    if (abs(a.domainSupport.z - b.domainSupport.z) > 0.25)
+    {
+        return 0.0;
+    }
+
+    float2 pixelDelta = (a.domainSample.xy - b.domainSample.xy) * max(dimensions, float2(1.0, 1.0));
+    float2 support = max(a.domainSupport.xy + b.domainSupport.xy, float2(FieldReservoirEpsilon, FieldReservoirEpsilon));
+    float normalizedDistance = length(pixelDelta / support);
+    return 1.0 - smoothstep(0.75, 1.25, normalizedDistance);
 }
 
 float fieldReservoirContributionWeight(FieldReservoirSample sample)

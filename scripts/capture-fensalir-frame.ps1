@@ -3,6 +3,7 @@ param(
     [int]$Width = 1280,
     [int]$Height = 720,
     [int]$ReadyFrames = 8,
+    [int]$RenderDebugMode = -1,
     [int]$RetainSlots = 4,
     [int]$TimeoutSeconds = 120
 )
@@ -51,6 +52,9 @@ $arguments = @(
     "--shader-source", (Join-Path $slotPath "Render\Shaders\D3D12HeightField.hlsl"),
     "--capture-frame", $OutputPath
 )
+if ($RenderDebugMode -ge 0) {
+    $arguments += @("--render-debug", $RenderDebugMode)
+}
 
 $env:AQUARIUM_HEADLESS_READY_FRAMES = [string][Math]::Max(1, $ReadyFrames)
 $process = Start-Process -FilePath $exePath -ArgumentList $arguments -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog

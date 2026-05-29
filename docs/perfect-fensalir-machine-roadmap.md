@@ -33,6 +33,9 @@ Fensalir already has the first shared GPU field-reservoir spine:
 - Proposal lanes carry target, source PDF, represented count, and proposal kind.
 - Stats lanes carry selected target, weight sum, candidate count, and
   contribution weight.
+- The nine-lane `FieldReservoirSample` row now carries color/travel, metadata,
+  control, guide, motion, selected domain/sample coordinate, support/shift
+  metadata, proposal, and stats.
 - The four rows per pixel mean current RIS, temporal reuse, spatial/domain
   reuse, and final resolved reservoir.
 - The old TubeField-local ReSTIR/tile-bin path and nearest-travel-minus-coverage
@@ -40,11 +43,11 @@ Fensalir already has the first shared GPU field-reservoir spine:
 - Debug modes now inspect the compute-owned reservoir layer rather than stale
   guide textures.
 
-The surviving flaw is precise: the live ABI is still too texel-shaped. It can
-validate by field id, travel, normal, motion, scalar support, proposal, and
-confidence, but it does not yet store the selected producer-domain coordinate
-and full support footprint that Area ReSTIR tells us are required for legal
-area-domain reuse.
+The surviving flaw has moved one layer downstream: the live ABI now stores
+selected sample UV, packed producer coordinate, support footprint, domain kind,
+and shift kind, and temporal/spatial validation uses support overlap. It still
+needs producer-domain replay/re-evaluation before reuse can claim the full Area
+ReSTIR proof rather than a first legal-overlap gate.
 
 ## Invariants
 
@@ -465,14 +468,17 @@ Objective: pay the first proof obligation for the focused native-domain paper.
 
 Work packet:
 
-1. Add/repack the `FieldReservoirSample` ABI with selected domain/sample
+1. Done: add/repack the `FieldReservoirSample` ABI with selected domain/sample
    coordinate and support footprint.
-2. Write TubeField row-0 selected subpixel/source/curve support.
-3. Write SDF row-0 selected hit/domain support.
-4. Add debug modes for selected coordinate, support overlap, and shift kind.
-5. Implement temporal support-overlap validation before further threshold
-   tuning.
-6. Capture the occluded-spectrum-tubes scene in baseline and native-domain
+2. Done: write TubeField row-0 selected subpixel/source/curve support.
+3. Done: write SDF row-0 selected hit/domain support.
+4. Done: add debug modes for selected coordinate, support footprint/domain,
+   and shift kind.
+5. Done: implement temporal/spatial support-overlap validation before further
+   threshold tuning.
+6. Next: implement producer re-evaluation after the support-overlap gate for
+   TubeField rolling-column replay and SDF object-hit replay.
+7. Capture the occluded-spectrum-tubes scene in baseline and native-domain
    modes.
 
 Required verification:

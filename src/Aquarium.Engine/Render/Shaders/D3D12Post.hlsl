@@ -380,6 +380,32 @@ float4 D3D12BloomBlurVerticalPS(VertexOut input) : SV_Target0
     return float4(color, 1.0);
 }
 
+float4 sceneReservoirDomainSample(float2 uv, float4 colorTravel, float4 metadata)
+{
+    if (metadata.x >= FIELD_ID_SDF_OBJECT_BASE)
+    {
+        float2 pixel = (floor(uv * resolution) + 0.5);
+        float3 ray = rayDirectionForPixel(pixel, jitterPixels, cameraPosition, cameraTarget);
+        float3 worldPosition = cameraPosition + ray * colorTravel.w;
+        int sdfIndex = clamp((int)round(metadata.x - FIELD_ID_SDF_OBJECT_BASE), 0, AQUARIUM_SDF_OBJECT_CAPACITY - 1);
+        float3 localPosition = worldPosition - sdfObjects[sdfIndex].centerRadius.xyz;
+        return float4(uv, localPosition.xz);
+    }
+
+    return float4(uv, uv);
+}
+
+float4 sceneReservoirDomainSupport(float4 metadata, float4 control)
+{
+    if (metadata.x >= FIELD_ID_SDF_OBJECT_BASE)
+    {
+        float radiusPx = max(1.0, 1.0 + saturate(control.y) * 2.0);
+        return float4(radiusPx, radiusPx, FieldDomainKindSdf, FieldShiftKindObjectReplay);
+    }
+
+    return float4(1.0, 1.0, FieldDomainKindScreen, FieldShiftKindNone);
+}
+
 FieldReservoirSample sceneFieldReservoirSample(float2 uv)
 {
     float4 colorTravel = sourceTexture.SampleLevel(sourceSampler, uv, 0.0);
@@ -393,6 +419,8 @@ FieldReservoirSample sceneFieldReservoirSample(float2 uv)
         control,
         guide,
         0.0,
+        sceneReservoirDomainSample(uv, colorTravel, metadata),
+        sceneReservoirDomainSupport(metadata, control),
         target,
         1.0,
         1.0,
@@ -422,7 +450,8 @@ float reservoirTemporalValidationWeight(
     FieldReservoirSample previousSample,
     float expectedPreviousTravel,
     float3 neighborhoodMin,
-    float3 neighborhoodMax)
+    float3 neighborhoodMax,
+    float2 dimensions)
 {
     if (!fieldReservoirSampleValid(currentSample, farDistance) ||
         !fieldReservoirSampleValid(previousSample, farDistance))
@@ -454,13 +483,15 @@ float reservoirTemporalValidationWeight(
     float detailWeight = 1.0 - smoothstep(0.08, 0.45, abs(saturate(previousSample.control.z) - saturate(currentSample.control.z)));
     float confidenceWeight = lerp(0.45, 1.0, min(reservoirSampleConfidence(currentSample), reservoirSampleConfidence(previousSample)));
     float domainWeight = reservoirSampleDomainValidity(currentSample) * reservoirSampleDomainValidity(previousSample);
-    return travelWeight * fieldWeight * normalWeight * colorWeight * coverageWeight * coverageContinuityWeight * detailWeight * confidenceWeight * domainWeight;
+    float supportOverlap = fieldReservoirDomainSupportOverlap(currentSample, previousSample, dimensions);
+    return travelWeight * fieldWeight * normalWeight * colorWeight * coverageWeight * coverageContinuityWeight * detailWeight * confidenceWeight * domainWeight * supportOverlap;
 }
 
 float reservoirTemporalRejectionCode(
     FieldReservoirSample currentSample,
     FieldReservoirSample previousSample,
-    float expectedPreviousTravel)
+    float expectedPreviousTravel,
+    float2 dimensions)
 {
     if (!fieldReservoirSampleValid(previousSample, farDistance))
     {
@@ -483,10 +514,20 @@ float reservoirTemporalRejectionCode(
         return 6.0;
     }
 
+    if (!fieldReservoirDomainStateValid(previousSample) || !fieldReservoirDomainStateValid(currentSample))
+    {
+        return 7.0;
+    }
+
+    if (fieldReservoirDomainSupportOverlap(currentSample, previousSample, dimensions) <= 0.0)
+    {
+        return 8.0;
+    }
+
     return 1.0;
 }
 
-float reservoirSpatialValidationWeight(FieldReservoirSample currentSample, FieldReservoirSample neighborSample, float pixelDistance)
+float reservoirSpatialValidationWeight(FieldReservoirSample currentSample, FieldReservoirSample neighborSample, float pixelDistance, float2 dimensions)
 {
     if (!fieldReservoirSampleValid(currentSample, farDistance) ||
         !fieldReservoirSampleValid(neighborSample, farDistance))
@@ -506,8 +547,9 @@ float reservoirSpatialValidationWeight(FieldReservoirSample currentSample, Field
     }
 
     float supportWeight = smoothstep(0.001, 0.45, min(saturate(neighborSample.control.x), saturate(currentSample.control.x)));
+    float supportOverlap = fieldReservoirDomainSupportOverlap(currentSample, neighborSample, dimensions);
     float distanceWeight = 1.0 - smoothstep(0.0, 1.75, pixelDistance);
-    return fieldWeight * travelWeight * normalWeight * supportWeight * distanceWeight *
+    return fieldWeight * travelWeight * normalWeight * supportWeight * supportOverlap * distanceWeight *
         reservoirSampleDomainValidity(currentSample) * reservoirSampleDomainValidity(neighborSample);
 }
 
@@ -577,10 +619,11 @@ FieldReservoirSample temporallyReuseReservoirSample(FieldReservoirSample current
         previous,
         expectedPreviousTravel,
         neighborhoodMin,
-        neighborhoodMax);
+        neighborhoodMax,
+        (float2)dimensions);
     if (validationWeight <= 0.0)
     {
-        temporal.guide.w = reservoirTemporalRejectionCode(current, previous, expectedPreviousTravel);
+        temporal.guide.w = reservoirTemporalRejectionCode(current, previous, expectedPreviousTravel, (float2)dimensions);
         return temporal;
     }
 
@@ -616,7 +659,7 @@ FieldReservoirSample spatiallyReuseReservoirSample(FieldReservoirSample temporal
             uint2 neighborPixel = (uint2)neighborSigned;
             float2 neighborUv = (float2(neighborPixel) + 0.5) / float2(dimensions);
             FieldReservoirSample neighbor = currentFrameReservoirSample(neighborPixel, neighborUv);
-            float validationWeight = reservoirSpatialValidationWeight(spatial, neighbor, length(float2(x, y)));
+            float validationWeight = reservoirSpatialValidationWeight(spatial, neighbor, length(float2(x, y)), (float2)dimensions);
             if (validationWeight <= 0.0)
             {
                 continue;
@@ -704,6 +747,37 @@ float4 reservoirDebugOrColor(FieldReservoirSample candidate)
             saturate(candidate.proposal.y),
             saturate(fieldReservoirContributionWeight(candidate)),
             candidate.colorTravel.w);
+    }
+
+    if (renderDebugMode >= 15.5 && renderDebugMode < 16.5)
+    {
+        if (!fieldReservoirSampleValid(candidate, farDistance))
+        {
+            return float4(0.0, 0.0, 0.0, candidate.colorTravel.w);
+        }
+
+        return float4(frac(candidate.domainSample.x), frac(candidate.domainSample.y), saturate(candidate.domainSupport.z / 4.0), candidate.colorTravel.w);
+    }
+
+    if (renderDebugMode >= 16.5 && renderDebugMode < 17.5)
+    {
+        if (!fieldReservoirSampleValid(candidate, farDistance))
+        {
+            return float4(0.0, 0.0, 0.0, candidate.colorTravel.w);
+        }
+
+        float2 footprint = saturate(candidate.domainSupport.xy / 8.0);
+        return float4(footprint.x, footprint.y, saturate(candidate.guide.z), candidate.colorTravel.w);
+    }
+
+    if (renderDebugMode >= 17.5 && renderDebugMode < 18.5)
+    {
+        if (!fieldReservoirSampleValid(candidate, farDistance))
+        {
+            return float4(0.0, 0.0, 0.0, candidate.colorTravel.w);
+        }
+
+        return float4(saturate(candidate.domainSupport.w / 3.0), saturate(candidate.guide.w / 7.0), saturate(candidate.domainSupport.z / 4.0), candidate.colorTravel.w);
     }
 
     return float4(fieldReservoirResolvedColor(candidate, farDistance), candidate.colorTravel.w);
@@ -809,7 +883,7 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
     {
         finalColor = float3(currentReservoirConfidence, saturate(reservoirSampleAge / MAX_HISTORY_AGE), currentReservoirDomainValidity);
     }
-    else if (renderDebugMode >= 12.5 && renderDebugMode < 15.5)
+    else if (renderDebugMode >= 12.5 && renderDebugMode < 18.5)
     {
         finalColor = saturate(resolved);
     }

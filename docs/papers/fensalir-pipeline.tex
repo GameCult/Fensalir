@@ -525,8 +525,9 @@ safety.
 The first implementation already has pieces of this: shaped 2D brush envelopes,
 semantic claim/tree rows, conservative summaries, fractal contribution state,
 projected SDF splat compilation, GPU splat/reservoir receipt harness, direct
-TubeField resource lowerings, surface, volume, and mesh resource declarations, and a
-shared four-row field reservoir execution ABI.  The live ABI currently uses:
+TubeField resource lowerings, surface, volume, and mesh resource declarations,
+and a shared four-row field reservoir execution ABI.  The live ABI currently
+uses:
 
 \begin{center}
 \begin{tabular}{cl}
@@ -541,10 +542,15 @@ Row & Meaning \\
 \end{tabular}
 \end{center}
 
-This row layout is useful, but incomplete as a foundation.  The next mandatory
-cut is to add or repack a first-class domain/sample-coordinate lane so TubeField
-and SDF proposals carry selected subpixel/domain coordinates plus support.
-Without that, temporal/spatial reuse remains too close to a texel cache.
+Each row is now a nine-lane \texttt{FieldReservoirSample}: color/travel,
+metadata, control, guide, motion, domain sample, domain support, proposal, and
+stats.  The domain sample lane stores selected pixel/sample UV plus packed
+producer coordinates; the domain support lane stores support footprint, domain
+kind, and shift kind.  TubeField proposals write selected subpixel UV,
+physical rolling column, curve coordinate, tube support, and explicit motion
+when available.  SDF proposals reconstruct object-local hit coordinates and
+mark object-motion replay.  Temporal and spatial reuse now reject missing
+domain state and include support overlap in the validation weight.
 
 \section{Reconstruction and Denoising}
 
@@ -628,16 +634,19 @@ validated reservoirs.  Neither mode lets a pixel row become truth.
   1070-class machine \cite{fensalirPerfectMachine};
   \item D3D12 TubeField resource and generated-mesh lowerings;
   \item shared field reservoir ABI with current/temporal/spatial/final row
-  semantics;
+  semantics, selected domain/sample coordinates, support footprints, proposal
+  lanes, stats lanes, and row-3 debug modes for rejection, proposal, domain,
+  support, and shift state;
   \item HDR presentation path with exposure, bloom pyramid, ACES-fit transform,
   and debug modes \cite{fensalirHDR}.
 \end{itemize}
 
-The known architectural gap is also explicit: the current row ABI still needs
-domain/sample-coordinate authority.  The system has cut the false
-``nearest-travel-minus-coverage'' priority owner, but a real \AreaReSTIR-style
-domain reservoir requires selected support coordinates before further occlusion
-tuning deserves trust.
+The known architectural gap has moved forward: the current row ABI now carries
+domain/sample-coordinate authority, but temporal reuse still needs full
+producer re-evaluation after support overlap rather than treating overlap as
+the whole legal shift story.  The system has cut the false
+``nearest-travel-minus-coverage'' priority owner and the side-cache temptation;
+the next proof cut is producer-domain replay with measured rejection precision.
 
 \section{Evaluation Plan}
 

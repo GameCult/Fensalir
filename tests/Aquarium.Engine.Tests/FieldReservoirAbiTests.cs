@@ -84,6 +84,21 @@ public sealed class FieldReservoirAbiTests
     }
 
     [Fact]
+    public void ReservoirDisocclusionDebugModeIsOwnerDerived()
+    {
+        var repoRoot = FindRepoRoot();
+        var settings = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine.Contracts", "GraphicsSettings.cs"));
+        var renderer = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "Render", "D3D12Renderer.cs"));
+        var post = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "Render", "Shaders", "D3D12Post.hlsl"));
+
+        Assert.Contains("MaxRenderDebugMode = 19", settings);
+        Assert.Contains("Reservoir Disocclusion", renderer);
+        Assert.Contains("previousUvOut", post);
+        Assert.Contains("previousCloser", post);
+        Assert.Contains("supportLost", post);
+    }
+
+    [Fact]
     public void ReservoirWorkGridIsBudgetedBelowPresentationResolution()
     {
         var repoRoot = FindRepoRoot();

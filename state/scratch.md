@@ -36,6 +36,15 @@ changed 83.2208%, masked temporal-baseline changed 83.4813%. This proves the
 mask path is live but still needs a high-budget reference or explicit
 disocclusion mask before it can claim ghosting quality.
 
+Disocclusion owner signal:
+Debug mode 19, `Reservoir Disocclusion`, is derived from temporal rejection
+codes in `D3D12Post.hlsl`: previous UV outside history, previous history closer
+than expected travel, and support-overlap loss. The sequence measurer prefers
+`disocclusion` masks over broad `rejection` masks. Native-only smoke
+`artifacts/fensalir-captures/reservoir-sequence-20260530-000151-*` at 320x180,
+ready frames 2 and 3, final plus disocclusion debug, produced a mask covering
+3.1098% of the frame and a masked temporal-native delta of 46.8867%.
+
 ## Hot Lesson
 
 Area ReSTIR confirms that reuse over an area domain is invalid unless the
@@ -67,9 +76,9 @@ cap remain intentionally non-authoritative.
 
 Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Turn the temporal sequence probe into a real leakage/ghosting score using a
-   high-budget reference and explicit disocclusion masks. Rejection masks are
-   only a first pressure signal.
+1. Add a high-budget reference capture mode or repeated-sample reference path
+   so the disocclusion-masked sequence metric can score error instead of only
+   motion/disagreement.
 2. Add exact SDF producer replay only when client SDF distance functions have a
    shared replay include or manifest instead of duplicating shader policy in
    post.

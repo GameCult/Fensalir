@@ -71,6 +71,9 @@ function DebugSuffix {
     if ($Mode -eq 18) {
         return "shift"
     }
+    if ($Mode -eq 19) {
+        return "disocclusion"
+    }
 
     return "debug$Mode"
 }

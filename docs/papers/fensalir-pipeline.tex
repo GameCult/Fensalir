@@ -668,6 +668,11 @@ temporal reuse.  The first paired Fensalir capture set
 pixel delta.  The repeatable script
 \texttt{scripts/measure-reservoir-mode-comparison.ps1} reports that delta; it
 is a live-switch check, not a quality claim.
+The sequence harness can now prefer a temporal-owner disocclusion mask over the
+broad rejection debug view.  That mask is derived from the reservoir rejection
+codes for previous history outside the frame, closer previous history, and
+support loss; it localizes where an eventual high-budget reference score should
+look first.
 The system has cut the false ``nearest-travel-minus-coverage'' priority owner
 and the side-cache temptation.
 

@@ -541,7 +541,13 @@ Work packet:
     is still a probe, not a high-budget-reference ghosting score.
 11. Current: add temporal leakage/ghosting metrics over motion/disocclusion
     sequences, then use those metrics to decide where the sampler spends its
-    bounded update budget.
+    bounded update budget. The temporal owner now exposes debug mode 19,
+    `Reservoir Disocclusion`, derived from temporal rejection codes for previous
+    UV loss, previous-closer history, and support loss. The sequence measurer
+    prefers disocclusion masks over broad rejection masks when they exist.
+    Smoke run `reservoir-sequence-20260530-000151-*` captured native final plus
+    disocclusion at 320x180; the disocclusion mask covered 3.1098% of frame
+    pixels and produced a masked temporal-native delta row.
 
 Required verification:
 

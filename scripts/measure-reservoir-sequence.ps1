@@ -136,26 +136,43 @@ foreach ($capture in $captures) {
     $byKey[$key] = $capture
 }
 
+function Get-PreferredMaskPath {
+    param(
+        [string]$Mode,
+        [string]$ReadyFrames
+    )
+
+    $disocclusionKey = "{0}|{1}|disocclusion" -f $Mode, $ReadyFrames
+    if ($byKey.ContainsKey($disocclusionKey)) {
+        return $byKey[$disocclusionKey].Path
+    }
+
+    $rejectionKey = "{0}|{1}|rejection" -f $Mode, $ReadyFrames
+    if ($byKey.ContainsKey($rejectionKey)) {
+        return $byKey[$rejectionKey].Path
+    }
+
+    return ""
+}
+
 $groups = $captures | Group-Object Suffix
 foreach ($group in $groups) {
     $suffix = $group.Name
-    $nativeFrames = $group.Group |
+    $nativeFrames = @($group.Group |
         Where-Object { $_.Mode -eq "native" } |
-        Sort-Object { [int]$_.ReadyFrames }
-    $baselineFrames = $group.Group |
+        Sort-Object { [int]$_.ReadyFrames })
+    $baselineFrames = @($group.Group |
         Where-Object { $_.Mode -eq "baseline" } |
-        Sort-Object { [int]$_.ReadyFrames }
+        Sort-Object { [int]$_.ReadyFrames })
 
     foreach ($native in $nativeFrames) {
         $baseline = $baselineFrames | Where-Object { [int]$_.ReadyFrames -eq [int]$native.ReadyFrames } | Select-Object -First 1
         if ($null -ne $baseline) {
             $results.Add((Measure-ImageDelta -APath $native.Path -BPath $baseline.Path -Label "$suffix mode-delta f$($native.ReadyFrames)"))
             if ($suffix -eq "final") {
-                $nativeMaskKey = "native|{0}|rejection" -f $native.ReadyFrames
-                $baselineMaskKey = "baseline|{0}|rejection" -f $native.ReadyFrames
-                if ($byKey.ContainsKey($nativeMaskKey) -or $byKey.ContainsKey($baselineMaskKey)) {
-                    $nativeMask = if ($byKey.ContainsKey($nativeMaskKey)) { $byKey[$nativeMaskKey].Path } else { "" }
-                    $baselineMask = if ($byKey.ContainsKey($baselineMaskKey)) { $byKey[$baselineMaskKey].Path } else { "" }
+                $nativeMask = Get-PreferredMaskPath -Mode "native" -ReadyFrames $native.ReadyFrames
+                $baselineMask = Get-PreferredMaskPath -Mode "baseline" -ReadyFrames $native.ReadyFrames
+                if (-not [string]::IsNullOrWhiteSpace($nativeMask) -or -not [string]::IsNullOrWhiteSpace($baselineMask)) {
                     $results.Add((Measure-ImageDelta -APath $native.Path -BPath $baseline.Path -Label "final masked-mode-delta f$($native.ReadyFrames)" -AMaskPath $nativeMask -BMaskPath $baselineMask))
                 }
             }
@@ -163,16 +180,15 @@ foreach ($group in $groups) {
     }
 
     foreach ($modeFrames in @($nativeFrames, $baselineFrames)) {
+        $modeFrames = @($modeFrames)
         for ($index = 1; $index -lt $modeFrames.Count; $index++) {
             $previous = $modeFrames[$index - 1]
             $current = $modeFrames[$index]
             $results.Add((Measure-ImageDelta -APath $previous.Path -BPath $current.Path -Label "$suffix temporal-$($current.Mode) f$($previous.ReadyFrames)-f$($current.ReadyFrames)"))
             if ($suffix -eq "final") {
-                $previousMaskKey = "{0}|{1}|rejection" -f $current.Mode, $previous.ReadyFrames
-                $currentMaskKey = "{0}|{1}|rejection" -f $current.Mode, $current.ReadyFrames
-                if ($byKey.ContainsKey($previousMaskKey) -or $byKey.ContainsKey($currentMaskKey)) {
-                    $previousMask = if ($byKey.ContainsKey($previousMaskKey)) { $byKey[$previousMaskKey].Path } else { "" }
-                    $currentMask = if ($byKey.ContainsKey($currentMaskKey)) { $byKey[$currentMaskKey].Path } else { "" }
+                $previousMask = Get-PreferredMaskPath -Mode $current.Mode -ReadyFrames $previous.ReadyFrames
+                $currentMask = Get-PreferredMaskPath -Mode $current.Mode -ReadyFrames $current.ReadyFrames
+                if (-not [string]::IsNullOrWhiteSpace($previousMask) -or -not [string]::IsNullOrWhiteSpace($currentMask)) {
                     $results.Add((Measure-ImageDelta -APath $previous.Path -BPath $current.Path -Label "final masked-temporal-$($current.Mode) f$($previous.ReadyFrames)-f$($current.ReadyFrames)" -AMaskPath $previousMask -BMaskPath $currentMask))
                 }
             }
@@ -200,7 +216,7 @@ foreach ($result in $results) {
         $result.MaxChannelDelta))
 }
 $lines.Add("")
-$lines.Add("These are sequence probes, not a final ghosting score. Mode deltas show native/baseline disagreement at each sampled time. Temporal deltas show frame-to-frame output movement per mode. When rejection captures are present, masked rows restrict the comparison to pixels marked by either mode's rejection debug output; a high-budget reference is still needed before claiming quality.")
+$lines.Add("These are sequence probes, not a final ghosting score. Mode deltas show native/baseline disagreement at each sampled time. Temporal deltas show frame-to-frame output movement per mode. Masked rows prefer disocclusion-debug captures when present, otherwise rejection-debug captures; a high-budget reference is still needed before claiming quality.")
 Set-Content -LiteralPath $OutputPath -Value $lines -Encoding UTF8
 
 Write-Host "Reservoir sequence metrics:"

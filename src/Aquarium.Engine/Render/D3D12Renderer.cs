@@ -138,6 +138,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         new(16, "Reservoir Domain"),
         new(17, "Reservoir Support"),
         new(18, "Reservoir Shift"),
+        new(19, "Reservoir Disocclusion"),
     ];
     private static readonly DebugUi.DebugUiOption[] FieldReservoirModeOptions =
     [

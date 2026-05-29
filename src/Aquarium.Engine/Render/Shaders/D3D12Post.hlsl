@@ -1066,6 +1066,20 @@ float4 reservoirDebugOrColor(FieldReservoirSample candidate)
         return float4(saturate(candidate.domainSupport.w / 3.0), saturate(candidate.guide.w / 7.0), saturate(candidate.domainSupport.z / 4.0), candidate.colorTravel.w);
     }
 
+    if (renderDebugMode >= 18.5 && renderDebugMode < 19.5)
+    {
+        if (!fieldReservoirSampleValid(candidate, farDistance))
+        {
+            return float4(0.0, 0.0, 0.0, candidate.colorTravel.w);
+        }
+
+        float code = candidate.guide.w;
+        float previousUvOut = step(1.5, code) * (1.0 - step(2.5, code));
+        float previousCloser = step(4.5, code) * (1.0 - step(5.5, code));
+        float supportLost = step(7.5, code) * (1.0 - step(8.5, code));
+        return float4(previousUvOut, previousCloser, supportLost, candidate.colorTravel.w);
+    }
+
     return float4(fieldReservoirResolvedColor(candidate, farDistance), candidate.colorTravel.w);
 }
 

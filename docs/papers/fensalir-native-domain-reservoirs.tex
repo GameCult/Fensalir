@@ -384,6 +384,11 @@ pixels between modes, and
 \texttt{scripts/measure-reservoir-mode-comparison.ps1} now repeats that
 measurement.  This proves the comparison switch is live; it is not yet a
 temporal leakage or ghosting metric.
+The metric harness has since gained a sequence probe: captures may include a
+temporal-owner disocclusion debug view derived from previous-UV loss,
+previous-closer history, and support-loss rejection codes, and the sequence
+measurer uses that mask before falling back to broader rejection output.  This
+is still an error-localization surface, not a high-budget reference result.
 
 \section{Required Evaluation}
 

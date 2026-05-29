@@ -154,8 +154,11 @@ next_actions:
     mode disagreement plus frame-to-frame temporal deltas; the first smoke set
     is `reservoir-sequence-20260529-234414-*`. The probe is now resumable and
     rejection-mask-aware; `reservoir-sequence-20260529-235031-*` proves masked
-    mode/temporal rows over rejection-debug pixels. The next cut is upgrading
-    that probe into a high-budget-reference or explicit-disocclusion
+    mode/temporal rows over rejection-debug pixels. Debug mode 19 now exposes a
+    temporal-owner disocclusion mask from previous UV loss, previous-closer
+    history, and support loss; the sequence measurer prefers it over broad
+    rejection masks, and `reservoir-sequence-20260530-000151-*` proves the
+    narrower mask path. The next cut is adding a high-budget-reference
     leakage/ghosting score plus future exact producer SDF replay.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection

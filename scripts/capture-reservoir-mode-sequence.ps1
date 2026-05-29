@@ -7,6 +7,7 @@ param(
     [ValidateSet("native", "baseline", "both")]
     [string]$FieldReservoirMode = "both",
     [double]$FieldReservoirScale = 0.5,
+    [double]$ReferenceFieldReservoirScale = 0.0,
     [int[]]$RenderDebugModes = @(0, 13),
     [int]$RetainSlots = 4,
     [int]$TimeoutSeconds = 120
@@ -50,7 +51,10 @@ if ($LASTEXITCODE -ne 0) {
 
 $exePath = Join-Path $slotPath "Aquarium.Engine.exe"
 $clientAssembly = Join-Path $slotPath "Aquarium.Fensalir.dll"
-$modes = if ($FieldReservoirMode -eq "both") { @("native", "baseline") } else { @($FieldReservoirMode) }
+$modes = @(if ($FieldReservoirMode -eq "both") { @("native", "baseline") } else { @($FieldReservoirMode) })
+if ($ReferenceFieldReservoirScale -gt 0.0) {
+    $modes += @("reference")
+}
 $captures = [System.Collections.Generic.List[object]]::new()
 
 function DebugSuffix {
@@ -81,6 +85,7 @@ function DebugSuffix {
 foreach ($mode in $modes) {
     foreach ($readyFrame in $ReadyFrames) {
         foreach ($debugMode in $RenderDebugModes) {
+            $captureScale = if ($mode -eq "reference") { $ReferenceFieldReservoirScale } else { $FieldReservoirScale }
             $suffix = DebugSuffix -Mode $debugMode
             $outputPath = Join-Path $OutputDirectory ("reservoir-sequence-$Stamp-$mode-f{0:D4}-$suffix.png" -f $readyFrame)
             $arguments = @(
@@ -91,7 +96,7 @@ foreach ($mode in $modes) {
                 "--cache", $cachePath,
                 "--shader-source", (Join-Path $slotPath "Render\Shaders\D3D12HeightField.hlsl"),
                 "--capture-frame", $outputPath,
-                "--field-reservoir-scale", $FieldReservoirScale
+                "--field-reservoir-scale", $captureScale
             )
             if ($mode -eq "baseline") {
                 $arguments += @("--field-reservoir-mode", "baseline")
@@ -106,6 +111,7 @@ foreach ($mode in $modes) {
                     Mode = $mode
                     ReadyFrames = $readyFrame
                     RenderDebugMode = $debugMode
+                    ReservoirScale = $captureScale
                     Suffix = $suffix
                     Path = $outputPath
                 })
@@ -139,6 +145,7 @@ foreach ($mode in $modes) {
                 Mode = $mode
                 ReadyFrames = $readyFrame
                 RenderDebugMode = $debugMode
+                ReservoirScale = $captureScale
                 Suffix = $suffix
                 Path = $outputPath
             })

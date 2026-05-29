@@ -672,7 +672,9 @@ The sequence harness can now prefer a temporal-owner disocclusion mask over the
 broad rejection debug view.  That mask is derived from the reservoir rejection
 codes for previous history outside the frame, closer previous history, and
 support loss; it localizes where an eventual high-budget reference score should
-look first.
+look first.  It can also capture a same-time native-domain reference at a larger
+reservoir work-grid scale, producing reference-error rows without introducing a
+native-resolution intermediate reservoir.
 The system has cut the false ``nearest-travel-minus-coverage'' priority owner
 and the side-cache temptation.
 

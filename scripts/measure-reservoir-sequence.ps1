@@ -164,6 +164,9 @@ foreach ($group in $groups) {
     $baselineFrames = @($group.Group |
         Where-Object { $_.Mode -eq "baseline" } |
         Sort-Object { [int]$_.ReadyFrames })
+    $referenceFrames = @($group.Group |
+        Where-Object { $_.Mode -eq "reference" } |
+        Sort-Object { [int]$_.ReadyFrames })
 
     foreach ($native in $nativeFrames) {
         $baseline = $baselineFrames | Where-Object { [int]$_.ReadyFrames -eq [int]$native.ReadyFrames } | Select-Object -First 1
@@ -179,7 +182,26 @@ foreach ($group in $groups) {
         }
     }
 
-    foreach ($modeFrames in @($nativeFrames, $baselineFrames)) {
+    foreach ($reference in $referenceFrames) {
+        foreach ($candidateFrames in @($nativeFrames, $baselineFrames)) {
+            $candidateFrames = @($candidateFrames)
+            $candidate = $candidateFrames | Where-Object { [int]$_.ReadyFrames -eq [int]$reference.ReadyFrames } | Select-Object -First 1
+            if ($null -eq $candidate) {
+                continue
+            }
+
+            $results.Add((Measure-ImageDelta -APath $candidate.Path -BPath $reference.Path -Label "$suffix reference-error-$($candidate.Mode) f$($candidate.ReadyFrames)"))
+            if ($suffix -eq "final") {
+                $candidateMask = Get-PreferredMaskPath -Mode $candidate.Mode -ReadyFrames $candidate.ReadyFrames
+                $referenceMask = Get-PreferredMaskPath -Mode "reference" -ReadyFrames $reference.ReadyFrames
+                if (-not [string]::IsNullOrWhiteSpace($candidateMask) -or -not [string]::IsNullOrWhiteSpace($referenceMask)) {
+                    $results.Add((Measure-ImageDelta -APath $candidate.Path -BPath $reference.Path -Label "final masked-reference-error-$($candidate.Mode) f$($candidate.ReadyFrames)" -AMaskPath $candidateMask -BMaskPath $referenceMask))
+                }
+            }
+        }
+    }
+
+    foreach ($modeFrames in @($nativeFrames, $baselineFrames, $referenceFrames)) {
         $modeFrames = @($modeFrames)
         for ($index = 1; $index -lt $modeFrames.Count; $index++) {
             $previous = $modeFrames[$index - 1]
@@ -216,7 +238,7 @@ foreach ($result in $results) {
         $result.MaxChannelDelta))
 }
 $lines.Add("")
-$lines.Add("These are sequence probes, not a final ghosting score. Mode deltas show native/baseline disagreement at each sampled time. Temporal deltas show frame-to-frame output movement per mode. Masked rows prefer disocclusion-debug captures when present, otherwise rejection-debug captures; a high-budget reference is still needed before claiming quality.")
+$lines.Add("These are sequence probes, not a final ghosting score. Mode deltas show native/baseline disagreement at each sampled time. Reference-error rows compare a candidate mode against a higher-work-grid native reference at the same ready-frame count when reference captures are present. Temporal deltas show frame-to-frame output movement per mode. Masked rows prefer disocclusion-debug captures when present, otherwise rejection-debug captures.")
 Set-Content -LiteralPath $OutputPath -Value $lines -Encoding UTF8
 
 Write-Host "Reservoir sequence metrics:"

@@ -45,6 +45,18 @@ than expected travel, and support-overlap loss. The sequence measurer prefers
 ready frames 2 and 3, final plus disocclusion debug, produced a mask covering
 3.1098% of the frame and a masked temporal-native delta of 46.8867%.
 
+Higher-work-grid reference:
+`scripts/capture-reservoir-mode-sequence.ps1` accepts
+`-ReferenceFieldReservoirScale`, captures native-domain reference frames at that
+larger scale, and labels them `reference` in the manifest.
+`scripts/measure-reservoir-sequence.ps1` reports `reference-error-*` rows
+against matching ready-frame counts, using disocclusion masks when present.
+Smoke `artifacts/fensalir-captures/reservoir-sequence-20260530-001046-*`
+compared native scale 0.5 against reference scale 0.75 at 320x180, ready frame
+2, final plus disocclusion. Whole-frame reference-error-native changed 53.9240%;
+masked reference-error-native covered 3.0468% of frame pixels and changed
+42.0368%.
+
 ## Hot Lesson
 
 Area ReSTIR confirms that reuse over an area domain is invalid unless the
@@ -76,9 +88,9 @@ cap remain intentionally non-authoritative.
 
 Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Add a high-budget reference capture mode or repeated-sample reference path
-   so the disocclusion-masked sequence metric can score error instead of only
-   motion/disagreement.
+1. Use the same-time higher-work-grid reference rows to drive an adaptive
+   sampling/update budget policy. Do not add native-resolution reservoir
+   intermediates.
 2. Add exact SDF producer replay only when client SDF distance functions have a
    shared replay include or manifest instead of duplicating shader policy in
    post.

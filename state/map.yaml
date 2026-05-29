@@ -158,8 +158,12 @@ next_actions:
     temporal-owner disocclusion mask from previous UV loss, previous-closer
     history, and support loss; the sequence measurer prefers it over broad
     rejection masks, and `reservoir-sequence-20260530-000151-*` proves the
-    narrower mask path. The next cut is adding a high-budget-reference
-    leakage/ghosting score plus future exact producer SDF replay.
+    narrower mask path. The sequence harness can also capture a same-time
+    native-domain reference at a higher reservoir work-grid scale through
+    `-ReferenceFieldReservoirScale`; `reservoir-sequence-20260530-001046-*`
+    proves reference-error rows from scale 0.5 against scale 0.75. The next cut
+    is using those reference-error rows to drive adaptive sampling/update budget
+    policy plus future exact producer SDF replay.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then

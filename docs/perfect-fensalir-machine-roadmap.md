@@ -548,6 +548,15 @@ Work packet:
     Smoke run `reservoir-sequence-20260530-000151-*` captured native final plus
     disocclusion at 320x180; the disocclusion mask covered 3.1098% of frame
     pixels and produced a masked temporal-native delta row.
+12. Partial: add same-time higher-work-grid reference scoring. The sequence
+    capture script accepts `-ReferenceFieldReservoirScale`; reference captures
+    use native-domain mode at that larger scale and are labeled `reference` in
+    the manifest. The measurer reports `reference-error-*` rows against matching
+    ready-frame counts and uses disocclusion masks when present. Smoke run
+    `reservoir-sequence-20260530-001046-*` compared native scale 0.5 against
+    reference scale 0.75 at 320x180, ready frame 2, final plus disocclusion.
+    This is a higher-budget work-grid reference, not a native-resolution escape
+    hatch.
 
 Required verification:
 

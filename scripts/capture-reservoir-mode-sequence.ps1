@@ -97,6 +97,18 @@ foreach ($mode in $modes) {
                 $arguments += @("--render-debug", $debugMode)
             }
 
+            if (Test-Path -LiteralPath $outputPath) {
+                Write-Host ("Skipping existing {0} ready={1} debug={2} -> {3}" -f $mode, $readyFrame, $debugMode, $outputPath)
+                $captures.Add([pscustomobject]@{
+                    Mode = $mode
+                    ReadyFrames = $readyFrame
+                    RenderDebugMode = $debugMode
+                    Suffix = $suffix
+                    Path = $outputPath
+                })
+                continue
+            }
+
             Write-Host ("Capturing {0} ready={1} debug={2} -> {3}" -f $mode, $readyFrame, $debugMode, $outputPath)
             $env:AQUARIUM_HEADLESS_READY_FRAMES = [string][Math]::Max(1, $readyFrame)
             $process = Start-Process -FilePath $exePath -ArgumentList $arguments -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog

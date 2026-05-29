@@ -533,10 +533,12 @@ Work packet:
     builds one disposable runtime slot and captures native/baseline sequences
     across ready-frame counts, debug modes, and work-grid scale.
     `scripts/measure-reservoir-sequence.ps1` reports per-frame native/baseline
-    disagreement and per-mode frame-to-frame temporal deltas. First smoke run:
-    `reservoir-sequence-20260529-234414-*` at 640x360, final color only, ready
-    frames 2 and 4. It proved the harness works; it is still a probe, not a
-    disocclusion-masked ghosting score.
+    disagreement, per-mode frame-to-frame temporal deltas, and masked rows when
+    rejection-debug captures exist. Smoke runs:
+    `reservoir-sequence-20260529-234414-*` at 640x360, final color only, and
+    `reservoir-sequence-20260529-235031-*` at 320x180 with final plus rejection
+    debug. The latter proved resumable capture and rejection-mask filtering; it
+    is still a probe, not a high-budget-reference ghosting score.
 11. Current: add temporal leakage/ghosting metrics over motion/disocclusion
     sequences, then use those metrics to decide where the sampler spends its
     bounded update budget.

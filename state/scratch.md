@@ -26,6 +26,16 @@ final color only, ready frames 2 and 4. Native/baseline mode-delta changed
 78.5581%, temporal-baseline changed 48.9741%. These are probes, not a final
 ghosting score.
 
+Masked sequence smoke:
+`artifacts/fensalir-captures/reservoir-sequence-20260529-235031-*` at 320x180,
+ready frames 2 and 3, final plus rejection debug. The sequence capture is now
+resumable: existing PNGs are skipped and still written into the manifest.
+Rejection-mask rows covered about 41% of frame pixels. Masked native/baseline
+mode-delta changed 87.4393% at f2 and 94.7517% at f3; masked temporal-native
+changed 83.2208%, masked temporal-baseline changed 83.4813%. This proves the
+mask path is live but still needs a high-budget reference or explicit
+disocclusion mask before it can claim ghosting quality.
+
 ## Hot Lesson
 
 Area ReSTIR confirms that reuse over an area domain is invalid unless the
@@ -57,8 +67,9 @@ cap remain intentionally non-authoritative.
 
 Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Turn the temporal sequence probe into a real leakage/ghosting score using
-   disocclusion/rejection masks or a high-budget reference.
+1. Turn the temporal sequence probe into a real leakage/ghosting score using a
+   high-budget reference and explicit disocclusion masks. Rejection masks are
+   only a first pressure signal.
 2. Add exact SDF producer replay only when client SDF distance functions have a
    shared replay include or manifest instead of duplicating shader policy in
    post.

@@ -3,7 +3,10 @@
 ## Current Slice
 
 Extend native-domain reservoir replay from single-batch TubeField/SDF proof
-paths into measured baseline/native-domain capture.
+paths into measured baseline/native-domain capture. The first comparison set is
+`artifacts/fensalir-captures/reservoir-compare-20260529-231904-*`: native versus
+texel-baseline changed 10.8208% of final-frame pixels, 0.0165% of
+rejection-debug pixels, and 0.2976% of shift-debug pixels.
 
 ## Hot Lesson
 
@@ -32,8 +35,8 @@ cap remain intentionally non-authoritative.
 
 Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Capture the occluded-spectrum-tubes scene in baseline/native-domain modes
-   after replay is real, not merely support-overlap filtered.
+1. Add a real metric harness for temporal leakage/ghosting instead of relying
+   on single-frame image deltas.
 2. Add exact SDF producer replay only when client SDF distance functions have a
    shared replay include or manifest instead of duplicating shader policy in
    post.

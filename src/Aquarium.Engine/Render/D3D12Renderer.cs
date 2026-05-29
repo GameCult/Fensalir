@@ -139,6 +139,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
         new(17, "Reservoir Support"),
         new(18, "Reservoir Shift"),
     ];
+    private static readonly DebugUi.DebugUiOption[] FieldReservoirModeOptions =
+    [
+        new(GraphicsSettings.FieldReservoirModeNativeDomain, "Native Domain"),
+        new(GraphicsSettings.FieldReservoirModeTexelBaseline, "Texel Baseline"),
+    ];
     private static readonly DebugUi.DebugUiOption[] SynthPresetOptions = AquaSynth.Dsl.BuiltInScripts.ReferenceScripts()
         .Select((preset, index) => new DebugUi.DebugUiOption(index, $"{preset.Family}/{preset.Name}"))
         .ToArray();
@@ -572,6 +577,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 .Section("View", () => activeDebugTab == 0)
                 .Options("Render Debug", () => RenderDebugMode, value => RenderDebugMode = Math.Clamp(value, GraphicsSettings.MinRenderDebugMode, GraphicsSettings.MaxRenderDebugMode), RenderDebugOptions, "Selects the active renderer debug view.", () => activeDebugTab == 0)
                 .Button("Reset View", () => RenderDebugMode = 0, "Returns to the final presented frame.", () => activeDebugTab == 0)
+                .Options("Reservoir Mode", () => settings.FieldReservoirMode, value => settings = (settings with { FieldReservoirMode = Math.Clamp(value, GraphicsSettings.FieldReservoirModeNativeDomain, GraphicsSettings.FieldReservoirModeTexelBaseline) }).Normalized(), FieldReservoirModeOptions, "Selects native-domain validation or texel-owned baseline reuse.", () => activeDebugTab == 0)
                 .Section("HDR", () => activeDebugTab == 0)
                 .Slider("Exposure", () => settings.SceneExposure, value => settings = (settings with { SceneExposure = Math.Clamp(value, GraphicsSettings.MinSceneExposure, GraphicsSettings.MaxSceneExposure) }).Normalized(), GraphicsSettings.MinSceneExposure, GraphicsSettings.MaxSceneExposure, "0.###", "Manual scene exposure before display transform.", () => activeDebugTab == 0)
                 .Slider("Bloom Intensity", () => settings.BloomIntensity, value => settings = (settings with { BloomIntensity = Math.Clamp(value, GraphicsSettings.MinBloomIntensity, GraphicsSettings.MaxBloomIntensity) }).Normalized(), GraphicsSettings.MinBloomIntensity, GraphicsSettings.MaxBloomIntensity, "0.###", "Strength of pre-tonemap bloom energy.", () => activeDebugTab == 0)
@@ -907,7 +913,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 cameraFrustum.Right / cameraFrustum.Near,
                 cameraFrustum.Bottom / cameraFrustum.Near,
                 cameraFrustum.Top / cameraFrustum.Near),
-            new Vector4(cameraFrustum.Near, cameraFrustum.Far, 0.0f, 0.0f),
+            new Vector4(cameraFrustum.Near, cameraFrustum.Far, settings.FieldReservoirMode, 0.0f),
             new Vector4(
                 acousticConstraintCount,
                 gpuFusionPointCount,

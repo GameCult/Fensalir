@@ -135,8 +135,11 @@ next_actions:
     producer-keyed manifest before re-evaluating the shifted logical
     column/curve coordinate against the live producer buffer, and SDF history
     carries the previous selected hit through object motion before validating
-    current ray/travel/support. The next cut is baseline/native-domain capture
-    plus future exact producer SDF replay.
+    current ray/travel/support. A field-reservoir mode switch now captures
+    native-domain validation against a texel-owned baseline; the first paired
+    set is `reservoir-compare-20260529-231904-*`, where native versus baseline
+    changed 10.8208% of final-frame pixels. The next cut is a temporal
+    leakage/ghosting metric harness plus future exact producer SDF replay.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then

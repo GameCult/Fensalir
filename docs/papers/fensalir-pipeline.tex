@@ -654,7 +654,13 @@ producer-keyed manifest/source table to re-evaluate selected logical
 column/curve coordinates in the current frame, and SDF object-hit replay carries
 the previous selected hit through object motion before validating current
 ray/travel/support.  The next proof cuts are exact producer SDF replay, measured
-rejection precision, and baseline/native-domain captures.
+temporal leakage/ghosting, and measured rejection precision.
+Those captures now have an explicit comparison switch: native mode enables the
+domain validity, support-overlap, and producer-replay gates, while texel-baseline
+mode uses the same row ABI but disables those native-domain gates during
+temporal reuse.  The first paired Fensalir capture set
+\texttt{reservoir-compare-20260529-231904-*} produced a 10.8208\% final-frame
+pixel delta.  That is a live-switch check, not a quality claim.
 The system has cut the false ``nearest-travel-minus-coverage'' priority owner
 and the side-cache temptation.
 

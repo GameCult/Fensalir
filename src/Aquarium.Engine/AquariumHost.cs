@@ -11,7 +11,11 @@ public static class AquariumHost
 {
     public static int Run(string[] args)
     {
-        var runtimeOptions = new AquariumRuntimeOptions(ParseHeadless(args), ParseCachePath(args), ParseRenderDebugMode(args));
+        var runtimeOptions = new AquariumRuntimeOptions(
+            ParseHeadless(args),
+            ParseCachePath(args),
+            ParseRenderDebugMode(args),
+            ParseFieldReservoirMode(args));
         using var runtimeLoader = new ClientRuntimeLoader(runtimeOptions, ParseClientAssemblyPath(args), ParseClientReloadPointerPath(args));
         var runtime = runtimeLoader.Load();
         if (runtimeOptions.RenderDebugModeOverride is { } renderDebugModeOverride)
@@ -19,6 +23,13 @@ public static class AquariumHost
             runtime.GraphicsSettings = (runtime.GraphicsSettings with
             {
                 RenderDebugMode = renderDebugModeOverride,
+            }).Normalized();
+        }
+        if (runtimeOptions.FieldReservoirModeOverride is { } fieldReservoirModeOverride)
+        {
+            runtime.GraphicsSettings = (runtime.GraphicsSettings with
+            {
+                FieldReservoirMode = fieldReservoirModeOverride,
             }).Normalized();
         }
         var input = new InputState();
@@ -262,6 +273,30 @@ public static class AquariumHost
         return int.TryParse(Environment.GetEnvironmentVariable("AQUARIUM_RENDER_DEBUG_MODE"), out var environmentMode)
             ? environmentMode
             : null;
+    }
+
+    private static int? ParseFieldReservoirMode(IReadOnlyCollection<string> args)
+    {
+        var values = args.ToArray();
+        for (var index = 0; index < values.Length - 1; index++)
+        {
+            if (string.Equals(values[index], "--field-reservoir-mode", StringComparison.OrdinalIgnoreCase))
+            {
+                return ParseFieldReservoirModeValue(values[index + 1]);
+            }
+        }
+
+        return ParseFieldReservoirModeValue(Environment.GetEnvironmentVariable("AQUARIUM_FIELD_RESERVOIR_MODE"));
+    }
+
+    private static int? ParseFieldReservoirModeValue(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
+        {
+            "native" or "native-domain" or "0" => GraphicsSettings.FieldReservoirModeNativeDomain,
+            "baseline" or "texel" or "texel-baseline" or "1" => GraphicsSettings.FieldReservoirModeTexelBaseline,
+            _ => null,
+        };
     }
 
     private static int ParsePositiveIntArgument(IReadOnlyCollection<string> args, string name, string environmentName, int fallback)

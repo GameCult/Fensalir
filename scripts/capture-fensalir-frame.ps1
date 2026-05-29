@@ -4,6 +4,8 @@ param(
     [int]$Height = 720,
     [int]$ReadyFrames = 8,
     [int]$RenderDebugMode = -1,
+    [ValidateSet("native", "baseline")]
+    [string]$FieldReservoirMode = "native",
     [int]$RetainSlots = 4,
     [int]$TimeoutSeconds = 120
 )
@@ -54,6 +56,9 @@ $arguments = @(
 )
 if ($RenderDebugMode -ge 0) {
     $arguments += @("--render-debug", $RenderDebugMode)
+}
+if ($FieldReservoirMode -eq "baseline") {
+    $arguments += @("--field-reservoir-mode", "baseline")
 }
 
 $env:AQUARIUM_HEADLESS_READY_FRAMES = [string][Math]::Max(1, $ReadyFrames)

@@ -37,7 +37,12 @@ public sealed class ZyphosRuntime : IAquariumRuntime
 
     public AquariumRuntimeOptions Options { get; private set; }
 
-    public GraphicsSettings GraphicsSettings { get; set; } = new(0, 1.08f, 0.32f, 0.05f);
+    public GraphicsSettings GraphicsSettings { get; set; } = new(
+        0,
+        1.08f,
+        0.32f,
+        0.05f,
+        GraphicsSettings.FieldReservoirModeNativeDomain);
 
     public AquariumRenderPlan RenderPlan { get; } = ZyphosRenderPlan.Create();
 

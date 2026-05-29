@@ -39,5 +39,9 @@ public interface IAquariumRuntimeFactory
     IAquariumRuntime Create(AquariumRuntimeOptions options);
 }
 
-public readonly record struct AquariumRuntimeOptions(bool Headless, string? CultCachePath, int? RenderDebugModeOverride = null);
+public readonly record struct AquariumRuntimeOptions(
+    bool Headless,
+    string? CultCachePath,
+    int? RenderDebugModeOverride = null,
+    int? FieldReservoirModeOverride = null);
 

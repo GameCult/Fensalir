@@ -370,6 +370,13 @@ and conservative object support.  Exact client SDF distance re-evaluation
 remains producer-owned work rather than a generic postprocess authority.
 Debug modes expose selected coordinates, support footprint/domain kind, and
 shift/rejection state from the same row-3 layer consumed by presentation.
+The renderer also exposes a field-reservoir mode switch for comparison: native
+mode enables domain validity, support overlap, and producer replay during
+temporal reuse, while texel-baseline mode keeps the same rows but disables those
+native-domain gates.  The first paired capture set
+\texttt{reservoir-compare-20260529-231904-*} changed 10.8208\% of final-frame
+pixels between modes.  This proves the comparison switch is live; it is not yet
+a temporal leakage or ghosting metric.
 
 \section{Required Evaluation}
 

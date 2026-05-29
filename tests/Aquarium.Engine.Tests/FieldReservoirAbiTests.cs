@@ -67,6 +67,22 @@ public sealed class FieldReservoirAbiTests
         Assert.Contains("CreateRawShaderResourceView", renderer);
     }
 
+    [Fact]
+    public void ReservoirBaselineModeIsAnExplicitValidationSwitch()
+    {
+        var repoRoot = FindRepoRoot();
+        var settings = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine.Contracts", "GraphicsSettings.cs"));
+        var host = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "AquariumHost.cs"));
+        var post = File.ReadAllText(Path.Combine(repoRoot, "src", "Aquarium.Engine", "Render", "Shaders", "D3D12Post.hlsl"));
+        var capture = File.ReadAllText(Path.Combine(repoRoot, "scripts", "capture-fensalir-frame.ps1"));
+
+        Assert.Contains("FieldReservoirModeNativeDomain", settings);
+        Assert.Contains("FieldReservoirModeTexelBaseline", settings);
+        Assert.Contains("--field-reservoir-mode", host);
+        Assert.Contains("nativeDomainReservoirEnabled", post);
+        Assert.Contains("FieldReservoirMode", capture);
+    }
+
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

@@ -116,6 +116,12 @@ static const float FIELD_ID_TUBE_FIELD_BASE = 5100.0;
 static const float FIELD_ID_TUBE_FIELD_MAX = 10000.0;
 static const int AQUARIUM_SDF_OBJECT_CAPACITY = 64;
 static const float MAX_HISTORY_AGE = 32.0;
+
+bool nativeDomainReservoirEnabled()
+{
+    return cameraFrustumZ.z < 0.5;
+}
+
 VertexOut FullscreenTriangleVS(uint vertexId : SV_VertexID)
 {
     float2 uv = float2((vertexId << 1) & 2, vertexId & 2);
@@ -716,14 +722,21 @@ float reservoirTemporalValidationWeight(
         : 1.0 - smoothstep(0.10, 0.50, abs(saturate(previousSample.control.x) - saturate(currentSample.control.x)));
     float detailWeight = 1.0 - smoothstep(0.08, 0.45, abs(saturate(previousSample.control.z) - saturate(currentSample.control.z)));
     float confidenceWeight = lerp(0.45, 1.0, min(reservoirSampleConfidence(currentSample), reservoirSampleConfidence(previousSample)));
-    float domainWeight = reservoirSampleDomainValidity(currentSample) * reservoirSampleDomainValidity(previousSample);
-    float supportOverlap = fieldReservoirDomainSupportOverlap(currentSample, previousSample, dimensions);
+    bool useNativeDomain = nativeDomainReservoirEnabled();
+    float domainWeight = useNativeDomain
+        ? reservoirSampleDomainValidity(currentSample) * reservoirSampleDomainValidity(previousSample)
+        : 1.0;
+    float supportOverlap = useNativeDomain
+        ? fieldReservoirDomainSupportOverlap(currentSample, previousSample, dimensions)
+        : 1.0;
     uint2 currentPixel = (uint2)pixelFromUv(currentSample.domainSample.xy);
-    float replayWeight = fieldReservoirSampleRequiresExplicitMotion(currentSample)
+    float replayWeight = !useNativeDomain
+        ? 1.0
+        : (fieldReservoirSampleRequiresExplicitMotion(currentSample)
         ? tubeFieldReplayValidationWeight(currentSample, previousSample, currentPixel)
         : (fieldReservoirSampleIsSdfObject(currentSample)
             ? sdfObjectReplayValidationWeight(currentSample, previousSample, currentPixel)
-            : 1.0);
+            : 1.0));
     return travelWeight * fieldWeight * normalWeight * colorWeight * coverageWeight * coverageContinuityWeight * detailWeight * confidenceWeight * domainWeight * supportOverlap * replayWeight;
 }
 
@@ -752,6 +765,11 @@ float reservoirTemporalRejectionCode(
     if (abs(previousSample.metadata.x - currentSample.metadata.x) >= 0.001)
     {
         return 6.0;
+    }
+
+    if (!nativeDomainReservoirEnabled())
+    {
+        return 1.0;
     }
 
     if (!fieldReservoirDomainStateValid(previousSample) || !fieldReservoirDomainStateValid(currentSample))

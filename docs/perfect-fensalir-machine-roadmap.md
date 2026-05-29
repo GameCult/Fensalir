@@ -493,8 +493,12 @@ Work packet:
    reconstructed from stored selected UV/travel, carried through object center
    motion, and checked against the current camera ray/travel/support before
    reuse can merge them.
-8. Next: capture the occluded-spectrum-tubes scene in baseline and native-domain
-   modes.
+8. Done: add an explicit field-reservoir mode switch and capture paired
+   native-domain versus texel-baseline outputs. The first comparison set lives
+   under `artifacts/fensalir-captures/reservoir-compare-20260529-231904-*`.
+   Native versus baseline changed 10.8208% of final-frame pixels, 0.0165% of
+   rejection-debug pixels, and 0.2976% of shift-debug pixels. That proves the
+   switch is live; it is not yet a quality metric.
 
 Required verification:
 

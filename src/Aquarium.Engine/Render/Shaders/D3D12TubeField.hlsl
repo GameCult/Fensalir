@@ -569,7 +569,7 @@ TubeFieldVertexOut D3D12TubeFieldVS(TubeFieldVertexIn input)
     float2 expandedPx = endpointPx + joinNormal * input.shapeData.x * envelopeRadiusPx + tangent * input.shapeData.z * envelopeRadiusPx;
 
     TubeFieldVertexOut output;
-    output.position = float4(pixelToNdc(expandedPx), endpointClip.z, 1.0);
+    output.position = float4(pixelToNdc(expandedPx + jitterPixels), endpointClip.z, 1.0);
     output.segmentStartPx = startPx;
     output.segmentEndPx = endPx;
     output.previousPx = previousPx;
@@ -589,22 +589,37 @@ TubeFieldVertexOut D3D12TubeFieldVS(TubeFieldVertexIn input)
 SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
 {
     float2 baseSamplePx = input.position.xy;
-    float sdf;
-    float closestT;
-    float radiusPx;
-    float2 normalPx;
-    nearestTubeDistancePx(input, baseSamplePx, sdf, closestT, radiusPx, normalPx);
+    float baseSdf;
+    float baseClosestT;
+    float baseRadiusPx;
+    float2 baseNormalPx;
+    nearestTubeDistancePx(input, baseSamplePx, baseSdf, baseClosestT, baseRadiusPx, baseNormalPx);
 
     uint jitterSalt = (uint)round(input.tubeData.w * 131.0 + input.tubeData.x * 17.0 + frameIndex * 97.0);
     float2 jitter01 = float2(
         blueNoiseAt(baseSamplePx, jitterSalt),
         blueNoiseAt(baseSamplePx + float2(37.0, 73.0), jitterSalt + 19u));
-    float2 jitterPx = (jitter01 * 2.0 - 1.0) * min(1.25, max(0.25, radiusPx * 0.08));
+    float2 jitterPx = (jitter01 * 2.0 - 1.0) * min(1.25, max(0.25, baseRadiusPx * 0.08));
     float2 samplePx = baseSamplePx + jitterPx;
-    nearestTubeDistancePx(input, samplePx, sdf, closestT, radiusPx, normalPx);
+    float jitterSdf;
+    float jitterClosestT;
+    float jitterRadiusPx;
+    float2 jitterNormalPx;
+    nearestTubeDistancePx(input, samplePx, jitterSdf, jitterClosestT, jitterRadiusPx, jitterNormalPx);
 
-    float aa = max(fwidth(sdf), max(0.75, radiusPx * max(input.feather, 0.0)));
-    float coverage = 1.0 - smoothstep(0.0, aa, sdf);
+    float sdf = baseSdf;
+    float closestT = baseClosestT;
+    float radiusPx = baseRadiusPx;
+    float2 normalPx = baseNormalPx;
+    float aa = max(fwidth(baseSdf), max(0.75, baseRadiusPx * max(input.feather, 0.0)));
+    float coverage = 1.0 - smoothstep(0.0, aa, baseSdf);
+    if (coverage > 0.02 && jitterSdf <= aa)
+    {
+        closestT = jitterClosestT;
+        radiusPx = jitterRadiusPx;
+        normalPx = jitterNormalPx;
+    }
+
     float sampleX = lerp(input.tubeData.y, input.tubeData.z, closestT);
     float value = SampleCurve((uint)round(input.tubeData.x), sampleX);
     float materialValue = saturate(value);

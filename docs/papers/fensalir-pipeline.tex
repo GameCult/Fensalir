@@ -1,0 +1,1073 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\emergencystretch=2em
+\Urlmuskip=0mu plus 2mu
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black,
+  pdftitle={Fensalir: A Fractal Domain Reservoir Pipeline for Resolution-Decoupled Field Rendering},
+  pdfauthor={GameCult / Fensalir}
+}
+
+\newcommand{\Fensalir}{\textsc{Fensalir}}
+\newcommand{\Aquarium}{\textsc{Aquarium}}
+\newcommand{\Mimir}{\textsc{Mimir}}
+\newcommand{\ReSTIR}{ReSTIR}
+\newcommand{\AreaReSTIR}{Area ReSTIR}
+\newcommand{\TSR}{TSR}
+\newcommand{\GRIS}{GRIS}
+\newcommand{\Domain}{\mathcal{D}}
+\newcommand{\Sample}{\mathcal{S}}
+\newcommand{\Target}{\hat{p}}
+\newcommand{\Pdf}{p}
+\newcommand{\WeightSum}{W}
+
+\title{\Fensalir: A Fractal Domain Reservoir Pipeline for Resolution-Decoupled Field Rendering}
+\author{GameCult / Fensalir}
+\date{Living Draft, May 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present \Fensalir, a real-time rendering architecture that treats geometry,
+material, transport, and sensor observations as typed spatial evidence rather
+than as independent pixel-producing passes.  \Fensalir{} combines ideas from
+resampled importance sampling, temporal super-resolution, anisotropic splat
+rendering, hierarchical virtualized geometry, implicit-field rendering, and
+sensor fusion into one pipeline centered on a \emph{fractal domain reservoir}.
+Unlike screen-space temporal antialiasing pipelines, the reservoir is not
+defined by output texels.  It stores selected samples of semantic field and
+radiance claims in their native domains: cube-sphere tiles, object frames,
+surface charts, volume domains, tube/curve supports, sensor rigs, and dynamic
+hierarchy nodes.  Pixel rows are only the current GPU execution projection of
+this deeper sample state.
+
+The core claim is that real-time field rendering should be resolution-decoupled
+at the level of sampling authority.  Frame time and resolution may change the
+number of probes, candidate samples, hierarchy depth, reuse radius, and
+reconstruction aggressiveness, but they must not change which subsystem owns
+identity, support, visibility, contribution mass, or temporal validity.  This
+paper describes \Fensalir's pipeline, data model, reservoir update equations,
+domain-shift validation rules, reconstruction contract, resource-budget model,
+and implementation strategy.  It is written as a living research document: the
+architecture is confident, the measurements are intentionally explicit about
+what has and has not yet been proven, and every named mechanism is tied to the
+research archive that shaped it.
+\end{abstract}
+
+\section{Introduction}
+
+Real-time rendering pipelines usually inherit a hidden premise: the frame is a
+grid of pixels, and temporal systems exist to make that grid look less
+undersampled.  Temporal antialiasing accumulates subpixel jitter over frames.
+Temporal super-resolution uses richer rejection and reconstruction machinery to
+make fewer samples look like more.  Reservoir-based path sampling reuses
+selected samples across time and space.  These are powerful ideas, but the
+pixel grid remains a gravitational center.
+
+\Fensalir{} starts elsewhere.  It is the native runtime and renderer for
+\Aquarium-style clients: authored field grammars, live sensor observations,
+direct SDF and tube fields, mesh summaries, density/extinction volumes, and
+planetary-scale flow organs all need to become one coherent visible field.  A
+pixel is not a natural owner for that evidence.  A spectrum tube has a rolling
+buffer coordinate and curve support.  A terrain ridge has a cube-face tile,
+grammar path, brush envelope, and conservative summary.  A sensor feature has a
+calibration frame, timestamp, modality confidence, and fusion window.  A flame
+has density, extinction, emission, and transport uncertainty.  The common
+object is not a pixel.  The common object is a bounded claim in a domain.
+
+The thesis of this paper is therefore:
+
+\begin{quote}
+\Fensalir{} renders by lowering semantic field and radiance claims into a
+hierarchical, budgeted, domain-native reservoir.  Screen-space rows are a
+projection of selected evidence, not the foundation of sampling authority.
+\end{quote}
+
+This reorients familiar techniques.  \ReSTIR{} showed that one representative
+sample can carry the weight mass of many candidates and be reused across
+neighboring pixels and frames \cite{bitterli2020restir,ouyang2021restirgi}.
+\GRIS{} made the domain and shift-mapping structure explicit
+\cite{lin2022gris}.  \AreaReSTIR{} demonstrated that reservoir samples over a
+pixel/lens/filter area must store their actual sample coordinates and support
+\cite{zhang2024arearestir,areaRestirCode}.  \TSR{}-style reconstruction showed
+that temporal history must be inspected, rejected, and reconstructed at the
+layer that owns visible output \cite{unrealTSR,unrealTSRFAQ}.  \Fensalir{}
+takes the next step: the sample domain is not merely pixel area or lens area,
+but the fractal spatial domain tree of the scene itself.
+
+\section{Contributions}
+
+This living draft makes five architectural contributions.
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Fractal domain reservoir.}  We define a reservoir sample as a
+  selected domain claim carrying identity, selected coordinates, support,
+  target value, source proposal policy, represented candidate count,
+  contribution weight, conservative bounds, and legal domain shifts.
+
+  \item \textbf{Resolution-decoupled sampling authority.}  We separate the
+  native sampling domain from the output grid.  Resolution and frame-time
+  targets adjust probe budgets and reconstruction policy, but not semantic
+  ownership.
+
+  \item \textbf{Unified field evidence pipeline.}  We place authored IFS/CSG
+  claims, direct SDF proxies, mesh summaries, tube fields, density/extinction
+  volumes, sensor features, and planetary flow fields behind one bounded
+  Form/Appearance/Transport evidence contract.
+
+  \item \textbf{TSR/Area-ReSTIR synthesis.}  We combine domain-coordinate-aware
+  reservoir reuse with temporal rejection and reconstruction signals, so the
+  denoiser consumes reservoir confidence, support, variance, age, rejection
+  reason, and selected sample coordinates rather than opaque pixel history.
+
+  \item \textbf{Budgeted hierarchy and residency model.}  We describe a dynamic
+  contribution tree that rebalances node probes with bounded stochastic updates
+  and maps selected evidence to CPU, RAM, SSD, and GPU responsibilities.
+\end{enumerate}
+
+\section{Prior Work and Research Spine}
+
+\paragraph{Reservoir resampling.}
+Resampled importance sampling and weighted reservoir sampling underlie
+\ReSTIR's direct-light reuse \cite{bitterli2020restir}.  \ReSTIR{} GI applies
+the same spatiotemporal sample reuse shape to indirect paths
+\cite{ouyang2021restirgi}.  \GRIS{} generalizes the theory to correlated
+samples, domain changes, unknown PDFs, and shift mappings \cite{lin2022gris}.
+RTXDI's integration documentation provides practical pass decomposition for
+initial sampling, temporal reuse, spatial reuse, and final shading
+\cite{rtxdiRestirGI,rtxdiRestirPT}.  \Fensalir{} borrows the reservoir spine
+but moves it earlier: primary field candidates themselves are sampled and
+reused, not only lighting candidates attached to a known surface.
+
+\paragraph{Area-domain reuse.}
+\AreaReSTIR{} extends reservoir reuse to the area of the pixel filter and lens
+aperture, storing selected subpixel and lens coordinates and validating reuse
+by support overlap, shift mappings, visibility, PDFs, and Jacobians
+\cite{zhang2024arearestir,areaRestirCode}.  This is the decisive lesson for
+\Fensalir: a tube, SDF splat, density envelope, or fractal tile sample must
+carry selected coordinates and support in its own domain.  A reservoir that only
+knows ``which texel wrote me'' cannot prove legal reuse.
+
+\paragraph{Temporal reconstruction.}
+Modern TAA and \TSR{} systems demonstrate that temporal history needs explicit
+reprojection, disocclusion classification, clamping/rejection, accumulated
+sample accounting, and debug visualization \cite{unrealTSR,unrealTSRFAQ}.
+\Fensalir{} treats these as reservoir resolve responsibilities.  A downstream
+presentation pass may filter the resolved field, but it must not become a
+second owner of producer identity or temporal persistence.
+
+\paragraph{Implicit fields and splats.}
+Hart's sphere tracing establishes the safety contract for implicit surfaces:
+distance steps require conservative bounds \cite{hart1996sphere}.  EWA surface
+and volume splatting show how anisotropic kernels and screen-space filtering
+avoid aliasing and excessive blur \cite{zwicker2001ewa,ren2002objectewa}.
+3D Gaussian Splatting and Octree-GS demonstrate the practical value of
+anisotropic primitives, visibility sorting, and hierarchy-aware splat LOD
+\cite{kerbl2023gaussian,ren2024octreegs}.  \Fensalir{} adopts compact-support
+anisotropic envelopes and projected-support scoring, while rejecting infinite
+Gaussian tails as a default hot-path cost.
+
+\paragraph{Hierarchical geometry and residency.}
+Geometry clipmaps keep terrain detail in nested windows around the viewer
+\cite{losasso2004geometry,asirvatham2005gpuclipmaps}.  Nanite demonstrates
+fine-grained hierarchical cuts driven by projected error and resident summaries
+\cite{karis2021nanite}.  Instant-NGP shows that explicit multiresolution data
+structures can make stochastic spatial learning fast and GPU-friendly
+\cite{mueller2022instantngp}.  \Fensalir{} combines these into an occupancy and
+contribution graph: a hierarchy of conservative summaries, online contribution
+estimates, residency state, and selected cuts.
+
+\paragraph{Domain addressing.}
+Planetary fields use cube-sphere or quadrilateralized spherical cube domains to
+avoid latitude-longitude singularities \cite{projQSC,nasaQSC,clarberg2018cube}.
+The Fensalir archive currently favors tangent cube-sphere projection as a
+measured first default, with QSC/COBE-like mappings retained for higher
+area-regularity paths \cite{fensalirProjectionReport}.  This is not merely a
+planet trick.  It is the canonical example of a domain-first renderer: the
+surface chart owns the address before the renderer owns packets.
+
+\paragraph{Sensor and flow fields.}
+Curless and Levoy's volumetric fusion and KinectFusion show that streamed
+sensor observations can accumulate into implicit fields
+\cite{curless1996volumetric,newcombe2011kinectfusion}.  Fensalir's planetary
+flow organ extends the same evidence vocabulary to stochastic advection fields:
+cube-sphere domains, dataset provenance, transition kernels, uncertainty, and
+runtime packets \cite{fensalirPlanetaryFlow}.  Its archive cites PlasticAdrift,
+GEBCO, ETOPO, ERA5, GLORYS, OSCAR, HYCOM, GraphCast, SFNO/FourCastNet,
+MeshGraphNets, GenCast, and NeuralGCM as external anchors for data and model
+choices \cite{plasticadrift,mcadam2018transition,gebco2025,etopo2022,era5,
+glorys,oscar,hycom,graphcast,sfno,fourcastnet,meshgraphnets,gencast,neuralgcm}.
+
+\paragraph{Presentation and implementation substrate.}
+The renderer remains scene-linear through exposure, bloom, and display
+transform, following ACES/filmic/HDR production guidance
+\cite{aces,epicAutoExposure,unrealBloom,jimenez2014,hableFilmic,
+hablePiecewise,hableUncharted,lagarde2014frostbite}.  D3D12 implementation
+follows explicit descriptor, barrier, memory, fence, and performance guidance
+\cite{d3d12ResourceBinding,d3d12Fences,d3d12Memory,d3d12Interfaces,
+directxBarriers,nvidiaBarriers,amdRdna,amdDma,amdGpuUpload}.  These are not the
+novel parts of the pipeline, but they constrain the machine: no research
+architecture survives contact with a GPU if resource ownership is fog.
+
+\section{System Overview}
+
+\Fensalir{} consumes producer intent and emits a resolved HDR field texture plus
+diagnostics.  Producers may be authored DSL grammars, direct SDF shaders,
+generated TubeField resources, mesh packages, volume textures, surface pages,
+Mimir sensor observations, or planetary simulation outputs.  They do not draw
+final truth directly.  They publish bounded claims.
+
+\begin{center}
+\begin{minipage}{0.92\linewidth}
+\small
+\begin{verbatim}
+DSL / producer intent / resident resource / live sensor input
+-> domain binding
+-> semantic Form / Appearance / Transport claims
+-> ownership tree and conservative summaries
+-> stochastic contribution cache and residency scheduler
+-> bounded proposals with target and sourcePdf
+-> fractal domain reservoir
+-> temporal domain validation and shift
+-> spatial/domain validation and shift
+-> TSR-style rejection, reconstruction, and denoiser features
+-> backend packets and render passes
+-> resolved HDR field texture, debug telemetry, evidence ledger
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+The important ownership rule is simple: a backend is a lowering, not a truth
+owner.  A mesh may be a first-class contributor if it provides stable identity,
+motion or previous-frame mapping, conservative bounds, material/field encoding,
+and guide data.  A mesh that only paints pixels is a fallback draw.  The same
+rule applies to SDF proxies, TubeField paths, volumes, surface pages, and
+sensor fields.
+
+\section{Data Model}
+
+\subsection{Domains}
+
+A domain says where coordinates live and how they map to a parent space:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Field & Meaning \\
+\midrule
+\texttt{DomainKey} & stable identity \\
+\texttt{ParentKey} & lineage for shift/reuse \\
+\texttt{Kind} & cube tile, surface chart, object, volume, tube, sensor rig \\
+\texttt{Frame} & local basis and transform \\
+\texttt{Projection} & mapping to parent/world coordinates \\
+\texttt{Bounds} & conservative support in parent/domain space \\
+\texttt{Periodicity} & torus, wrap, seam, or none \\
+\texttt{Owner} & engine/client/producible authority \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Domains are the first validation surface.  If two samples do not have a legal
+lineage or shift mapping, they do not reuse each other.
+
+\subsection{Claims}
+
+Claims are semantic statements, not render packets:
+
+\begin{center}
+\begin{minipage}{0.86\linewidth}
+\small
+\begin{verbatim}
+Claim {
+  ClaimKey, DomainKey, NodeKey,
+  Layer: Form | Appearance | Transport,
+  Encoding: Height | SignedDistance | Density | Extinction |
+            Material | Phase | Emission | Radiance | Feature | Confidence,
+  LocalFrame, Envelope, Payload, Tags, CostTier, Seed
+}
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+The Form/Appearance/Transport split replaces the earlier implementation
+shorthand of separate SDF, PBR, and Radiosity packet names.  Form states what exists where; Appearance
+states local material and emission behavior; Transport states how energy moves
+through or from the field.  Opaque SDF surfaces, transparent density volumes,
+sensor confidence regions, mesh summaries, and spline fields can therefore
+share machinery without blending incompatible meanings.
+
+\subsection{Reservoir Samples}
+
+The fractal domain reservoir stores a selected sample:
+
+\begin{center}
+\begin{minipage}{0.86\linewidth}
+\small
+\begin{verbatim}
+ReservoirSample {
+  SelectedClaim,
+  DomainKey,
+  SelectedDomainCoordinate,
+  SupportFootprint,
+  SelectedTarget,
+  WeightSum,
+  CandidateCount,
+  ContributionWeight,
+  SourcePdfOrPolicy,
+  ProposalKind,
+  ShiftMappingMetadata,
+  ConservativeBounds,
+  Confidence,
+  SampleAge,
+  RejectionOrValidationMask
+}
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+The selected coordinate and support are mandatory for area-domain contributors.
+For a TubeField, this includes selected subpixel and curve/buffer-domain
+coordinates.  For a cube-sphere terrain sample, it includes face/tile/local UV
+and brush support.  For a sensor feature, it includes sensor-rig/world mapping
+and calibration confidence.  For a volume, it includes local volume coordinate
+and extinction/density support.
+
+\section{Reservoir Update}
+
+\Fensalir{} uses the usual RIS reservoir shape, but the sample type is a field
+claim rather than a direct-light sample.  For a candidate \(c\) with target
+\(\Target(c)\), source proposal density \(\Pdf(c)\), and represented candidate
+count \(m_c\), the unnormalized candidate weight is
+
+\begin{equation}
+  w_c = \frac{\Target(c)}{\Pdf(c)}.
+\end{equation}
+
+The reservoir maintains
+
+\begin{equation}
+  \WeightSum \leftarrow \WeightSum + w_c,\qquad
+  M \leftarrow M + m_c,
+\end{equation}
+
+and selects the candidate with probability
+
+\begin{equation}
+  P(c \text{ selected}) = \frac{w_c}{\WeightSum}.
+\end{equation}
+
+The contribution weight exported for final evaluation follows
+
+\begin{equation}
+  C = \frac{\WeightSum}{M \cdot \Target(s)},
+\end{equation}
+
+where \(s\) is the selected sample.  Invalid zero, negative, infinite, or NaN
+targets/PDFs are rejected before proposal emission.  Deterministic structural
+proposals use an explicit source policy, commonly \(\Pdf=1\), rather than
+pretending to be free samples.
+
+Merging another reservoir \(R_o\) into the current reservoir \(R\) uses the
+standard reservoir merge probability:
+
+\begin{equation}
+  P(R_o \text{ selected}) =
+  \frac{\WeightSum_o}{\WeightSum + \WeightSum_o}.
+\end{equation}
+
+The merge is legal only after the candidate reservoir's selected sample has
+been shifted or re-evaluated in the target domain and its target/source support
+story remains valid.
+
+\section{Domain Shifts and Validation}
+
+Reuse is guilty until proven compatible.  A temporal or spatial pass may not
+merge a reservoir because two pixels are nearby, two travels are similar, or two
+field ids match.  Those are hints.  Legal reuse requires a domain shift.
+
+\subsection{Temporal Reuse}
+
+Temporal reuse validates:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item domain lineage and selected sample support;
+  \item camera/object motion and previous-domain reprojection;
+  \item disocclusion and occlusion;
+  \item travel/depth and normal/gradient compatibility;
+  \item field id, material class, layer, and encoding;
+  \item motion, previous UV/domain coordinate, and guide confidence;
+  \item sample age, variance, and producer-domain validity.
+\end{itemize}
+
+The \AreaReSTIR{} lesson is explicit: if the previous selected sample does not
+lie in the target support, the reuse pass either rejects it or applies a legal
+shift/reconnection with proper evaluation.  The previous reservoir cannot
+become visible fallback by itself.
+
+\subsection{Spatial and Domain Reuse}
+
+Spatial reuse is a domain-neighbor problem, not only a screen-neighbor problem.
+Valid neighborhoods include screen tiles, cube-face seams, quadtree siblings,
+periodic torus wraps, curve supports, volume cells, object-local frames, and
+calibrated sensor regions.  For each neighbor, \Fensalir{} evaluates a shift:
+
+\begin{equation}
+  T_{a\rightarrow b}: \Sample_a \rightarrow \Sample_b.
+\end{equation}
+
+The shifted sample must be re-evaluated in the target domain \(b\).  If the
+mapping changes measure, the shift metadata must carry a Jacobian or an
+equivalent MIS correction.  If the mapping is deterministic structural replay,
+the proposal policy must say so explicitly.
+
+\section{Hierarchy: The Dynamic Contribution Tree}
+
+The reservoir does not float in isolation.  It sits inside an occupancy and
+contribution graph:
+
+\begin{center}
+\begin{minipage}{0.86\linewidth}
+\small
+\begin{verbatim}
+Node {
+  NodeKey, DomainKey, Bounds,
+  SummaryPayload, ChildPayload,
+  MeanContribution, Variance, Confidence,
+  SampleAge, ResidencyState,
+  LastVisibleFrame, LastUpdateFrame
+}
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+Each node has a conservative summary.  Missing children render through parent
+summaries.  The selected hierarchy cut is driven by projected error, material
+delta, current reservoir confidence, uncertainty, and estimated CPU/GPU/RAM/SSD
+cost.
+
+The projected contribution score begins as a conservative heuristic:
+
+\begin{align}
+  r_{\mathrm{px}} &= \mathrm{projectRadius}(B_n, camera),\\
+  e_{\mathrm{px}} &= \mathrm{projectError}(E_n, B_n, camera),\\
+  S_n &= \frac{
+      \max(e_{\mathrm{px}}\cdot V_n,\ \Delta m_n\cdot A_n)
+      \cdot I_n
+    }{\max(C_n,\epsilon)},
+\end{align}
+
+where \(B_n\) is node bound, \(E_n\) is maximum Form error, \(V_n\) is visible
+coverage estimate, \(\Delta m_n\) is material delta, \(A_n\) is projected area,
+\(I_n\) is importance bias, and \(C_n\) is estimated update/render cost.
+
+\subsection{Bounded Stochastic Probing}
+
+The tree cannot update every node every frame.  \Fensalir{} uses an online
+estimator with stochastic exploration:
+
+\begin{equation}
+  P_{\mathrm{update}}(n) \propto
+  \frac{
+    P_{\mathrm{visible}}(n)
+    \cdot \mathrm{stale}(n)
+    \cdot \mathrm{uncertainty}(n)
+    \cdot \max(S_n, S_{\mathrm{parentBias}})
+  }{\max(C_n,\epsilon)}.
+\end{equation}
+
+On observation \(o\),
+
+\begin{align}
+  \delta &= o - \mu_n,\\
+  \mu_n &\leftarrow \mu_n + \alpha \delta,\\
+  \sigma_n^2 &\leftarrow (1-\beta)\sigma_n^2 + \beta\delta^2.
+\end{align}
+
+On non-update, confidence decays and uncertainty grows.  This is deliberately
+the boring first machine: EMA, variance, and bandit-style exploration.  A
+learned predictor may later rank update and residency priority, but it may not
+replace conservative summaries, SDF bounds, calibration bounds, or visibility
+safety.
+
+\section{Backend Lowerings}
+
+\Fensalir{} can lower the same evidence contract into multiple execution paths:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item 2D height/material/signed-distance/confidence pages;
+  \item 3D compact SDF splats for opaque Form;
+  \item density/extinction/emission splats for transparent Form and Transport;
+  \item 2D fields projected onto 3D surfaces;
+  \item direct SDF proxy draws;
+  \item generated TubeField curve/tube meshes and analytic tube SDF proposals;
+  \item resource-backed mesh packages with stable ids and guide outputs;
+  \item sensor confidence volumes and calibrated feature fields;
+  \item debug overlays and receipts.
+\end{itemize}
+
+The first implementation already has pieces of this: shaped 2D brush envelopes,
+semantic claim/tree rows, conservative summaries, fractal contribution state,
+projected SDF splat compilation, GPU splat/reservoir receipt harness, direct
+TubeField resource lowerings, surface, volume, and mesh resource declarations, and a
+shared four-row field reservoir execution ABI.  The live ABI currently uses:
+
+\begin{center}
+\begin{tabular}{cl}
+\toprule
+Row & Meaning \\
+\midrule
+0 & current-frame initial RIS \\
+1 & temporal reuse reservoir \\
+2 & spatial/domain reuse reservoir \\
+3 & final resolved reservoir consumed by bloom/presentation \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+This row layout is useful, but incomplete as a foundation.  The next mandatory
+cut is to add or repack a first-class domain/sample-coordinate lane so TubeField
+and SDF proposals carry selected subpixel/domain coordinates plus support.
+Without that, temporal/spatial reuse remains too close to a texel cache.
+
+\section{Reconstruction and Denoising}
+
+\Fensalir{} does not place a conventional TAA pass after rendering and hope it
+discovers identity.  Reservoir resolve consumes:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item selected domain sample coordinates;
+  \item selected support/filter footprint;
+  \item contribution weight, weight sum, selected target, and candidate count;
+  \item reservoir confidence, sample age, variance, and update probability;
+  \item field id, layer, encoding, normal/gradient, travel, and motion;
+  \item rejection reason, support miss, disocclusion, occlusion, and shift kind.
+\end{itemize}
+
+The denoiser is therefore part of the reservoir pipeline, not downstream
+cosmetics.  If a region is rejected because support is missing, it should be
+reconstructed differently from a region rejected because of occlusion, field-id
+mismatch, low confidence, or high variance.  The scheduler can also respond:
+persistent reconstruction stress increases future probe probability in the
+relevant domain nodes.
+
+This closes the loop:
+
+\begin{center}
+\begin{minipage}{0.86\linewidth}
+\small
+\begin{verbatim}
+reservoir confidence / rejection / variance / denoiser stress
+-> contribution cache update
+-> future probe and residency priority
+-> better selected claims
+-> less reconstruction debt
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+\section{Resource Contract}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{p{0.15\linewidth}p{0.72\linewidth}}
+\toprule
+Resource & Owned responsibility \\
+\midrule
+CPU & grammar expansion, domain math, coarse scoring, stochastic scheduling,
+selected cuts, page requests, eviction, evidence logs \\
+RAM & summaries, estimator state, warm metadata, selected cuts, recent probes \\
+SSD & serialized payload pages, summaries, probe history, optional training
+datasets; never frame-blocking \\
+GPU & selected packet evaluation, SDF/tube/mesh/volume passes, compute scoring
+where profitable, page-table sampling, reservoir rows, debug views \\
+\bottomrule
+\end{tabular}
+\caption{The resource contract.  The architecture is budget-adaptive because
+each resource has a narrow job.}
+\end{table}
+
+Lower frame budgets reduce probes, node depth, candidate count, richer shift
+paths, and denoiser feature quality.  They do not change domain ownership.
+High budgets buy more evidence.  Low budgets render parent summaries and older
+validated reservoirs.  Neither mode lets a pixel row become truth.
+
+\section{Implementation Status}
+
+\Fensalir{} is not a paper-only machine.  The archive records working slices:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item cube-sphere projection harness with tangent projection measured against
+  normalize projection \cite{fensalirProjectionReport};
+  \item shaped compact-support brush envelopes and height-field lowering
+  \cite{fensalirFractalRoadmap};
+  \item semantic contracts for domains, claims, ownership trees, summaries, and
+  selected cuts \cite{fensalirArchitecturePlan};
+  \item contribution cache and occupancy graph scaffolding;
+  \item Form encodings for signed distance, density, and extinction;
+  \item projected 2D-to-3D SDF splat compiler;
+  \item GPU receipt harness with two million splats and two million reservoirs
+  per layer resident, updating 50,000 entries per layer per frame with two
+  candidates per update, measured at 4.471 ms/frame over 120 frames on a GTX
+  1070-class machine \cite{fensalirPerfectMachine};
+  \item D3D12 TubeField resource and generated-mesh lowerings;
+  \item shared field reservoir ABI with current/temporal/spatial/final row
+  semantics;
+  \item HDR presentation path with exposure, bloom pyramid, ACES-fit transform,
+  and debug modes \cite{fensalirHDR}.
+\end{itemize}
+
+The known architectural gap is also explicit: the current row ABI still needs
+domain/sample-coordinate authority.  The system has cut the false
+``nearest-travel-minus-coverage'' priority owner, but a real \AreaReSTIR-style
+domain reservoir requires selected support coordinates before further occlusion
+tuning deserves trust.
+
+\section{Evaluation Plan}
+
+The pipeline should be evaluated at four levels.
+
+\paragraph{Reservoir correctness.}
+Unit tests should verify RIS add/merge selection, contribution weight,
+candidate count preservation, invalid target/PDF rejection, deterministic RNG,
+and CPU/GPU parity for packing and update rules.
+
+\paragraph{Domain reuse.}
+Fixtures should exercise cube-face seams, quadtree neighbors, tube support,
+SDF proxy movement, mesh summaries, density/extinction regions, sensor
+calibration shifts, and previous-frame motion.  Negative checks matter: an old
+texel path must no longer be able to override the selected domain owner.
+
+\paragraph{Visual behavior.}
+Captures should compare final color and debug views for ghosting, occluded-tube
+leakage, background speckle, disocclusion rejection, spatial reuse, contribution
+weight, support overlap, and denoiser stress.
+
+\paragraph{Budget scaling.}
+Benchmarks should sweep resolution and target frame budgets while recording
+probe count, selected cut size, GPU time, page requests, stale confidence,
+variance, reconstruction debt, and visible error.  The expected result is not
+constant quality.  The expected result is graceful degradation without authority
+moving back to screen texels.
+
+\section{Discussion}
+
+\Fensalir{} is intentionally vertical.  Its DSL, hierarchy, cache, reservoir,
+renderer, temporal reconstruction, denoiser, resource residency, and debug
+ledger are designed as one machine.  That is a risk: vertical integration can
+become a private cathedral of assumptions.  The countermeasure is explicit
+ownership.  Candidate generators own proposal distributions.  Target evaluators
+own importance.  Reservoirs own resampling math.  Reuse passes own validation
+and shift mappings.  Conservative summaries own safety.  Residency owns
+resource pressure.  Resolve owns reconstruction.  Debug surfaces must observe
+the same layer where the user sees failure.
+
+This is also why \Fensalir{} does not simply ``use \ReSTIR{}'' or ``use
+\TSR{}''.  Those systems solve crucial subproblems, but the renderer's native
+objects are broader: domain claims, selected hierarchy nodes, density fields,
+sensor features, flow kernels, and packet lowerings.  The proper synthesis is
+not another post-process.  It is a domain reservoir with reconstruction-aware
+feedback.
+
+\section{Conclusion}
+
+\Fensalir{} proposes a real-time pipeline in which pixels are consumers of
+domain evidence, not owners of sampled truth.  A fractal domain reservoir stores
+selected field and radiance claims, their support, their contribution mass, and
+their legal reuse story.  A dynamic contribution tree decides which domains
+deserve more probes under budget.  TSR-style reconstruction consumes the actual
+reservoir diagnostics and feeds sampling pressure back into the scheduler.
+
+The result is a renderer that can scale toward arbitrary resolution and frame
+targets by adjusting evidence budgets rather than changing the architecture.
+The machine is still being built, but the invariant is now sharp enough to cut
+against implementation drift: if a sample cannot name its domain, selected
+coordinate, support, target, proposal policy, represented mass, and legal
+shift, it is not yet a \Fensalir{} reservoir sample.
+
+\clearpage
+\begin{thebibliography}{99}
+\small
+
+\bibitem{bitterli2020restir}
+B. Bitterli, C. Wyman, M. Pharr, P. Shirley, A. Lefohn, and W. Jarosz.
+\newblock Spatiotemporal reservoir resampling for real-time ray tracing with dynamic direct lighting.
+\newblock \emph{ACM Transactions on Graphics}, 2020.
+\newblock \url{https://research.nvidia.com/labs/rtr/publication/bitterli2020spatiotemporal/}
+
+\bibitem{ouyang2021restirgi}
+Y. Ouyang, S. Liu, M. Kettunen, M. Pharr, and J. Pantaleoni.
+\newblock ReSTIR GI: Path resampling for real-time path tracing.
+\newblock \emph{Computer Graphics Forum}, 2021.
+\newblock \url{https://research.nvidia.com/publication/2021-06_restir-gi-path-resampling-real-time-path-tracing}
+
+\bibitem{lin2022gris}
+D. Lin, M. Kettunen, B. Bitterli, J. Pantaleoni, C. Yuksel, and C. Wyman.
+\newblock Generalized resampled importance sampling: Foundations of ReSTIR.
+\newblock \emph{ACM Transactions on Graphics}, 2022.
+\newblock \url{https://graphics.cs.utah.edu/research/projects/gris/sig22_GRIS.pdf}
+
+\bibitem{zhang2024arearestir}
+S. Zhang, D. Lin, M. Kettunen, C. Yuksel, and C. Wyman.
+\newblock Area ReSTIR: Resampling for real-time defocus and antialiasing.
+\newblock \emph{ACM Transactions on Graphics}, 2024.
+\newblock \url{https://graphics.cs.utah.edu/research/projects/area-restir/AreaReSTIR-SIGGRAPH2024.pdf}
+
+\bibitem{areaRestirCode}
+S. Zhang.
+\newblock Area-ReSTIR source code repository.
+\newblock \url{https://github.com/guiqi134/Area-ReSTIR}
+
+\bibitem{rtxdiRestirGI}
+NVIDIA.
+\newblock RTXDI ReSTIR GI documentation.
+\newblock \url{https://github.com/NVIDIA-RTX/RTXDI/blob/main/Doc/RestirGI.md}
+
+\bibitem{rtxdiRestirPT}
+NVIDIA.
+\newblock RTXDI ReSTIR PT documentation.
+\newblock \url{https://github.com/NVIDIA-RTX/RTXDI/blob/main/Doc/RestirPT.md}
+
+\bibitem{unrealTSR}
+Epic Games.
+\newblock Temporal Super Resolution in Unreal Engine.
+\newblock \url{https://dev.epicgames.com/documentation/unreal-engine/temporal-super-resolution-in-unreal-engine}
+
+\bibitem{unrealTSRFAQ}
+Epic Games.
+\newblock Temporal Super Resolution Frequently Asked Questions.
+\newblock \url{https://dev.epicgames.com/documentation/unreal-engine/temporal-super-resolution-frequently-asked-questions-for-unreal-engine}
+
+\bibitem{hart1996sphere}
+J. C. Hart.
+\newblock Sphere tracing: A geometric method for the antialiased ray tracing of implicit surfaces.
+\newblock \emph{The Visual Computer}, 1996.
+\newblock \url{https://experts.illinois.edu/en/publications/sphere-tracing-a-geometric-method-for-the-antialiased-ray-tracing/}
+
+\bibitem{zwicker2001ewa}
+M. Zwicker, H. Pfister, J. van Baar, and M. Gross.
+\newblock EWA splatting.
+\newblock \emph{IEEE Visualization}, 2001.
+\newblock \url{https://dash.harvard.edu/bitstream/handle/1/4138240/Zwicker_EWA.pdf}
+
+\bibitem{ren2002objectewa}
+L. Ren, H. Pfister, and M. Zwicker.
+\newblock Object space EWA surface splatting: A hardware accelerated approach to high quality point rendering.
+\newblock \emph{Computer Graphics Forum}, 2002.
+\newblock \href{https://publications.ri.cmu.edu/object-space-ewa-surface-splatting-a-hardware-accelerated-approach-to-high-quality-point-rendering/}{CMU publication page}
+
+\bibitem{kerbl2023gaussian}
+B. Kerbl, G. Kopanas, T. Leimkuehler, and G. Drettakis.
+\newblock 3D Gaussian Splatting for Real-Time Radiance Field Rendering.
+\newblock \emph{ACM Transactions on Graphics}, 2023.
+\newblock \url{https://arxiv.org/abs/2308.04079}
+
+\bibitem{ren2024octreegs}
+K. Ren et al.
+\newblock Octree-GS: Towards consistent real-time rendering with LOD-structured 3D Gaussians.
+\newblock 2024.
+\newblock \url{https://arxiv.org/abs/2403.17898}
+
+\bibitem{losasso2004geometry}
+F. Losasso and H. Hoppe.
+\newblock Geometry clipmaps: Terrain rendering using nested regular grids.
+\newblock \emph{ACM Transactions on Graphics}, 2004.
+\newblock \url{https://hhoppe.com/geomclipmap.pdf}
+
+\bibitem{asirvatham2005gpuclipmaps}
+A. Asirvatham and H. Hoppe.
+\newblock Terrain rendering using GPU-based geometry clipmaps.
+\newblock \emph{GPU Gems 2}, 2005.
+\newblock \url{https://developer.nvidia.com/gpugems/gpugems2/part-i-geometric-complexity/chapter-2-terrain-rendering-using-gpu-based-geometry}
+
+\bibitem{karis2021nanite}
+B. Karis, R. Stubbe, and G. Wihlidal et al.
+\newblock A deep dive into Nanite virtualized geometry.
+\newblock \emph{Advances in Real-Time Rendering}, SIGGRAPH 2021.
+\newblock \url{https://advances.realtimerendering.com/s2021/Karis_Nanite_SIGGRAPH_Advances_2021_final.pdf}
+
+\bibitem{mueller2022instantngp}
+T. Mueller, A. Evans, C. Schied, and A. Keller.
+\newblock Instant neural graphics primitives with a multiresolution hash encoding.
+\newblock \emph{ACM Transactions on Graphics}, 2022.
+\newblock \url{https://research.nvidia.com/publication/2022-07_instant-neural-graphics-primitives-multiresolution-hash-encoding}
+
+\bibitem{projQSC}
+PROJ contributors.
+\newblock Quadrilateralized Spherical Cube.
+\newblock \url{https://proj.org/en/stable/operations/projections/qsc.html}
+
+\bibitem{nasaQSC}
+F. K. Chan and E. M. O'Neill.
+\newblock A quadrilateralized spherical cube earth data base.
+\newblock NASA Technical Report, 1975.
+\newblock \url{https://ntrs.nasa.gov/citations/19810002572}
+
+\bibitem{clarberg2018cube}
+P. Clarberg.
+\newblock Cube-to-sphere projections for procedural texturing and beyond.
+\newblock \emph{Journal of Computer Graphics Techniques}, 2018.
+\newblock \url{https://jcgt.org/published/0007/02/01/paper.pdf}
+
+\bibitem{curless1996volumetric}
+B. Curless and M. Levoy.
+\newblock A volumetric method for building complex models from range images.
+\newblock \emph{SIGGRAPH}, 1996.
+\newblock \url{https://graphics.stanford.edu/papers/volrange/volrange.pdf}
+
+\bibitem{newcombe2011kinectfusion}
+R. A. Newcombe, S. Izadi, O. Hilliges, D. Molyneaux, D. Kim, A. J. Davison, P. Kohli, J. Shotton, S. Hodges, and A. Fitzgibbon.
+\newblock KinectFusion: Real-time dense surface mapping and tracking.
+\newblock \emph{ISMAR}, 2011.
+\newblock \url{https://www.microsoft.com/en-us/research/publication/kinectfusion-real-time-dense-surface-mapping-tracking/}
+
+\bibitem{aces}
+Academy Color Encoding System.
+\newblock ACES system overview.
+\newblock \url{https://docs.acescentral.com/background/overview/}
+
+\bibitem{epicAutoExposure}
+Epic Games.
+\newblock How Epic Games is handling auto exposure in 4.25.
+\newblock \url{https://www.unrealengine.com/tech-blog/how-epic-games-is-handling-auto-exposure-in-4-25?lang=en-US}
+
+\bibitem{unrealBloom}
+Epic Games.
+\newblock Bloom in Unreal Engine.
+\newblock \url{https://dev.epicgames.com/documentation/en-us/unreal-engine/bloom-in-unreal-engine?application_version=5.6}
+
+\bibitem{jimenez2014}
+J. Jimenez.
+\newblock Next generation post processing in Call of Duty: Advanced Warfare.
+\newblock \url{https://www.iryoku.com/next-generation-post-processing-in-call-of-duty-advanced-warfare/}
+
+\bibitem{hableFilmic}
+J. Hable.
+\newblock Filmic tonemapping operators.
+\newblock \url{https://filmicworlds.com/blog/filmic-tonemapping-operators/}
+
+\bibitem{hablePiecewise}
+J. Hable.
+\newblock Filmic tonemapping with piecewise power curves.
+\newblock \url{https://filmicworlds.com/blog/filmic-tonemapping-with-piecewise-power-curves/}
+
+\bibitem{hableUncharted}
+J. Hable.
+\newblock Uncharted 2 HDR lighting.
+\newblock SIGGRAPH 2010 course material.
+\newblock \url{https://advances.realtimerendering.com/s2010/Hable-Uncharted2%28SIGGRAPH%202010%20Advanced%20RealTime%20Rendering%20Course%29.pdf}
+
+\bibitem{lagarde2014frostbite}
+S. Lagarde and C. de Rousiers.
+\newblock Moving Frostbite to physically based rendering 3.0.
+\newblock SIGGRAPH 2014 course material.
+\newblock \url{https://cgvr.cs.uni-bremen.de/teaching/cg_literatur/Moving%20Frostbite%20to%20Physically%20Based%20Rendering%203.0%2C%202014%2C%20Sebastien%20Lagarde.pdf}
+
+\bibitem{plasticadrift}
+PlasticAdrift.
+\newblock PlasticAdrift project.
+\newblock \url{https://plasticadrift.org/}
+
+\bibitem{mcadam2018transition}
+R. McAdam and E. van Sebille.
+\newblock Surface connectivity and transition matrices for ocean plastic transport.
+\newblock \url{https://dbc.library.uu.nl/handle/1874/362629}
+
+\bibitem{gebco2025}
+GEBCO.
+\newblock GEBCO 2025 Grid.
+\newblock \url{https://www.gebco.net/data-products-gridded-bathymetry-data/gebco2025-grid}
+
+\bibitem{etopo2022}
+NOAA NCEI.
+\newblock ETOPO global relief model.
+\newblock \url{https://www.ncei.noaa.gov/products/etopo-global-relief-model}
+
+\bibitem{era5}
+Copernicus Climate Change Service.
+\newblock ERA5 climate reanalysis.
+\newblock \url{https://climate.copernicus.eu/climate-reanalysis}
+
+\bibitem{glorys}
+Copernicus Marine Service.
+\newblock GLORYS global ocean physics reanalysis.
+\newblock \url{https://data.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030}
+
+\bibitem{oscar}
+Earth and Space Research.
+\newblock OSCAR surface currents.
+\newblock \url{https://www.esr.org/data-products/oscar/oscar-surface-currents/}
+
+\bibitem{hycom}
+HYCOM Consortium.
+\newblock HYCOM data server.
+\newblock \url{https://www.hycom.org/}
+
+\bibitem{graphcast}
+R. Lam et al.
+\newblock Learning skillful medium-range global weather forecasting.
+\newblock GraphCast.
+\newblock \url{https://deepmind.google/research/publications/22598/}
+
+\bibitem{sfno}
+T. Bonev et al.
+\newblock Spherical Fourier neural operators: Learning stable dynamics on the sphere.
+\newblock \url{https://research.nvidia.com/publication/2023-06_spherical-fourier-neural-operators-learning-stable-dynamics-sphere}
+
+\bibitem{fourcastnet}
+A. Pathak et al.
+\newblock FourCastNet: A global data-driven high-resolution weather model using adaptive Fourier neural operators.
+\newblock \url{https://authors.library.caltech.edu/records/k959a-53q45}
+
+\bibitem{meshgraphnets}
+T. Pfaff, M. Fortunato, A. Sanchez-Gonzalez, and P. Battaglia.
+\newblock Learning mesh-based simulation with graph networks.
+\newblock \url{https://arxiv.org/abs/2010.03409}
+
+\bibitem{gencast}
+I. Price et al.
+\newblock Probabilistic weather forecasting with machine learning.
+\newblock GenCast.
+\newblock \url{https://www.nature.com/articles/s41586-024-08252-9}
+
+\bibitem{neuralgcm}
+S. Kochkov et al.
+\newblock Neural general circulation models for weather and climate.
+\newblock \url{https://www.nature.com/articles/s41586-024-07744-y}
+
+\bibitem{d3d12ResourceBinding}
+Microsoft.
+\newblock Resource binding flow of control in Direct3D 12.
+\newblock \url{https://learn.microsoft.com/en-us/windows/win32/direct3d12/resource-binding-flow-of-control}
+
+\bibitem{d3d12Fences}
+Microsoft.
+\newblock Fence-based resource management.
+\newblock \url{https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management}
+
+\bibitem{d3d12Memory}
+Microsoft.
+\newblock Memory management in Direct3D 12.
+\newblock \url{https://learn.microsoft.com/en-us/windows/win32/direct3d12/memory-management}
+
+\bibitem{d3d12Interfaces}
+Microsoft.
+\newblock Direct3D 12 interfaces.
+\newblock \url{https://learn.microsoft.com/en-us/windows/win32/direct3d12/direct3d-12-interfaces}
+
+\bibitem{directxBarriers}
+Microsoft DirectX Developer Blog.
+\newblock A look inside D3D12 resource state barriers.
+\newblock \url{https://devblogs.microsoft.com/directx/a-look-inside-d3d12-resource-state-barriers/}
+
+\bibitem{nvidiaBarriers}
+NVIDIA.
+\newblock Advanced API performance: barriers.
+\newblock \url{https://developer.nvidia.com/blog/advanced-api-performance-barriers/}
+
+\bibitem{amdRdna}
+AMD GPUOpen.
+\newblock RDNA performance guide.
+\newblock \url{https://gpuopen.com/learn/rdna-performance-guide/}
+
+\bibitem{amdDma}
+AMD GPUOpen.
+\newblock D3D12 Memory Allocator.
+\newblock \url{https://gpuopen.com/d3d12-memory-allocator/}
+
+\bibitem{amdGpuUpload}
+AMD GPUOpen.
+\newblock Using D3D12 heap type GPU upload.
+\newblock \url{https://gpuopen.com/learn/using-d3d12-heap-type-gpu-upload/}
+
+\bibitem{fensalirPerfectMachine}
+\Fensalir{} archive.
+\newblock Perfect Machine architecture.
+\newblock \url{file:///E:/Projects/Fensalir/docs/perfect-machine-architecture.md}
+
+\bibitem{fensalirDomainReservoir}
+\Fensalir{} archive.
+\newblock Fractal domain reservoir.
+\newblock \url{file:///E:/Projects/Fensalir/docs/fractal-domain-reservoir.md}
+
+\bibitem{fensalirEvidenceReservoir}
+\Fensalir{} archive.
+\newblock Temporal spatial evidence reservoir.
+\newblock \url{file:///E:/Projects/Fensalir/docs/temporal-spatial-evidence-reservoir.md}
+
+\bibitem{fensalirArchitecturePlan}
+\Fensalir{} archive.
+\newblock Fractal brush architecture plan.
+\newblock \url{file:///E:/Projects/Fensalir/research/rendering/fractal-brush-architecture-plan.md}
+
+\bibitem{fensalirCubeBrushes}
+\Fensalir{} archive.
+\newblock Cube-sphere fractal brush research.
+\newblock \url{file:///E:/Projects/Fensalir/research/rendering/cube-sphere-fractal-brushes.md}
+
+\bibitem{fensalirFractalRoadmap}
+\Fensalir{} archive.
+\newblock Fractal brush implementation roadmap.
+\newblock \url{file:///E:/Projects/Fensalir/research/rendering/fractal-brush-implementation-roadmap.md}
+
+\bibitem{fensalirProjectionReport}
+\Fensalir{} archive.
+\newblock Fractal projection report.
+\newblock \url{file:///E:/Projects/Fensalir/research/rendering/fractal-projection-report.md}
+
+\bibitem{fensalirHDR}
+\Fensalir{} archive.
+\newblock HDR/PBR presentation research.
+\newblock \url{file:///E:/Projects/Fensalir/research/rendering/hdr-pbr-presentation.md}
+
+\bibitem{fensalirPlanetaryFlow}
+\Fensalir{} archive.
+\newblock Planetary flow organ literature.
+\newblock \url{file:///E:/Projects/Fensalir/research/planetary-flow-organ-literature.md}
+
+\bibitem{fensalirRenderer}
+\Fensalir{} archive.
+\newblock HLSL renderer documentation.
+\newblock \url{file:///E:/Projects/Fensalir/docs/hlsl-renderer.md}
+
+\bibitem{fensalirTSR}
+\Fensalir{} archive.
+\newblock TSR-inspired TAA specification.
+\newblock \url{file:///E:/Projects/Fensalir/docs/tsr-inspired-taa-spec.md}
+
+\bibitem{fensalirTeardown}
+\Fensalir{} archive.
+\newblock Rendering teardown/rebuild protocol.
+\newblock \url{file:///E:/Projects/Fensalir/docs/rendering-teardown-rebuild-protocol.md}
+
+\bibitem{vibeGeometryDoctrine}
+VibeGeometry archive.
+\newblock Procedural doctrine and CSG research.
+\newblock \url{file:///E:/Projects/VibeGeometry/docs/research/procedural-doctrine.md},
+\url{file:///E:/Projects/VibeGeometry/docs/research/dream-machine-grammar.md},
+\url{file:///E:/Projects/VibeGeometry/docs/research/realtime-csg-doctrine.md}
+
+\bibitem{perfectMachineArticle}
+GameCult archive.
+\newblock The Perfect Machine Has One Eye.
+\newblock \url{file:///E:/Projects/gamecult-site/GameCult/Blog/perfect-machine-fractal-reservoir-architecture.md}
+
+\end{thebibliography}
+
+\end{document}

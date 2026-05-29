@@ -13,6 +13,8 @@ historical branch scar.
 
 ## Fields, Reservoirs, And Fractals
 
+- `papers/fensalir-pipeline.tex`: living MiKTeX paper for the Fensalir
+  pipeline, research spine, domain reservoir model, and evaluation plan.
 - `perfect-machine-architecture.md`: end-to-end map for authored/sensor field
   input, domain binding, evidence candidates, reservoir reuse, residency, and
   renderer lowering.

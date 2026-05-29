@@ -17,6 +17,8 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
 
     public Format Format { get; }
 
+    public bool AllowsUnorderedAccess { get; }
+
     public ResourceStates State { get; private set; } = ResourceStates.CopyDest;
 
     private readonly ID3D12Resource? uploadResource;
@@ -27,6 +29,7 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
         int width,
         int height,
         Format format,
+        bool allowsUnorderedAccess,
         string name)
     {
         Resource = resource;
@@ -34,6 +37,7 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
         Width = width;
         Height = height;
         Format = format;
+        AllowsUnorderedAccess = allowsUnorderedAccess;
         Resource.Name = name;
     }
 
@@ -96,6 +100,7 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
 
         var width = Math.Max(1, declaration.Width);
         var height = Math.Max(1, declaration.Height);
+        var allowsUnorderedAccess = declaration.Access == AquariumFieldShaderAccess.UnorderedAccess;
         var resource = device.CreateCommittedResource(
             HeapType.Default,
             ResourceDescription.Texture2D(
@@ -106,8 +111,8 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
                 1,
                 1,
                 0,
-                ResourceFlags.None),
-            ResourceStates.PixelShaderResource,
+                allowsUnorderedAccess ? ResourceFlags.AllowUnorderedAccess : ResourceFlags.None),
+            allowsUnorderedAccess ? ResourceStates.UnorderedAccess : ResourceStates.PixelShaderResource,
             null);
 
         texture = new D3D12FieldTexture2D(
@@ -116,8 +121,9 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
             width,
             height,
             format,
+            allowsUnorderedAccess,
             $"Aquarium D3D12 Field Texture2D {declaration.ResourceKey}");
-        texture.State = ResourceStates.PixelShaderResource;
+        texture.State = allowsUnorderedAccess ? ResourceStates.UnorderedAccess : ResourceStates.PixelShaderResource;
         return true;
     }
 
@@ -144,6 +150,7 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
                 declaration.Width,
                 declaration.Height,
                 format,
+                allowsUnorderedAccess: false,
                 $"Aquarium D3D12 Shared Field Texture2D {declaration.ResourceKey}");
             texture.State = ResourceStates.PixelShaderResource;
             return true;
@@ -170,6 +177,26 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
                 Texture2D = new Texture2DShaderResourceView { MipLevels = 1 },
             },
             descriptor.Cpu);
+    }
+
+    public bool TryCreateUnorderedAccessView(ID3D12Device device, D3D12DescriptorSlot descriptor)
+    {
+        if (!AllowsUnorderedAccess)
+        {
+            return false;
+        }
+
+        device.CreateUnorderedAccessView(
+            Resource,
+            null,
+            new UnorderedAccessViewDescription
+            {
+                Format = Format,
+                ViewDimension = UnorderedAccessViewDimension.Texture2D,
+                Texture2D = new Texture2DUnorderedAccessView(),
+            },
+            descriptor.Cpu);
+        return true;
     }
 
     public void Transition(ID3D12GraphicsCommandList commandList, ResourceStates nextState)
@@ -243,7 +270,14 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
             });
         var destination = new TextureCopyLocation(texture, 0);
         commandList.CopyTextureRegion(destination, 0, 0, 0, source, null);
-        var fieldTexture = new D3D12FieldTexture2D(texture, upload, width, height, Format.R8G8B8A8_UNorm, name);
+        var fieldTexture = new D3D12FieldTexture2D(
+            texture,
+            upload,
+            width,
+            height,
+            Format.R8G8B8A8_UNorm,
+            allowsUnorderedAccess: false,
+            name: name);
         fieldTexture.Transition(commandList, ResourceStates.PixelShaderResource);
         return fieldTexture;
     }

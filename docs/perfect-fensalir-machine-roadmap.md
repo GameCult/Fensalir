@@ -384,7 +384,9 @@ Add contributors in this order:
 2. Compact Form/Appearance splats: first fractal/splat proof.
 3. Mesh summary contributor: triangles as field evidence, not bypass.
 4. Density/extinction volume: transparent Form, separate resolve semantics.
-5. SurfacePage/VolumeTexture resources: resource-backed claims.
+5. SurfacePage/VolumeTexture resources: resource-backed claims. SurfacePage can
+   now be shader-readable or UAV-backed; use the UAV path for compute-produced
+   depth/height pages instead of allocating a private output texture.
 
 Exit gate:
 

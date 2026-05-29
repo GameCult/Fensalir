@@ -391,6 +391,12 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         surfacePage = null!;
         if (declaration.Kind != AquariumFieldResourceKind.SurfacePage ||
             declaration.Residency != AquariumFieldResourceResidency.GpuResident ||
+            declaration.Access is not (AquariumFieldShaderAccess.ShaderResource or AquariumFieldShaderAccess.UnorderedAccess))
+        {
+            return false;
+        }
+
+        if (declaration.HasSourceAsset &&
             declaration.Access != AquariumFieldShaderAccess.ShaderResource)
         {
             return false;
@@ -398,9 +404,10 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
 
         if (textures.TryGetValue(declaration.ResourceKey, out var existing) &&
             existing.Kind == AquariumFieldResourceKind.SurfacePage &&
-            existing.Version == declaration.Version &&
+            SurfacePageMatches(existing, declaration) &&
             string.Equals(existing.SourceUri, declaration.SourceUri, StringComparison.Ordinal))
         {
+            textures[declaration.ResourceKey] = existing with { Version = declaration.Version };
             surfacePage = existing.Texture;
             return true;
         }
@@ -519,16 +526,17 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
         AquariumFieldResourceDeclaration declaration)
     {
         if (declaration.Residency != AquariumFieldResourceResidency.GpuResident ||
-            declaration.Access != AquariumFieldShaderAccess.ShaderResource)
+            declaration.Access is not (AquariumFieldShaderAccess.ShaderResource or AquariumFieldShaderAccess.UnorderedAccess))
         {
             return false;
         }
 
         if (textures.TryGetValue(declaration.ResourceKey, out var existing) &&
             existing.Kind == AquariumFieldResourceKind.SurfacePage &&
-            existing.Version == declaration.Version &&
+            SurfacePageMatches(existing, declaration) &&
             string.Equals(existing.SourceUri, declaration.SourceUri, StringComparison.Ordinal))
         {
+            textures[declaration.ResourceKey] = existing with { Version = declaration.Version };
             return true;
         }
 
@@ -766,6 +774,25 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
     }
 
     private static string RegistryKey(string resourceKey) => RegistryPrefix + resourceKey;
+
+    private static bool SurfacePageMatches(Texture2DSlot existing, AquariumFieldResourceDeclaration declaration)
+    {
+        if (!D3D12FieldTextureFormat.TryFormat(declaration.Format, out var format))
+        {
+            return false;
+        }
+
+        if (declaration.HasSourceAsset &&
+            existing.Version != declaration.Version)
+        {
+            return false;
+        }
+
+        return existing.Texture.Width == Math.Max(1, declaration.Width) &&
+            existing.Texture.Height == Math.Max(1, declaration.Height) &&
+            existing.Texture.Format == format &&
+            existing.Texture.AllowsUnorderedAccess == (declaration.Access == AquariumFieldShaderAccess.UnorderedAccess);
+    }
 
     private static int PositiveModulo(int value, int modulo)
     {

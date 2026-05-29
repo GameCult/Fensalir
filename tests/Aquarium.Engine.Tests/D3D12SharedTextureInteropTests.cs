@@ -18,6 +18,58 @@ namespace Aquarium.Engine.Tests;
 public sealed class D3D12SharedTextureInteropTests
 {
     [Fact]
+    public void RegistryResolvesUnorderedAccessSurfacePageForComputeDepthOutput()
+    {
+        using var d3d12 = D3D12.D3D12CreateDevice<ID3D12Device>(IntPtr.Zero, FeatureLevel.Level_11_0);
+        var declaration = new AquariumFieldResourceDeclaration(
+            ResourceKey: "mimir:resource:stereo-depth:leap-disparity-r16f",
+            Kind: AquariumFieldResourceKind.SurfacePage,
+            Residency: AquariumFieldResourceResidency.GpuResident,
+            Access: AquariumFieldShaderAccess.UnorderedAccess,
+            Format: "R16Float",
+            Width: 64,
+            Height: 24,
+            DepthOrCount: 1,
+            StrideBytes: 2,
+            ValidFromNs: 0,
+            ValidUntilNs: 0,
+            Version: 1,
+            NativeHandle: IntPtr.Zero,
+            NativeHandleKind: "fensalir-stereo-depth-output");
+
+        using var registry = new D3D12FieldResourceRegistry();
+        var resources = new D3D12ResourceRegistry();
+        var stats = registry.Resolve(d3d12, resources, [declaration]);
+
+        Assert.Equal(1, stats.Declared);
+        Assert.Equal(1, stats.SurfacePages);
+        Assert.Equal(1, stats.Resolved);
+        Assert.Equal(0, stats.Unsupported);
+        Assert.True(registry.TryGetSurfacePage(declaration.ResourceKey, out var resolved));
+        Assert.Equal(64, resolved.Width);
+        Assert.Equal(24, resolved.Height);
+        Assert.Equal(Format.R16_Float, resolved.Format);
+        Assert.True(resolved.AllowsUnorderedAccess);
+
+        using var descriptors = new D3D12DescriptorArena(
+            d3d12,
+            DescriptorHeapType.ConstantBufferViewShaderResourceViewUnorderedAccessView,
+            2,
+            DescriptorHeapFlags.None,
+            "test surface page descriptors");
+        Assert.True(resolved.TryCreateUnorderedAccessView(d3d12, descriptors.Allocate()));
+        resolved.CreateShaderResourceView(d3d12, descriptors.Allocate());
+
+        var nextFrameStats = registry.Resolve(d3d12, resources, [declaration with { Version = 2 }]);
+
+        Assert.Equal(1, nextFrameStats.Resolved);
+        Assert.Equal(0, nextFrameStats.Unsupported);
+        Assert.Equal(0, nextFrameStats.StaleRemoved);
+        Assert.True(registry.TryGetSurfacePage(declaration.ResourceKey, out var nextFrameResolved));
+        Assert.Same(resolved, nextFrameResolved);
+    }
+
+    [Fact]
     public void RegistryResolvesD3D11NtSharedBgraTextureAsD3D12Texture2D()
     {
         using var d3d11 = CreateD3D11Device();

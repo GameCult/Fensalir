@@ -238,8 +238,12 @@ next_actions:
     renderer result instead of guessed. SurfacePage resources now have a first
     resolver: contracts and DSL can declare GPU-resident 2D pages with width,
     height, format, version,
-    and optional local source, and the D3D12 registry allocates/imports them as
-    shader-readable page textures. VolumeTexture resources now have the same
+    optional local source, and optional unordered-access output intent; the
+    D3D12 registry allocates/imports them as shader-readable page textures or
+    compute-writable UAV-backed pages. Empty SurfacePage version is content
+    freshness, not texture identity, so compute outputs can update without
+    reallocating when shape/format/access are unchanged. VolumeTexture
+    resources now have the same
     first resolver shape: contracts and DSL can declare GPU-resident 3D
     textures with dimensions, depth, format, and version, and the D3D12 registry
     allocates them as shader-readable volume textures. Mesh resources are now

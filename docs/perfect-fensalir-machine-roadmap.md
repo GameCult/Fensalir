@@ -390,7 +390,9 @@ Add contributors in this order:
    depth dispatch metadata is now typed as `AquariumFieldStereoDepthLowering`:
    it must bind the Height claim to shader-readable left/right texture
    resources, a calibrated camera pair/profile, and a compute-writable disparity
-   `SurfacePage`. The D3D12 renderer now accounts for dispatch-ready stereo
+   `SurfacePage`, plus the SGM-shaped kernel constants: min disparity, disparity
+   levels, aggregation path count, census radius, and P1/P2 smoothness
+   penalties. The D3D12 renderer now accounts for dispatch-ready stereo
    lowerings only when the planned Height claim and all three resolved resources
    are present; it reports that readiness separately from the not-yet-installed
    SGM kernel.

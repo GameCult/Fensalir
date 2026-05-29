@@ -397,8 +397,12 @@ public readonly record struct AquariumFieldStereoDepthLowering(
     string ConfidenceResourceKey,
     int Width,
     int Height,
+    int MinDisparity,
     int DisparityLevels,
     int AggregationPathCount,
+    int CensusRadius,
+    float SmoothnessPenaltySmall,
+    float SmoothnessPenaltyLarge,
     float MinDepthMeters,
     float MaxDepthMeters)
 {
@@ -413,16 +417,24 @@ public readonly record struct AquariumFieldStereoDepthLowering(
         !string.IsNullOrWhiteSpace(DisparityResourceKey) &&
         Width > 0 &&
         Height > 0 &&
+        MinDisparity >= 0 &&
         DisparityLevels > 0 &&
         AggregationPathCount > 0 &&
+        CensusRadius > 0 &&
+        SmoothnessPenaltySmall > 0.0f &&
+        SmoothnessPenaltyLarge >= SmoothnessPenaltySmall &&
         MaxDepthMeters > MinDepthMeters;
 
     public AquariumFieldStereoDepthLowering Normalized() => this with
     {
         Width = Math.Max(1, Width),
         Height = Math.Max(1, Height),
+        MinDisparity = Math.Max(0, MinDisparity),
         DisparityLevels = Math.Max(1, DisparityLevels),
         AggregationPathCount = Math.Max(1, AggregationPathCount),
+        CensusRadius = Math.Clamp(CensusRadius, 1, 8),
+        SmoothnessPenaltySmall = MathF.Max(0.0001f, SmoothnessPenaltySmall),
+        SmoothnessPenaltyLarge = MathF.Max(MathF.Max(0.0001f, SmoothnessPenaltySmall), SmoothnessPenaltyLarge),
         MaxDepthMeters = MaxDepthMeters <= MinDepthMeters ? MinDepthMeters + 0.001f : MaxDepthMeters,
     };
 }

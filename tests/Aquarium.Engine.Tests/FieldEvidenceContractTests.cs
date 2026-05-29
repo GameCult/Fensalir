@@ -1022,8 +1022,12 @@ tubeclaim id=spectrum-trail resource=spectrum domain=mimir:spectrum:asio-ch0 con
                     "",
                     Width: 640,
                     Height: 480,
+                    MinDisparity: 0,
                     DisparityLevels: 128,
                     AggregationPathCount: 4,
+                    CensusRadius: 2,
+                    SmoothnessPenaltySmall: 8.0f,
+                    SmoothnessPenaltyLarge: 96.0f,
                     MinDepthMeters: 0.15f,
                     MaxDepthMeters: 4.0f)
             ],

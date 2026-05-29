@@ -106,6 +106,16 @@ float fieldReservoirContributionWeight(FieldReservoirSample sample)
         : sample.stats.y / max(sample.stats.z * sample.stats.x, FieldReservoirEpsilon);
 }
 
+float3 fieldReservoirResolvedColor(FieldReservoirSample sample, float farTravel)
+{
+    if (!fieldReservoirSampleValid(sample, farTravel))
+    {
+        return 0.0;
+    }
+
+    return sample.colorTravel.rgb * fieldReservoirContributionWeight(sample);
+}
+
 FieldReservoirSample scaleFieldReservoirSampleWeight(FieldReservoirSample sample, float scale)
 {
     float safeScale = saturate(scale);

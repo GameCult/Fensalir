@@ -457,6 +457,35 @@ float reservoirTemporalValidationWeight(
     return travelWeight * fieldWeight * normalWeight * colorWeight * coverageWeight * coverageContinuityWeight * detailWeight * confidenceWeight * domainWeight;
 }
 
+float reservoirTemporalRejectionCode(
+    FieldReservoirSample currentSample,
+    FieldReservoirSample previousSample,
+    float expectedPreviousTravel)
+{
+    if (!fieldReservoirSampleValid(previousSample, farDistance))
+    {
+        return 1.0;
+    }
+
+    float travelTolerance = max(0.045, expectedPreviousTravel * 0.018);
+    if (previousSample.colorTravel.w < expectedPreviousTravel - travelTolerance * 2.0)
+    {
+        return 5.0;
+    }
+
+    if (previousSample.colorTravel.w > expectedPreviousTravel + travelTolerance * 2.0)
+    {
+        return 2.0;
+    }
+
+    if (abs(previousSample.metadata.x - currentSample.metadata.x) >= 0.001)
+    {
+        return 6.0;
+    }
+
+    return 1.0;
+}
+
 float reservoirSpatialValidationWeight(FieldReservoirSample currentSample, FieldReservoirSample neighborSample, float pixelDistance)
 {
     if (!fieldReservoirSampleValid(currentSample, farDistance) ||
@@ -551,7 +580,7 @@ FieldReservoirSample temporallyReuseReservoirSample(FieldReservoirSample current
         neighborhoodMax);
     if (validationWeight <= 0.0)
     {
-        temporal.guide.w = 1.0;
+        temporal.guide.w = reservoirTemporalRejectionCode(current, previous, expectedPreviousTravel);
         return temporal;
     }
 
@@ -633,9 +662,17 @@ float4 reservoirDebugOrColor(FieldReservoirSample candidate)
         {
             color = float3(0.2, 0.55, 1.0);
         }
-        else
+        else if (invalidation < 4.5)
         {
             color = float3(1.0, 0.0, 0.85);
+        }
+        else if (invalidation < 5.5)
+        {
+            color = float3(0.0, 1.0, 1.0);
+        }
+        else
+        {
+            color = float3(0.9, 0.0, 1.0);
         }
 
         return float4(color, candidate.colorTravel.w);
@@ -669,7 +706,7 @@ float4 reservoirDebugOrColor(FieldReservoirSample candidate)
             candidate.colorTravel.w);
     }
 
-    return candidate.colorTravel;
+    return float4(fieldReservoirResolvedColor(candidate, farDistance), candidate.colorTravel.w);
 }
 
 FieldReservoirResolveOut D3D12FieldReservoirResolvePS(VertexOut input)

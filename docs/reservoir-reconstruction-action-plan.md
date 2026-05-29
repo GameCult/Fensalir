@@ -64,6 +64,9 @@ old occluded tubes leak through nearby missed tube samples.
   before merge.
 - Spatial reuse validates neighboring current reservoirs by field id, travel,
   normal, support, and domain before merge.
+- Row-3 final color uses the reservoir contribution weight. Intermediate
+  current-frame proposal MRTs stay raw so proposal normalization is not
+  double-weighted before reuse.
 - TubeField writes previous history UV and expected previous travel from
   rolling-buffer offset motion.
 - TubeField metadata includes physical rolling-column identity, so different
@@ -109,7 +112,9 @@ old occluded tubes leak through nearby missed tube samples.
    packets and reject invalid proposal weights.
 7. Done: expose rebuilt reservoir diagnostics as named UI labels. Modes 13-15
    now mean rejection, stats, and proposal; invalid final reservoirs render as
-   unsupported instead of masquerading as accepted history.
+   unsupported instead of masquerading as accepted history. Rejection mode now
+   separates temporal rejection, disocclusion/no previous support, spatial
+   reuse, missing explicit motion, occlusion, and field-id mismatch.
 8. Partial: tune occlusion/disocclusion thresholds against fresh captures after
    this architecture cut.
 9. Next: capture final color and row-3 debug views against the noisy/occlusion

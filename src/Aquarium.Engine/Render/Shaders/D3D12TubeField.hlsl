@@ -24,6 +24,18 @@ struct TubeFieldSegment
     float4 tubeData;
 };
 
+struct TubeFieldColumn
+{
+    float4 shape;
+    float4 columns;
+    float4 amplitude;
+    float4 material;
+    float4 dispatchDraw;
+    float4 originField;
+    float4 axisStepEmission;
+    float4 columnStep;
+};
+
 struct FieldReservoirCandidate
 {
     float4 colorTravel;
@@ -96,9 +108,9 @@ RWStructuredBuffer<TubeFieldVertex> TubeFieldVertices : register(u10);
 RWStructuredBuffer<uint> TubeFieldIndices : register(u11);
 RWStructuredBuffer<uint> TubeFieldStats : register(u12);
 RWStructuredBuffer<uint> TubeFieldDrawArguments : register(u13);
-RWStructuredBuffer<TubeFieldSegment> TubeFieldSegments : register(u16);
+RWStructuredBuffer<TubeFieldColumn> TubeFieldColumns : register(u16);
 
-StructuredBuffer<TubeFieldSegment> RestirSegments : register(t46);
+StructuredBuffer<TubeFieldColumn> RestirColumns : register(t46);
 StructuredBuffer<uint> RestirTileSegmentsRead : register(t47);
 StructuredBuffer<TubeFieldReservoir> RestirPreviousReservoirs : register(t48);
 StructuredBuffer<TubeFieldReservoir> RestirReadReservoirs : register(t49);
@@ -114,9 +126,7 @@ static const uint TubeFieldRestirMaxTileSegments = 128u;
 static const uint TubeFieldRestirSpatialTileLanes = 16u;
 static const uint TubeFieldRestirDepthLanesPerSpatialLane = 1u;
 static const uint TubeFieldRestirResidentTileCandidates = TubeFieldRestirSpatialTileLanes * TubeFieldRestirDepthLanesPerSpatialLane;
-static const uint TubeFieldRestirInitialCandidateCount = TubeFieldRestirResidentTileCandidates;
 static const uint TubeFieldRestirSpatialCandidateCount = 4u;
-static const uint TubeFieldRestirExportCandidateCount = TubeFieldRestirResidentTileCandidates;
 static const uint FieldReservoirSlotsPerPixel = 4u;
 
 RWStructuredBuffer<FieldReservoirCandidate> FieldReservoirCandidates : register(u14);
@@ -148,11 +158,38 @@ uint SampleAddress(uint logicalColumn, uint sampleIndex)
     return (physicalColumn * width + min(sampleIndex, width - 1u)) * strideBytes;
 }
 
+uint ColumnSampleAddress(TubeFieldColumn column, uint sampleIndex)
+{
+    uint width = max((uint)round(column.shape.x), 1u);
+    uint height = max((uint)round(column.shape.y), 1u);
+    uint firstColumn = (uint)max(round(column.shape.w), 0.0);
+    uint columnStride = max((uint)round(column.columns.y), 1u);
+    uint rollingModulo = (uint)max(round(column.columns.z), 0.0);
+    int rollingOffset = (int)round(column.columns.w);
+    uint logicalColumn = (uint)max(round(column.dispatchDraw.x), 0.0);
+    uint physicalColumn = firstColumn + logicalColumn * columnStride;
+    if (rollingModulo > 0u)
+    {
+        physicalColumn = PositiveModulo((int)physicalColumn + rollingOffset, rollingModulo);
+    }
+
+    physicalColumn = min(physicalColumn, height - 1u);
+    uint strideBytes = max((uint)round(column.shape.z), 4u);
+    return (physicalColumn * width + min(sampleIndex, width - 1u)) * strideBytes;
+}
+
 float RawSample(uint logicalColumn, int sampleIndex)
 {
     uint width = max((uint)round(tubeShape.x), 1u);
     uint clamped = (uint)clamp(sampleIndex, 0, (int)width - 1);
     return asfloat(TubeFieldSamples.Load(SampleAddress(logicalColumn, clamped)));
+}
+
+float RawColumnSample(TubeFieldColumn column, int sampleIndex)
+{
+    uint width = max((uint)round(column.shape.x), 1u);
+    uint clamped = (uint)clamp(sampleIndex, 0, (int)width - 1);
+    return asfloat(TubeFieldSamples.Load(ColumnSampleAddress(column, clamped)));
 }
 
 float FilteredSample(uint logicalColumn, float x)
@@ -166,10 +203,27 @@ float FilteredSample(uint logicalColumn, float x)
     return (s0 + s4 + 4.0 * (s1 + s3) + 6.0 * s2) / 16.0;
 }
 
+float FilteredColumnSample(TubeFieldColumn column, float x)
+{
+    int center = (int)floor(x + 0.5);
+    float s0 = RawColumnSample(column, center - 2);
+    float s1 = RawColumnSample(column, center - 1);
+    float s2 = RawColumnSample(column, center);
+    float s3 = RawColumnSample(column, center + 1);
+    float s4 = RawColumnSample(column, center + 2);
+    return (s0 + s4 + 4.0 * (s1 + s3) + 6.0 * s2) / 16.0;
+}
+
 float NormalizedSample(uint logicalColumn, float x)
 {
     float value = FilteredSample(logicalColumn, x);
     return saturate((value - tubeAmplitude.z) / max(tubeAmplitude.w - tubeAmplitude.z, 0.0001));
+}
+
+float NormalizedColumnSample(TubeFieldColumn column, float x)
+{
+    float value = FilteredColumnSample(column, x);
+    return saturate((value - column.amplitude.z) / max(column.amplitude.w - column.amplitude.z, 0.0001));
 }
 
 float Catmull(float p0, float p1, float p2, float p3, float t)
@@ -193,9 +247,25 @@ float SampleCurve(uint logicalColumn, float x)
     return saturate(Catmull(p0, p1, p2, p3, t));
 }
 
+float SampleColumnCurve(TubeFieldColumn column, float x)
+{
+    int i1 = (int)floor(x);
+    float t = frac(x);
+    float p0 = NormalizedColumnSample(column, (float)(i1 - 1));
+    float p1 = NormalizedColumnSample(column, (float)i1);
+    float p2 = NormalizedColumnSample(column, (float)(i1 + 1));
+    float p3 = NormalizedColumnSample(column, (float)(i1 + 2));
+    return saturate(Catmull(p0, p1, p2, p3, t));
+}
+
 float SampleAmplitudeCurve(uint logicalColumn, float x)
 {
     return pow(SampleCurve(logicalColumn, x), max(tubeAmplitude.x, 0.0001));
+}
+
+float SampleColumnAmplitudeCurve(TubeFieldColumn column, float x)
+{
+    return pow(SampleColumnCurve(column, x), max(column.amplitude.x, 0.0001));
 }
 
 float3 TubePoint(uint logicalColumn, float x)
@@ -205,6 +275,14 @@ float3 TubePoint(uint logicalColumn, float x)
         tubeAxisStep * x +
         tubeColumnStep * (float)logicalColumn +
         float3(0.0, value * tubeAmplitude.y, 0.0);
+}
+
+float3 TubeColumnPoint(TubeFieldColumn column, float x)
+{
+    float value = SampleColumnAmplitudeCurve(column, x);
+    return column.originField.xyz +
+        column.axisStepEmission.xyz * x +
+        float3(0.0, value * column.amplitude.y, 0.0);
 }
 
 TubeFieldVertex MakeTubeVertex(float3 position, float3 previous, float3 start, float3 end, float3 next, float side, float endpointT, float capSign, float v0, float v1, float3 rampColor, uint logicalColumn, float x0, float x1)
@@ -244,60 +322,35 @@ TubeFieldSegment MakeTubeSegment(float3 previous, float3 start, float3 end, floa
 [numthreads(256, 1, 1)]
 void D3D12TubeFieldExpandCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
-    uint localSegment = dispatchThreadId.x;
-    uint dispatchSegments = (uint)round(tubeDispatch.w);
-    if (localSegment == 0u)
+    uint localColumn = dispatchThreadId.x;
+    uint dispatchColumns = (uint)round(tubeDispatch.w);
+    if (localColumn == 0u)
     {
         uint argumentBase = (uint)round(tubeDraw.x);
-        TubeFieldDrawArguments[argumentBase + 0u] = dispatchSegments * 6u;
+        TubeFieldDrawArguments[argumentBase + 0u] = 0u;
         TubeFieldDrawArguments[argumentBase + 1u] = 1u;
         TubeFieldDrawArguments[argumentBase + 2u] = (uint)round(tubeDraw.y);
         TubeFieldDrawArguments[argumentBase + 3u] = 0u;
         TubeFieldDrawArguments[argumentBase + 4u] = 0u;
     }
 
-    if (localSegment >= dispatchSegments)
+    if (localColumn >= dispatchColumns)
     {
         return;
     }
 
-    uint width = max((uint)round(tubeShape.x), 2u);
-    uint subdivisions = max((uint)round(tubeDispatch.y), 1u);
-    uint piecesPerColumn = (width - 1u) * subdivisions;
-    uint logicalColumn = localSegment / max(piecesPerColumn, 1u);
-    uint pieceInColumn = localSegment % max(piecesPerColumn, 1u);
-    uint sourceSegment = pieceInColumn / subdivisions;
-    uint subdivision = pieceInColumn % subdivisions;
-    float t0 = (float)subdivision / (float)subdivisions;
-    float t1 = (float)(subdivision + 1u) / (float)subdivisions;
-    float x0 = (float)sourceSegment + t0;
-    float x1 = (float)sourceSegment + t1;
-    float xPrev = max(0.0, x0 - 1.0 / (float)subdivisions);
-    float xNext = min((float)(width - 1u), x1 + 1.0 / (float)subdivisions);
-    float v0 = SampleCurve(logicalColumn, x0);
-    float v1 = SampleCurve(logicalColumn, x1);
-    float3 rampColor0 = TubeFieldRamp.SampleLevel(TubeFieldRampSampler, float2(saturate(v0), 0.5), 0.0).rgb;
-    float3 rampColor1 = TubeFieldRamp.SampleLevel(TubeFieldRampSampler, float2(saturate(v1), 0.5), 0.0).rgb;
-    float3 previous = TubePoint(logicalColumn, xPrev);
-    float3 start = TubePoint(logicalColumn, x0);
-    float3 end = TubePoint(logicalColumn, x1);
-    float3 next = TubePoint(logicalColumn, xNext);
-
-    uint globalSegment = (uint)round(tubeDispatch.z) + localSegment;
-    uint vertexBase = globalSegment * 4u;
-    uint indexBase = globalSegment * 6u;
-    TubeFieldSegments[globalSegment] = MakeTubeSegment(previous, start, end, next, v0, v1, rampColor0, rampColor1, logicalColumn, x0, x1);
-    TubeFieldVertices[vertexBase + 0u] = MakeTubeVertex(start, previous, start, end, next, -1.0, 0.0, -1.0, v0, v1, rampColor0, logicalColumn, x0, x1);
-    TubeFieldVertices[vertexBase + 1u] = MakeTubeVertex(start, previous, start, end, next, 1.0, 0.0, -1.0, v0, v1, rampColor0, logicalColumn, x0, x1);
-    TubeFieldVertices[vertexBase + 2u] = MakeTubeVertex(end, previous, start, end, next, -1.0, 1.0, 1.0, v0, v1, rampColor1, logicalColumn, x0, x1);
-    TubeFieldVertices[vertexBase + 3u] = MakeTubeVertex(end, previous, start, end, next, 1.0, 1.0, 1.0, v0, v1, rampColor1, logicalColumn, x0, x1);
-    TubeFieldIndices[indexBase + 0u] = vertexBase + 0u;
-    TubeFieldIndices[indexBase + 1u] = vertexBase + 1u;
-    TubeFieldIndices[indexBase + 2u] = vertexBase + 2u;
-    TubeFieldIndices[indexBase + 3u] = vertexBase + 2u;
-    TubeFieldIndices[indexBase + 4u] = vertexBase + 1u;
-    TubeFieldIndices[indexBase + 5u] = vertexBase + 3u;
-    TubeFieldStats[0] = globalSegment + 1u;
+    uint globalColumn = (uint)round(tubeDispatch.z) + localColumn;
+    TubeFieldColumn column;
+    column.shape = tubeShape;
+    column.columns = tubeColumns;
+    column.amplitude = tubeAmplitude;
+    column.material = tubeMaterial;
+    column.dispatchDraw = float4((float)localColumn, max(tubeDispatch.x, 0.0), tubeDraw.z, tubeDispatch.y);
+    column.originField = float4(tubeOrigin + tubeColumnStep * (float)localColumn, tubeDraw.z);
+    column.axisStepEmission = float4(tubeAxisStep, max(tubeDispatch.x, 0.0));
+    column.columnStep = float4(tubeColumnStep, 0.0);
+    TubeFieldColumns[globalColumn] = column;
+    TubeFieldStats[0] = globalColumn + 1u;
 }
 
 struct TubeFieldVertexIn
@@ -766,21 +819,16 @@ float4 projectWorldToPixelAndDepth(float3 worldPoint)
     return float4(ndcToPixel(projected.xy), projected.z, view.z);
 }
 
-bool evaluateTubeFieldSegmentCandidate(uint segmentIndex, float2 pixel, out TubeFieldReservoir candidate, out float targetPdf)
+bool evaluateTubeFieldColumnCandidate(uint columnIndex, float2 pixel, out TubeFieldReservoir candidate, out float targetPdf)
 {
     candidate = emptyTubeFieldReservoir();
     targetPdf = 0.0;
-    TubeFieldSegment segment = RestirSegments[segmentIndex];
-    float4 startProjected = projectWorldToPixelAndDepth(segment.startRadius.xyz);
-    float4 endProjected = projectWorldToPixelAndDepth(segment.endFeather.xyz);
+    TubeFieldColumn column = RestirColumns[columnIndex];
+    uint width = max((uint)round(column.shape.x), 2u);
+    float xMax = (float)(width - 1u);
+    float4 startProjected = projectWorldToPixelAndDepth(TubeColumnPoint(column, 0.0));
+    float4 endProjected = projectWorldToPixelAndDepth(TubeColumnPoint(column, xMax));
     if (!finite4(startProjected) || !finite4(endProjected))
-    {
-        return false;
-    }
-
-    float startRadiusPx = splineRadiusToPixels(segment.startRadius.w, startProjected.w);
-    float endRadiusPx = splineRadiusToPixels(segment.endFeather.w, endProjected.w);
-    if (!finite1(startRadiusPx) || !finite1(endRadiusPx))
     {
         return false;
     }
@@ -789,18 +837,40 @@ bool evaluateTubeFieldSegmentCandidate(uint segmentIndex, float2 pixel, out Tube
     float closestT;
     float radiusPx;
     float2 normalPx;
-    capsuleDistancePx(pixel, startProjected.xy, endProjected.xy, startRadiusPx, endRadiusPx, sdf, closestT, radiusPx, normalPx);
+    float2 axisPx = endProjected.xy - startProjected.xy;
+    float axisLength2 = max(dot(axisPx, axisPx), 0.0001);
+    float xCenter = saturate(dot(pixel - startProjected.xy, axisPx) / axisLength2) * xMax;
+    float sampleStep = max(0.5, xMax / 32.0);
+    float x0 = clamp(xCenter - sampleStep, 0.0, xMax);
+    float x1 = clamp(xCenter + sampleStep, 0.0, xMax);
+    float v0 = SampleColumnCurve(column, x0);
+    float v1 = SampleColumnCurve(column, x1);
+    float3 p0 = TubeColumnPoint(column, x0);
+    float3 p1 = TubeColumnPoint(column, x1);
+    float4 projected0 = projectWorldToPixelAndDepth(p0);
+    float4 projected1 = projectWorldToPixelAndDepth(p1);
+    if (!finite4(projected0) || !finite4(projected1))
+    {
+        return false;
+    }
 
-    float aa = max(0.75, radiusPx * max(segment.material.w, 0.0));
+    float r0 = splineRadiusToPixels(max(column.material.x + v0 * column.material.y, 0.0001), projected0.w);
+    float r1 = splineRadiusToPixels(max(column.material.x + v1 * column.material.y, 0.0001), projected1.w);
+    float localT;
+    capsuleDistancePx(pixel, projected0.xy, projected1.xy, r0, r1, sdf, localT, radiusPx, normalPx);
+    closestT = saturate(lerp(x0, x1, localT) / max(xMax, 0.0001));
+
+    float aa = max(0.75, radiusPx * max(column.material.w, 0.0));
     float coverage = 1.0 - smoothstep(0.0, aa, sdf);
-    float alpha = saturate(segment.material.y * coverage);
+    float alpha = saturate(column.material.z * coverage);
     if (!finite1(sdf) || !finite1(radiusPx) || !finite2(normalPx) || alpha <= 0.004)
     {
         return false;
     }
 
-    float value = lerp(segment.color0.w, segment.color1.w, closestT);
-    float3 emissionColor = lerp(segment.color0.rgb, segment.color1.rgb, closestT);
+    float x = closestT * xMax;
+    float value = SampleColumnCurve(column, x);
+    float3 emissionColor = TubeFieldRamp.SampleLevel(TubeFieldRampSampler, float2(saturate(value), 0.5), 0.0).rgb;
     float3 ray = rayDirectionForPixel(pixel, float2(0.0, 0.0), cameraPosition, cameraTarget);
     float3 forward;
     float3 right;
@@ -810,7 +880,7 @@ bool evaluateTubeFieldSegmentCandidate(uint segmentIndex, float2 pixel, out Tube
     float frontBlend = sqrt(saturate(1.0 - rimBlend * rimBlend));
     float3 tubeNormal = normalize(((right * normalPx.x) - (up * normalPx.y)) * rimBlend - ray * frontBlend);
     float normalFacing = saturate(-dot(ray, tubeNormal));
-    float glowFacing = pow(normalFacing, max(segment.material.z, 0.0001));
+    float glowFacing = pow(normalFacing, 4.0);
     float alphaFacing = 1.0;
     float claimCoverage = saturate(alpha * alphaFacing);
     if (claimCoverage <= 0.004)
@@ -818,22 +888,22 @@ bool evaluateTubeFieldSegmentCandidate(uint segmentIndex, float2 pixel, out Tube
         return false;
     }
 
-    float emission = value * value * max(segment.material.x, 0.0);
+    float emission = value * value * max(column.dispatchDraw.y, 0.0);
     float3 color = emissionColor * emission * glowFacing * claimCoverage;
-    float travel = lerp(startProjected.w, endProjected.w, closestT);
-    float3 worldPosition = lerp(segment.startRadius.xyz, segment.endFeather.xyz, closestT);
+    float3 worldPosition = TubeColumnPoint(column, x);
+    float travel = distance(cameraPosition, worldPosition);
     if (!finite3(color) || !finite3(worldPosition) || !finite1(travel) || !finite3(tubeNormal))
     {
         return false;
     }
 
     candidate.colorTravel = float4(color, min(travel, farDistance + 1.0));
-    candidate.metadata = float4(segment.tubeData.w, tubeNormal);
+    candidate.metadata = float4(column.originField.w, tubeNormal);
     candidate.control = float4(claimCoverage, coverage, saturate(radiusPx / 32.0), value);
     candidate.reservoirGuide = float4(claimCoverage, 0.0, coverage, value);
     candidate.statistics = float4(1.0, 1.0, 1.0, 0.0);
     candidate.sampleData = float4(worldPosition, closestT);
-    candidate.sampleKey = uint4(segmentIndex, 0u, 0u, 0u);
+    candidate.sampleKey = uint4(columnIndex, 0u, 0u, 0u);
     targetPdf = max(0.0001, claimCoverage * (0.05 + dot(color, float3(0.2126, 0.7152, 0.0722))));
     return true;
 }
@@ -851,7 +921,7 @@ bool shiftTubeFieldReservoirToPixel(
         return false;
     }
 
-    if (!evaluateTubeFieldSegmentCandidate(source.sampleKey.x, pixel + 0.5 + jitterPixels, shifted, shiftedTargetPdf))
+    if (!evaluateTubeFieldColumnCandidate(source.sampleKey.x, pixel + 0.5 + jitterPixels, shifted, shiftedTargetPdf))
     {
         return false;
     }
@@ -978,17 +1048,19 @@ void D3D12TubeFieldRestirClearReservoirsCS(uint3 dispatchThreadId : SV_DispatchT
 [numthreads(256, 1, 1)]
 void D3D12TubeFieldRestirBinSegmentsCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
-    uint localSegment = dispatchThreadId.x;
-    uint dispatchSegments = (uint)round(tubeDispatch.w);
-    if (localSegment >= dispatchSegments)
+    uint localColumn = dispatchThreadId.x;
+    uint dispatchColumns = (uint)round(tubeDispatch.w);
+    if (localColumn >= dispatchColumns)
     {
         return;
     }
 
-    uint segmentIndex = (uint)round(tubeDispatch.z) + localSegment;
-    TubeFieldSegment segment = RestirSegments[segmentIndex];
-    float4 startProjected = projectWorldToPixelAndDepth(segment.startRadius.xyz);
-    float4 endProjected = projectWorldToPixelAndDepth(segment.endFeather.xyz);
+    uint columnIndex = (uint)round(tubeDispatch.z) + localColumn;
+    TubeFieldColumn column = RestirColumns[columnIndex];
+    uint width = max((uint)round(column.shape.x), 2u);
+    float xMax = (float)(width - 1u);
+    float4 startProjected = projectWorldToPixelAndDepth(TubeColumnPoint(column, 0.0));
+    float4 endProjected = projectWorldToPixelAndDepth(TubeColumnPoint(column, xMax));
     if (!finite4(startProjected) || !finite4(endProjected))
     {
         return;
@@ -999,9 +1071,13 @@ void D3D12TubeFieldRestirBinSegmentsCS(uint3 dispatchThreadId : SV_DispatchThrea
         return;
     }
 
+    float startValue = SampleColumnCurve(column, 0.0);
+    float endValue = SampleColumnCurve(column, xMax);
     float radiusPx = max(
-        splineRadiusToPixels(segment.startRadius.w, startProjected.w),
-        splineRadiusToPixels(segment.endFeather.w, endProjected.w));
+        splineRadiusToPixels(max(column.material.x + startValue * column.material.y, 0.0001), startProjected.w),
+        splineRadiusToPixels(max(column.material.x + endValue * column.material.y, 0.0001), endProjected.w));
+    float2 minProjected = min(startProjected.xy, endProjected.xy);
+    float2 maxProjected = max(startProjected.xy, endProjected.xy);
     radiusPx = min(radiusPx, 256.0);
     float segmentTravel = min(startProjected.w, endProjected.w);
     if (!finite1(radiusPx) || !finite1(segmentTravel))
@@ -1009,8 +1085,8 @@ void D3D12TubeFieldRestirBinSegmentsCS(uint3 dispatchThreadId : SV_DispatchThrea
         return;
     }
 
-    float2 minPx = floor((min(startProjected.xy, endProjected.xy) - radiusPx * 1.5) / TubeFieldRestirTileSize);
-    float2 maxPx = floor((max(startProjected.xy, endProjected.xy) + radiusPx * 1.5) / TubeFieldRestirTileSize);
+    float2 minPx = floor((minProjected - radiusPx * 1.5) / TubeFieldRestirTileSize);
+    float2 maxPx = floor((maxProjected + radiusPx * 1.5) / TubeFieldRestirTileSize);
     if (!finite2(minPx) || !finite2(maxPx))
     {
         return;
@@ -1038,18 +1114,16 @@ void D3D12TubeFieldRestirBinSegmentsCS(uint3 dispatchThreadId : SV_DispatchThrea
             uint tileIndex = tileY * tileDims.x + tileX;
             uint slot;
             InterlockedAdd(RestirTileCounts[tileIndex], 1u, slot);
-            float2 tileOrigin = float2(tileX, tileY) * (float)TubeFieldRestirTileSize;
-            float2 tileCenter = tileOrigin + (float)TubeFieldRestirTileSize * 0.5;
-            float2 segmentPx = endProjected.xy - startProjected.xy;
-            float segmentLength2 = max(dot(segmentPx, segmentPx), 0.0001);
-            float tileT = saturate(dot(tileCenter - startProjected.xy, segmentPx) / segmentLength2);
-            float2 tilePoint = lerp(startProjected.xy, endProjected.xy, tileT);
-            float2 localTilePoint = saturate((tilePoint - tileOrigin) / (float)TubeFieldRestirTileSize);
-            uint laneX = min((uint)floor(localTilePoint.x * 4.0), 3u);
-            uint laneY = min((uint)floor(localTilePoint.y * 4.0), 3u);
-            uint spatialLane = laneY * 4u + laneX;
-            uint packed = packRestirTileSegment(segmentIndex, segmentTravel);
-            insertRestirTileSegment(tileIndex, spatialLane, packed);
+            uint packed = packRestirTileSegment(columnIndex, segmentTravel);
+            [unroll(4)]
+            for (uint laneY = 0u; laneY < 4u; laneY++)
+            {
+                [unroll(4)]
+                for (uint laneX = 0u; laneX < 4u; laneX++)
+                {
+                    insertRestirTileSegment(tileIndex, laneY * 4u + laneX, packed);
+                }
+            }
         }
     }
 }
@@ -1077,23 +1151,18 @@ void D3D12TubeFieldRestirInitialCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
 
     uint count = TubeFieldRestirResidentTileCandidates;
-    float invSourcePdf = (float)count;
-    uint proposalCount = min(count, TubeFieldRestirInitialCandidateCount);
-    for (uint index = 0u; index < proposalCount; index++)
+    uint2 localPixelInTile = pixel - tile * TubeFieldRestirTileSize;
+    uint laneX = min(localPixelInTile.x / 4u, 3u);
+    uint laneY = min(localPixelInTile.y / 4u, 3u);
+    uint candidateSlot = min(laneY * 4u + laneX, count - 1u);
+    uint columnIndex;
+    if (unpackRestirTileSegment(RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + candidateSlot], columnIndex))
     {
-        uint candidateSlot = index;
-        uint segmentIndex;
-        if (!unpackRestirTileSegment(RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + candidateSlot], segmentIndex))
-        {
-            continue;
-        }
-
         TubeFieldReservoir candidate;
         float targetPdf;
-        if (evaluateTubeFieldSegmentCandidate(segmentIndex, (float2)pixel + 0.5 + jitterPixels, candidate, targetPdf))
+        if (evaluateTubeFieldColumnCandidate(columnIndex, (float2)pixel + 0.5 + jitterPixels, candidate, targetPdf))
         {
-            float randomValue = restirRandom01(pixelIndex * 1664525u + index * 1013904223u + (uint)frameIndex * 977u);
-            restirStreamCandidate(reservoir, candidate, targetPdf, invSourcePdf, randomValue);
+            restirStreamCandidate(reservoir, candidate, targetPdf, (float)count, restirRandom01(pixelIndex * 1664525u + (uint)frameIndex * 977u));
         }
     }
 
@@ -1172,7 +1241,7 @@ void D3D12TubeFieldRestirSpatialResolveCS(uint3 dispatchThreadId : SV_DispatchTh
         int2(2, -4)
     };
 
-    [unroll]
+    [unroll(4)]
     for (uint sampleIndex = 0u; sampleIndex < TubeFieldRestirSpatialCandidateCount; sampleIndex++)
     {
         uint offsetIndex = wangHash(pixelIndex * 9781u + sampleIndex * 6271u + (uint)frameIndex * 1709u) & 15u;
@@ -1218,31 +1287,31 @@ void D3D12TubeFieldRestirSpatialResolveCS(uint3 dispatchThreadId : SV_DispatchTh
     uint2 tile = min(pixel / TubeFieldRestirTileSize, tileDims - 1u);
     uint tileIndex = tile.y * tileDims.x + tile.x;
     uint touchedSegmentCount = RestirTileCountsRead[tileIndex];
-    uint count = touchedSegmentCount > 0u ? TubeFieldRestirResidentTileCandidates : 0u;
-    uint exportProposalCount = min(count, TubeFieldRestirExportCandidateCount);
-    for (uint index = 0u; index < exportProposalCount; index++)
+    if (touchedSegmentCount > 0u)
     {
-        uint candidateSlot = index;
-        uint segmentIndex;
-        if (!unpackRestirTileSegment(RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + candidateSlot], segmentIndex))
+        uint count = TubeFieldRestirResidentTileCandidates;
+        uint2 localPixelInTile = pixel - tile * TubeFieldRestirTileSize;
+        uint laneX = min(localPixelInTile.x / 4u, 3u);
+        uint laneY = min(localPixelInTile.y / 4u, 3u);
+        uint candidateSlot = min(laneY * 4u + laneX, count - 1u);
+        uint columnIndex;
+        if (unpackRestirTileSegment(RestirTileSegmentsRead[tileIndex * TubeFieldRestirMaxTileSegments + candidateSlot], columnIndex))
         {
-            continue;
-        }
-
-        TubeFieldReservoir candidate;
-        float targetPdf;
-        if (evaluateTubeFieldSegmentCandidate(segmentIndex, (float2)pixel + 0.5 + jitterPixels, candidate, targetPdf))
-        {
-            insertTubeFieldExportCandidate(
-                candidate,
-                export0,
-                export1,
-                export2,
-                export3,
-                priority0,
-                priority1,
-                priority2,
-                priority3);
+            TubeFieldReservoir candidate;
+            float targetPdf;
+            if (evaluateTubeFieldColumnCandidate(columnIndex, (float2)pixel + 0.5 + jitterPixels, candidate, targetPdf))
+            {
+                insertTubeFieldExportCandidate(
+                    candidate,
+                    export0,
+                    export1,
+                    export2,
+                    export3,
+                    priority0,
+                    priority1,
+                    priority2,
+                    priority3);
+            }
         }
     }
 

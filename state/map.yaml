@@ -211,9 +211,13 @@ next_actions:
     bloom/presentation consume that texture without owning history. TubeField
     candidate discovery is the fixed-function raster path: compute emits
     conservative GPU-resident segment proxy geometry and indirect draw packets,
-    the proxy pixel shader evaluates the sampled Catmull-Rom tube SDF against
-    the rolling source buffer, and that shader writes candidates directly into
-    the shared field reservoir inlet. The deleted TubeField-local compute
+    the proxy raster only schedules covered pixels, the proxy pixel shader
+    analytically intersects the camera ray with the generated tube
+    frustum/cap neighborhood in world space, samples the rolling source buffer
+    for material, and writes candidates directly into the shared field
+    reservoir inlet. Shared reservoir history carries prior opaque field
+    candidates across current-frame subpixel misses instead of clearing them.
+    The deleted TubeField-local compute
     ReSTIR/tile-bin path is not a live authority, fallback, or hidden mode. Any
     future temporal/spatial reuse for tubes must extend the shared reservoir
     organ rather than resurrecting a payload-local reservoir renderer.

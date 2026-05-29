@@ -293,19 +293,24 @@ struct TubeFieldVertexIn
 struct TubeFieldVertexOut
 {
     float4 position : SV_Position;
-    nointerpolation float2 segmentStartPx : TEXCOORD0;
-    nointerpolation float2 segmentEndPx : TEXCOORD1;
-    nointerpolation float2 previousPx : TEXCOORD2;
-    nointerpolation float2 nextPx : TEXCOORD3;
-    nointerpolation float2 segmentRadiusPx : TEXCOORD4;
-    nointerpolation float2 joinRadiusPx : TEXCOORD5;
+    nointerpolation float3 segmentStartWorld : TEXCOORD0;
+    nointerpolation float3 segmentEndWorld : TEXCOORD1;
+    nointerpolation float3 previousWorld : TEXCOORD2;
+    nointerpolation float3 nextWorld : TEXCOORD3;
+    nointerpolation float2 segmentRadiusWorld : TEXCOORD4;
+    nointerpolation float2 joinRadiusWorld : TEXCOORD5;
     nointerpolation float4 segmentValidity : TEXCOORD6;
-    float2 segmentUv : TEXCOORD7;
+    nointerpolation float2 segmentStartPx : TEXCOORD7;
+    nointerpolation float2 segmentEndPx : TEXCOORD8;
+    nointerpolation float2 previousPx : TEXCOORD9;
+    nointerpolation float2 nextPx : TEXCOORD10;
+    nointerpolation float2 segmentRadiusPx : TEXCOORD11;
+    nointerpolation float2 joinRadiusPx : TEXCOORD12;
+    float2 segmentUv : TEXCOORD13;
     float4 color : COLOR;
-    float4 material : TEXCOORD8;
-    nointerpolation float feather : TEXCOORD9;
-    nointerpolation float2 segmentTravel : TEXCOORD10;
-    nointerpolation float4 tubeData : TEXCOORD11;
+    float4 material : TEXCOORD14;
+    nointerpolation float feather : TEXCOORD15;
+    nointerpolation float4 tubeData : TEXCOORD16;
 };
 
 struct SceneOut
@@ -400,6 +405,175 @@ void capsuleDistancePx(
     float2 tangent = safeDirection(segment, float2(1.0, 0.0));
     normalPx = normalPxLength > 0.0001 ? normalPxRaw / normalPxLength : float2(-tangent.y, tangent.x);
     sdf = normalPxLength - radiusPx;
+}
+
+struct TubeAnalyticHit
+{
+    bool hit;
+    float travel;
+    float axisT;
+    float radius;
+    float3 worldPosition;
+    float3 normal;
+};
+
+TubeAnalyticHit emptyTubeAnalyticHit()
+{
+    TubeAnalyticHit hit;
+    hit.hit = false;
+    hit.travel = farDistance + 1.0;
+    hit.axisT = 0.0;
+    hit.radius = 0.0;
+    hit.worldPosition = 0.0;
+    hit.normal = 0.0;
+    return hit;
+}
+
+void acceptTubeAnalyticHit(inout TubeAnalyticHit best, TubeAnalyticHit candidate)
+{
+    if (candidate.hit && candidate.travel > 0.0 && candidate.travel < best.travel)
+    {
+        best = candidate;
+    }
+}
+
+TubeAnalyticHit intersectSphereTubeCap(float3 rayOrigin, float3 rayDirection, float3 center, float radius, float axisT)
+{
+    TubeAnalyticHit hit = emptyTubeAnalyticHit();
+    float3 oc = rayOrigin - center;
+    float b = dot(oc, rayDirection);
+    float c = dot(oc, oc) - radius * radius;
+    float discriminant = b * b - c;
+    if (discriminant < 0.0)
+    {
+        return hit;
+    }
+
+    float root = sqrt(discriminant);
+    float travel = -b - root;
+    if (travel <= 0.0)
+    {
+        travel = -b + root;
+    }
+
+    if (travel <= 0.0 || travel > farDistance)
+    {
+        return hit;
+    }
+
+    float3 worldPosition = rayOrigin + rayDirection * travel;
+    hit.hit = true;
+    hit.travel = travel;
+    hit.axisT = axisT;
+    hit.radius = radius;
+    hit.worldPosition = worldPosition;
+    hit.normal = normalize(worldPosition - center);
+    return hit;
+}
+
+TubeAnalyticHit intersectTubeFrustum(
+    float3 rayOrigin,
+    float3 rayDirection,
+    float3 start,
+    float3 end,
+    float startRadius,
+    float endRadius)
+{
+    TubeAnalyticHit best = emptyTubeAnalyticHit();
+    float3 axis = end - start;
+    float axisLength = length(axis);
+    if (axisLength <= 0.0001)
+    {
+        return intersectSphereTubeCap(rayOrigin, rayDirection, start, max(startRadius, endRadius), 0.0);
+    }
+
+    float3 axisDirection = axis / axisLength;
+    float radiusSlope = (endRadius - startRadius) / axisLength;
+    float3 originDelta = rayOrigin - start;
+    float originAxis = dot(originDelta, axisDirection);
+    float rayAxis = dot(rayDirection, axisDirection);
+    float3 originPerp = originDelta - axisDirection * originAxis;
+    float3 rayPerp = rayDirection - axisDirection * rayAxis;
+    float radiusAtOrigin = startRadius + radiusSlope * originAxis;
+
+    float a = dot(rayPerp, rayPerp) - radiusSlope * radiusSlope * rayAxis * rayAxis;
+    float b = 2.0 * (dot(originPerp, rayPerp) - radiusAtOrigin * radiusSlope * rayAxis);
+    float c = dot(originPerp, originPerp) - radiusAtOrigin * radiusAtOrigin;
+    float discriminant = b * b - 4.0 * a * c;
+    if (abs(a) > 0.000001 && discriminant >= 0.0)
+    {
+        float root = sqrt(discriminant);
+        float invDenominator = 0.5 / a;
+        float travel0 = (-b - root) * invDenominator;
+        float travel1 = (-b + root) * invDenominator;
+
+        [unroll]
+        for (uint index = 0u; index < 2u; index++)
+        {
+            float travel = index == 0u ? travel0 : travel1;
+            float axisDistance = originAxis + travel * rayAxis;
+            if (travel > 0.0 && travel <= farDistance && axisDistance >= 0.0 && axisDistance <= axisLength)
+            {
+                float axisT = saturate(axisDistance / axisLength);
+                float3 worldPosition = rayOrigin + rayDirection * travel;
+                float3 center = start + axisDirection * axisDistance;
+                float radius = lerp(startRadius, endRadius, axisT);
+                float3 radial = worldPosition - center;
+                float3 normal = normalize(radial - axisDirection * (radius * radiusSlope));
+                TubeAnalyticHit candidate;
+                candidate.hit = true;
+                candidate.travel = travel;
+                candidate.axisT = axisT;
+                candidate.radius = radius;
+                candidate.worldPosition = worldPosition;
+                candidate.normal = normal;
+                acceptTubeAnalyticHit(best, candidate);
+            }
+        }
+    }
+
+    acceptTubeAnalyticHit(best, intersectSphereTubeCap(rayOrigin, rayDirection, start, startRadius, 0.0));
+    acceptTubeAnalyticHit(best, intersectSphereTubeCap(rayOrigin, rayDirection, end, endRadius, 1.0));
+    return best;
+}
+
+TubeAnalyticHit intersectTubeNeighborhood(TubeFieldVertexOut input, float3 rayOrigin, float3 rayDirection)
+{
+    TubeAnalyticHit best = intersectTubeFrustum(
+        rayOrigin,
+        rayDirection,
+        input.segmentStartWorld,
+        input.segmentEndWorld,
+        input.segmentRadiusWorld.x,
+        input.segmentRadiusWorld.y);
+
+    if (input.segmentValidity.x > 0.5)
+    {
+        TubeAnalyticHit previous = intersectTubeFrustum(
+            rayOrigin,
+            rayDirection,
+            input.previousWorld,
+            input.segmentStartWorld,
+            input.joinRadiusWorld.x,
+            input.segmentRadiusWorld.x);
+        previous.axisT = 0.0;
+        acceptTubeAnalyticHit(best, previous);
+    }
+
+    if (input.segmentValidity.y > 0.5)
+    {
+        TubeAnalyticHit next = intersectTubeFrustum(
+            rayOrigin,
+            rayDirection,
+            input.segmentEndWorld,
+            input.nextWorld,
+            input.segmentRadiusWorld.y,
+            input.joinRadiusWorld.y);
+        next.axisT = 1.0;
+        acceptTubeAnalyticHit(best, next);
+    }
+
+    return best;
 }
 
 float blueNoiseAt(float2 pixel, uint salt)
@@ -570,6 +744,12 @@ TubeFieldVertexOut D3D12TubeFieldVS(TubeFieldVertexIn input)
 
     TubeFieldVertexOut output;
     output.position = float4(pixelToNdc(expandedPx + jitterPixels), endpointClip.z, 1.0);
+    output.segmentStartWorld = input.segmentStart;
+    output.segmentEndWorld = input.segmentEnd;
+    output.previousWorld = input.previousPoint;
+    output.nextWorld = input.nextPoint;
+    output.segmentRadiusWorld = input.radiusData.xy;
+    output.joinRadiusWorld = input.radiusData.xy;
     output.segmentStartPx = startPx;
     output.segmentEndPx = endPx;
     output.previousPx = previousPx;
@@ -581,7 +761,6 @@ TubeFieldVertexOut D3D12TubeFieldVS(TubeFieldVertexIn input)
     output.color = input.color;
     output.material = input.material;
     output.feather = input.radiusData.z;
-    output.segmentTravel = float2(startView.z, endView.z);
     output.tubeData = input.tubeData;
     return output;
 }
@@ -589,6 +768,13 @@ TubeFieldVertexOut D3D12TubeFieldVS(TubeFieldVertexIn input)
 SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
 {
     float2 baseSamplePx = input.position.xy;
+    float3 ray = rayDirectionForPixel(baseSamplePx, -jitterPixels, cameraPosition, cameraTarget);
+    TubeAnalyticHit baseHit = intersectTubeNeighborhood(input, cameraPosition, ray);
+    if (!baseHit.hit)
+    {
+        discard;
+    }
+
     float baseSdf;
     float baseClosestT;
     float baseRadiusPx;
@@ -608,30 +794,20 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     nearestTubeDistancePx(input, samplePx, jitterSdf, jitterClosestT, jitterRadiusPx, jitterNormalPx);
 
     float sdf = baseSdf;
-    float closestT = baseClosestT;
-    float radiusPx = baseRadiusPx;
-    float2 normalPx = baseNormalPx;
+    float closestT = baseHit.axisT;
+    float radiusWorld = baseHit.radius;
+    float3 tubeNormal = baseHit.normal;
     float aa = max(fwidth(baseSdf), max(0.75, baseRadiusPx * max(input.feather, 0.0)));
     float coverage = 1.0 - smoothstep(0.0, aa, baseSdf);
     if (coverage > 0.02 && jitterSdf <= aa)
     {
-        closestT = jitterClosestT;
-        radiusPx = jitterRadiusPx;
-        normalPx = jitterNormalPx;
+        closestT = lerp(baseHit.axisT, jitterClosestT, 0.35);
     }
 
     float sampleX = lerp(input.tubeData.y, input.tubeData.z, closestT);
     float value = SampleCurve((uint)round(input.tubeData.x), sampleX);
     float materialValue = saturate(value);
     float3 rampColor = TubeFieldRamp.SampleLevel(TubeFieldRampSampler, float2(materialValue, 0.5), 0.0).rgb;
-    float3 ray = rayDirectionForPixel(baseSamplePx, jitterPixels, cameraPosition, cameraTarget);
-    float3 forward;
-    float3 right;
-    float3 up;
-    cameraBasis(cameraPosition, cameraTarget, forward, right, up);
-    float rimBlend = saturate((sdf + radiusPx) / max(radiusPx, 0.0001));
-    float frontBlend = sqrt(saturate(1.0 - rimBlend * rimBlend));
-    float3 tubeNormal = normalize(((right * normalPx.x) - (up * normalPx.y)) * rimBlend - ray * frontBlend);
     float normalFacing = saturate(-dot(ray, tubeNormal));
     float glowFacing = pow(normalFacing, max(input.material.z, 0.0001));
     float alphaFacing = pow(normalFacing, max(input.material.w, 0.0001));
@@ -645,12 +821,12 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     float3 emissionColor = exactTubeMaterial ? float3(1.0, 0.035560537, 0.0) : rampColor;
     float emission = exactTubeMaterial ? max(input.material.x, 0.0) : materialValue * materialValue * max(input.material.x, 0.0);
     float3 color = emissionColor * emission * glowFacing * claimCoverage;
-    float travel = lerp(input.segmentTravel.x, input.segmentTravel.y, closestT);
+    float travel = baseHit.travel;
 
     SceneOut output;
     output.colorTravel = float4(color, min(travel, farDistance + 1.0));
     output.metadata = float4(input.tubeData.w, tubeNormal);
-    output.control = float4(claimCoverage, coverage, saturate(radiusPx / 32.0), value);
+    output.control = float4(claimCoverage, coverage, saturate(radiusWorld / max(viewRadius, 0.0001)), value);
     output.reservoirGuide = float4(claimCoverage, 0.0, coverage, value);
     output.depth = saturate(travel / max(farDistance, 0.0001));
     FieldReservoirCandidate candidate;

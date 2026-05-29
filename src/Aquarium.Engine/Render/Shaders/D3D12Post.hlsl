@@ -683,13 +683,28 @@ void D3D12ReservoirHistoryUpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     if (!hasSharedCandidate && !fieldReservoirCandidateValid(sceneCandidate))
     {
+        FieldReservoirCandidate bestCarried = emptyFieldReservoirCandidate();
+        float bestCarriedPriority = 1.0e20;
         [unroll]
-        for (uint slot = 0u; slot < FieldReservoirSlotsPerPixel; slot++)
+        for (uint carrySlot = 0u; carrySlot < FieldReservoirSlotsPerPixel; carrySlot++)
         {
-            reservoirHistoryWrite[baseIndex + slot] = emptyFieldReservoirCandidate();
+            FieldReservoirCandidate carried = carryFieldReservoirHistoryCandidate(reservoirHistoryRead[baseIndex + carrySlot]);
+            reservoirHistoryWrite[baseIndex + carrySlot] = carried;
+            float carriedPriority = fieldReservoirCandidatePriority(
+                carried.colorTravel,
+                carried.metadata,
+                carried.control,
+                carried.reservoirGuide);
+            if (carriedPriority < bestCarriedPriority)
+            {
+                bestCarried = carried;
+                bestCarriedPriority = carriedPriority;
+            }
         }
 
-        reservoirResolvedTexture[currentPixel] = sceneCandidate.colorTravel;
+        reservoirResolvedTexture[currentPixel] = bestCarriedPriority < 1.0e19
+            ? bestCarried.colorTravel
+            : sceneCandidate.colorTravel;
         return;
     }
 
@@ -702,14 +717,23 @@ void D3D12ReservoirHistoryUpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
             currentCandidate = sceneCandidate;
         }
 
-        float slotHistoryWeight;
-        float slotHistoryAge;
-        FieldReservoirCandidate resolvedCandidate = resolveReservoirHistoryCandidate(
-            currentCandidate,
-            pixel,
-            uv,
-            slotHistoryWeight,
-            slotHistoryAge);
+        float slotHistoryWeight = 0.0;
+        float slotHistoryAge = 0.0;
+        FieldReservoirCandidate resolvedCandidate;
+        if (fieldReservoirCandidateValid(currentCandidate))
+        {
+            resolvedCandidate = resolveReservoirHistoryCandidate(
+                currentCandidate,
+                pixel,
+                uv,
+                slotHistoryWeight,
+                slotHistoryAge);
+        }
+        else
+        {
+            resolvedCandidate = carryFieldReservoirHistoryCandidate(reservoirHistoryRead[baseIndex + slot]);
+        }
+
         reservoirHistoryWrite[baseIndex + slot] = resolvedCandidate;
         float priority = fieldReservoirCandidatePriority(
             resolvedCandidate.colorTravel,

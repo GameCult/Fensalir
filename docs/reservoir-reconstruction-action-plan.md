@@ -59,6 +59,9 @@ old occluded tubes leak through nearby missed tube samples.
 - Low-support TubeField samples may search a 2x2 previous-history footprint so
   subpixel jitter can find nearby valid history without paying for a 3x3 search
   across every tube pixel.
+- Debug modes 13-15 now inspect the compute-owned reservoir result rather than
+  old current-frame guide textures: rejection/invalidation state, evidence
+  age/confidence, and explicit motion support.
 
 ## Authority Map
 
@@ -88,7 +91,7 @@ old occluded tubes leak through nearby missed tube samples.
 7. Partial: replace raw RGB neighborhood clamp with field/depth-aware clamp.
 8. Done: add a current-frame spatial fallback for rejected history.
 9. Track represented/accumulated sample count separately from age.
-10. Add TSR-style debug views for current support, occupancy, reprojection,
+10. Partial: add TSR-style debug views for current support, occupancy, reprojection,
     disocclusion, rejection, clamp, unsupported carry, sample count, and final
     history weight.
 11. Defer history resurrection until support, motion, rejection, and spatial

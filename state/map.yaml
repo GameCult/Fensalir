@@ -222,7 +222,9 @@ next_actions:
     writes previous history UV and previous travel from rolling-buffer offset
     motion, encodes physical rolling-column identity into metadata, bypasses
     raw RGB clamp for tube validation, and uses a gated current-frame spatial
-    fallback/2x2 previous-history search for low-support samples. The deleted TubeField-local compute
+    fallback/2x2 previous-history search for low-support samples. Reservoir
+    debug modes 13-15 inspect compute-owned rejection/invalidation state,
+    evidence age/confidence, and explicit motion support. The deleted TubeField-local compute
     ReSTIR/tile-bin path is not a live authority, fallback, or hidden mode. Any
     future temporal/spatial reuse for tubes must extend the shared reservoir
     organ rather than resurrecting a payload-local reservoir renderer.

@@ -752,6 +752,58 @@ FieldReservoirCandidate unsupportedCarryHistoryCandidate(FieldReservoirCandidate
     return carried;
 }
 
+float4 reservoirDebugOrColor(FieldReservoirCandidate candidate)
+{
+    if (renderDebugMode >= 12.5 && renderDebugMode < 13.5)
+    {
+        float invalidation = candidate.reservoirGuide.w;
+        float3 color = float3(0.0, 0.0, 0.0);
+        if (invalidation < 0.5)
+        {
+            color = float3(0.0, 0.85, 0.25);
+        }
+        else if (invalidation < 1.5)
+        {
+            color = float3(1.0, 0.85, 0.0);
+        }
+        else if (invalidation < 2.5)
+        {
+            color = float3(1.0, 0.0, 0.0);
+        }
+        else if (invalidation < 3.5)
+        {
+            color = float3(0.2, 0.55, 1.0);
+        }
+        else
+        {
+            color = float3(1.0, 0.0, 0.85);
+        }
+
+        return float4(color, candidate.colorTravel.w);
+    }
+
+    if (renderDebugMode >= 13.5 && renderDebugMode < 14.5)
+    {
+        return float4(
+            saturate(candidate.control.w / MAX_HISTORY_AGE),
+            saturate(candidate.reservoirGuide.y / MAX_HISTORY_AGE),
+            saturate(reservoirCandidateConfidence(candidate)),
+            candidate.colorTravel.w);
+    }
+
+    if (renderDebugMode >= 14.5 && renderDebugMode < 15.5)
+    {
+        bool requiresMotion = fieldReservoirCandidateRequiresExplicitMotion(candidate);
+        return float4(
+            requiresMotion ? 1.0 : 0.0,
+            candidate.motion.w > 0.5 ? 1.0 : 0.0,
+            saturate(candidate.control.x),
+            candidate.colorTravel.w);
+    }
+
+    return candidate.colorTravel;
+}
+
 FieldReservoirResolveOut D3D12FieldReservoirResolvePS(VertexOut input)
 {
     uint2 pixel = (uint2)pixelFromUv(input.uv);
@@ -840,7 +892,7 @@ void D3D12ReservoirHistoryUpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         if (fieldReservoirCandidateValid(spatialFallback))
         {
             reservoirHistoryWrite[baseIndex] = spatialFallback;
-            reservoirResolvedTexture[currentPixel] = spatialFallback.colorTravel;
+            reservoirResolvedTexture[currentPixel] = reservoirDebugOrColor(spatialFallback);
         }
         else
         {
@@ -897,7 +949,7 @@ void D3D12ReservoirHistoryUpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         bestResolved = sceneCandidate;
     }
 
-    reservoirResolvedTexture[currentPixel] = bestResolved.colorTravel;
+    reservoirResolvedTexture[currentPixel] = reservoirDebugOrColor(bestResolved);
 }
 
 ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
@@ -961,6 +1013,11 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
     {
         finalColor = float3(currentReservoirConfidence, saturate(reservoirSampleAge / MAX_HISTORY_AGE), currentReservoirDomainValidity);
     }
+    else if (renderDebugMode >= 12.5 && renderDebugMode < 15.5)
+    {
+        finalColor = saturate(resolved);
+    }
+
     ResolveOut output;
     output.finalColor = float4(ditherDisplay(finalColor, input.uv), 1.0);
     return output;

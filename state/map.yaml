@@ -184,6 +184,14 @@ next_actions:
     D3D11-on-12 context before `ResizeBuffers`, and drops program-output shared
     textures before recreating size-dependent surfaces. Visible resize probe
     `20260530-215113-639e6612` survived seven programmatic resizes.
+  - Reservoir reconstruction now has a loss-curve reporter:
+    `scripts/measure-reservoir-loss-curve.ps1` computes MAE/MSE/RMSE/PSNR
+    against same-time higher-work-grid native references. Smoke
+    `reservoir-sequence-20260530-221043-*` at 320x180 gave whole-frame PSNR
+    21.668, 20.981, 20.911, and 21.690 dB for ready frames 1, 2, 4, and 8.
+    Next cut: add GPU timestamp queries/pass timings so quality is plotted
+    against actual reservoir/update/reconstruction cost rather than process
+    capture wall time.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then

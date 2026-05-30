@@ -120,6 +120,7 @@ foreach ($mode in $modes) {
                     RenderDebugMode = $debugMode
                     ReservoirScale = $captureScale
                     SpatialReuseBudget = $captureSpatialReuseBudget
+                    CaptureSeconds = 0.0
                     Suffix = $suffix
                     Path = $outputPath
                 })
@@ -128,6 +129,7 @@ foreach ($mode in $modes) {
 
             Write-Host ("Capturing {0} ready={1} debug={2} -> {3}" -f $mode, $readyFrame, $debugMode, $outputPath)
             $env:AQUARIUM_HEADLESS_READY_FRAMES = [string][Math]::Max(1, $readyFrame)
+            $captureTimer = [System.Diagnostics.Stopwatch]::StartNew()
             $process = Start-Process -FilePath $exePath -ArgumentList $arguments -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
             if (-not $process.WaitForExit([Math]::Max(1, $TimeoutSeconds) * 1000)) {
                 $process.Kill($true)
@@ -136,6 +138,7 @@ foreach ($mode in $modes) {
             }
 
             $process.WaitForExit()
+            $captureTimer.Stop()
             $process.Refresh()
             $exitCode = $process.ExitCode
             if ($null -eq $exitCode -and (Test-Path $outputPath)) {
@@ -155,6 +158,7 @@ foreach ($mode in $modes) {
                 RenderDebugMode = $debugMode
                 ReservoirScale = $captureScale
                 SpatialReuseBudget = $captureSpatialReuseBudget
+                CaptureSeconds = $captureTimer.Elapsed.TotalSeconds
                 Suffix = $suffix
                 Path = $outputPath
             })

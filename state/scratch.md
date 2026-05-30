@@ -96,6 +96,17 @@ Probe `scripts/dev-reload.ps1` visible slot `20260530-215113-639e6612` survived
 seven programmatic resizes and logged rebuilt D3D12 targets at each size with no
 stderr.
 
+Reservoir loss curve:
+`scripts/measure-reservoir-loss-curve.ps1` now reports RGB reconstruction loss
+against same-time higher-work-grid native references. Metrics include MAE, MSE,
+RMSE, PSNR, changed pixels, max channel delta, and optional masked loss when
+disocclusion/rejection masks are present. Smoke
+`artifacts/fensalir-captures/reservoir-sequence-20260530-221043-*` compared
+native scale 0.5 / spatial budget 0.5 against reference scale 0.75 / spatial
+budget 1.0 at ready frames 1, 2, 4, and 8. Whole-frame PSNR was 21.668, 20.981,
+20.911, and 21.690 dB respectively; RMSE was 21.043, 22.777, 22.962, and 20.992.
+This is a higher-budget online reference, not offline ground truth.
+
 ## Hot Lesson
 
 Area ReSTIR confirms that reuse over an area domain is invalid unless the
@@ -126,6 +137,10 @@ Swapchain resize correctness depends on releasing both D3D12 backbuffer owners
 and D3D11-on-12 overlay references before `ResizeBuffers`. Disposing wrapped
 resources is not enough; the D3D11 immediate context must be cleared and flushed
 so it stops holding hidden references.
+Reservoir quality must be golfed against loss-over-time, not single-frame smoke
+deltas. The current curve is noisy and not monotonically improving, which means
+the candidate/reference comparison is exposing temporal instability rather than
+a settled convergence story.
 
 ## Next Bounded Move
 

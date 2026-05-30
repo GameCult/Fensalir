@@ -189,9 +189,20 @@ next_actions:
     against same-time higher-work-grid native references. Smoke
     `reservoir-sequence-20260530-221043-*` at 320x180 gave whole-frame PSNR
     21.668, 20.981, 20.911, and 21.690 dB for ready frames 1, 2, 4, and 8.
-    Next cut: add GPU timestamp queries/pass timings so quality is plotted
-    against actual reservoir/update/reconstruction cost rather than process
-    capture wall time.
+    D3D12 now owns fixed per-frame GPU timestamp queries for frame record,
+    scene candidate, reservoir resolve/update, bloom, presentation resolve, and
+    active compute lowerings, so quality can be plotted against pass cost
+    instead of process capture wall time. The presentation resolve pass also
+    owns the first full-resolution reconstruction filter: it samples a bounded
+    resolved-reservoir neighborhood, validates neighbors by field id, travel,
+    normal, coverage, detail, color, guide confidence, domain validity, and
+    maturity, and writes only to the final present buffer. Latest smoke
+    `reservoir-sequence-20260530-232852-*` improved f2/f4/f8 and lowered
+    average RMSE from 21.944 to 21.221 against the 20260530-221043
+    pre-reconstruction curve, while f1 still regressed. Next cut: merge loss
+    and GPU timing into one benchmark artifact and tune first-frame
+    reconstruction maturity without adding native-resolution reservoir
+    intermediates.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then

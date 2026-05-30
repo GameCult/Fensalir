@@ -117,6 +117,39 @@ budget 1.0 at ready frames 1, 2, 4, and 8. Whole-frame PSNR was 21.668, 20.981,
 20.911, and 21.690 dB respectively; RMSE was 21.043, 22.777, 22.962, and 20.992.
 This is a higher-budget online reference, not offline ground truth.
 
+GPU pass timing:
+The D3D12 renderer now owns fixed pass-level GPU timestamp queries in per-frame
+resources and reports once-per-second averages beside CPU capacity logs. The
+timed passes are frame command recording, GPU sensor fusion, stereo depth,
+fractal reservoir update, tube-field update, height field, scene candidate,
+field-reservoir resolve, reservoir-history update, bloom, and presentation
+resolve. A 320x180 headless timing smoke after the reconstruction pass logged
+record 1.338 ms, scene-candidate 0.364 ms, reservoir-resolve 0.004 ms,
+reservoir-update 0.853 ms, bloom 0.029 ms, and presentation 0.077 ms over 61
+frames in `artifacts/dev-reload/fensalir-capture.out.log`.
+
+Reservoir presentation reconstruction:
+`D3D12ReservoirPresentationResolvePS` now performs the first final-pass
+spatiotemporal reservoir reconstruction filter. The reservoir/history grid
+remains below native resolution; the final present pass is the only
+full-resolution surface. Reconstruction samples a bounded 3x3 neighborhood from
+the resolved reservoir and weights neighbors by field id, travel/depth, normal,
+coverage, detail, color, guide confidence, domain validity, and neighbor
+agreement. The filter is maturity-gated so the first visible frame cannot blur
+from unearned history. Debug mode 21 visualizes reconstruction mix, confidence,
+and domain validity.
+
+Latest measured curve:
+`artifacts/fensalir-captures/reservoir-sequence-20260530-232852-*` compared
+native scale 0.5 / spatial budget 0.5 against reference scale 0.75 / spatial
+budget 1.0 at 320x180, ready frames 1, 2, 4, and 8. Whole-frame RMSE/PSNR:
+f1 21.788 / 21.366 dB, f2 21.068 / 21.658 dB, f4 21.473 / 21.493 dB, f8 20.556
+/ 21.872 dB. Against the pre-reconstruction curve
+`reservoir-sequence-20260530-221043-*`, f2/f4/f8 improved and f1 regressed;
+average RMSE dropped from 21.944 to 21.221. This is competent enough to keep,
+but the next quality cut should target the first-frame regression and plot the
+curve against GPU pass timings in one artifact.
+
 ## Hot Lesson
 
 Area ReSTIR confirms that reuse over an area domain is invalid unless the
@@ -156,10 +189,10 @@ a settled convergence story.
 
 Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
 
-1. Convert the fixed spatial-reuse budget into a pressure-guided adaptive
-   update contract only after the renderer owns a per-tile pressure input path.
-   Debug mode 20 is the visible layer to validate the active budget phase. Do
-   not add native-resolution reservoir intermediates.
+1. Put loss and GPU timing into one benchmark artifact, then tune the
+   presentation reconstruction first-frame maturity gate so f1 no longer
+   regresses while f2/f4/f8 keep their improvement. Do not add native-resolution
+   reservoir intermediates.
 2. Add exact SDF producer replay only when client SDF distance functions have a
    shared replay include or manifest instead of duplicating shader policy in
    post.

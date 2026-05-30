@@ -524,6 +524,113 @@ float3 presentColor(float3 scene, float2 uv, float bloomScale)
     return aces(exposedScene + bloomContribution);
 }
 
+float reservoirGuideConfidence(float4 guide, float4 control)
+{
+    float confidence = guide.x > 0.0 ? saturate(guide.x) : (control.w > 0.0 ? saturate(control.w / MAX_HISTORY_AGE) : 1.0);
+    float validity = guide.z > 0.0 ? saturate(guide.z) : 1.0;
+    return confidence * validity;
+}
+
+float reservoirReconstructionWeight(
+    float4 centerColorTravel,
+    float4 centerMetadata,
+    float4 centerControl,
+    float4 centerGuide,
+    float4 sampleColorTravel,
+    float4 sampleMetadata,
+    float4 sampleControl,
+    float4 sampleGuide,
+    float2 offset)
+{
+    float centerTravel = centerColorTravel.w;
+    float sampleTravel = sampleColorTravel.w;
+    float travelTolerance = max(0.05, max(centerTravel, 0.0) * 0.02);
+    float travelWeight = 1.0 - smoothstep(travelTolerance, travelTolerance * 4.0, abs(sampleTravel - centerTravel));
+    float fieldWeight = abs(sampleMetadata.x - centerMetadata.x) < 0.001 ? 1.0 : 0.0;
+    float normalWeight = 1.0;
+    if (dot(centerMetadata.yzw, centerMetadata.yzw) > 0.01 &&
+        dot(sampleMetadata.yzw, sampleMetadata.yzw) > 0.01)
+    {
+        normalWeight = smoothstep(0.62, 0.97, dot(normalize(centerMetadata.yzw), normalize(sampleMetadata.yzw)));
+    }
+
+    float coverageWeight = 1.0 - smoothstep(0.12, 0.55, abs(saturate(sampleControl.x) - saturate(centerControl.x)));
+    float detailWeight = 1.0 - smoothstep(0.08, 0.38, abs(saturate(sampleControl.z) - saturate(centerControl.z)));
+    float colorWeight = 1.0 - smoothstep(0.20, 1.35, length(sampleColorTravel.rgb - centerColorTravel.rgb));
+    float sampleConfidence = lerp(0.35, 1.0, reservoirGuideConfidence(sampleGuide, sampleControl));
+    float distanceWeight = exp2(-dot(offset, offset) * 0.85);
+    return fieldWeight * travelWeight * normalWeight * coverageWeight * detailWeight * colorWeight * sampleConfidence * distanceWeight;
+}
+
+float3 reconstructReservoirColor(float2 uv, out float reconstructionMix)
+{
+    uint sourceWidth;
+    uint sourceHeight;
+    sourceTexture.GetDimensions(sourceWidth, sourceHeight);
+    uint2 dimensions = max(uint2(sourceWidth, sourceHeight), uint2(1, 1));
+    float2 texel = 1.0 / (float2)dimensions;
+    int2 centerPixel = clamp((int2)floor(uv * (float2)dimensions), int2(0, 0), (int2)dimensions - int2(1, 1));
+    float2 centerUv = ((float2)centerPixel + 0.5) * texel;
+
+    float4 centerColorTravel = sourceTexture.SampleLevel(sourceSampler, uv, 0.0);
+    float4 centerMetadata = currentSceneMetadataTexture.Load(int3(centerPixel, 0));
+    float4 centerControl = currentSceneControlTexture.Load(int3(centerPixel, 0));
+    float4 centerGuide = currentReservoirGuideTexture.Load(int3(centerPixel, 0));
+    float centerConfidence = reservoirGuideConfidence(centerGuide, centerControl);
+    float centerDetail = saturate(centerControl.z);
+    float edgePreservation = 1.0 - smoothstep(0.28, 0.82, centerDetail);
+
+    float centerWeight = lerp(2.25, 1.15, saturate(1.0 - centerConfidence));
+    float3 sumColor = centerColorTravel.rgb * centerWeight;
+    float sumWeight = centerWeight;
+    static const int2 offsets[8] =
+    {
+        int2(-1, 0),
+        int2(1, 0),
+        int2(0, -1),
+        int2(0, 1),
+        int2(-1, -1),
+        int2(1, -1),
+        int2(-1, 1),
+        int2(1, 1)
+    };
+
+    [unroll]
+    for (int index = 0; index < 8; index++)
+    {
+        int2 offset = offsets[index];
+        int2 samplePixel = clamp(centerPixel + offset, int2(0, 0), (int2)dimensions - int2(1, 1));
+        float4 sampleColorTravel = sourceTexture.Load(int3(samplePixel, 0));
+        float4 sampleMetadata = currentSceneMetadataTexture.Load(int3(samplePixel, 0));
+        float4 sampleControl = currentSceneControlTexture.Load(int3(samplePixel, 0));
+        float4 sampleGuide = currentReservoirGuideTexture.Load(int3(samplePixel, 0));
+        float weight = reservoirReconstructionWeight(
+            centerColorTravel,
+            centerMetadata,
+            centerControl,
+            centerGuide,
+            sampleColorTravel,
+            sampleMetadata,
+            sampleControl,
+            sampleGuide,
+            (float2)offset);
+        sumColor += sampleColorTravel.rgb * weight;
+        sumWeight += weight;
+    }
+
+    float3 filtered = sumColor / max(sumWeight, 0.0001);
+    float neighborAgreement = saturate((sumWeight - centerWeight) / 4.0);
+    float blendNeed = saturate((1.0 - centerConfidence) * 0.35 + neighborAgreement * 0.10);
+    float reservoirMaturity = smoothstep(0.5, 1.5, max(centerGuide.y, centerControl.w));
+    float filterStrength = min(0.20, blendNeed * edgePreservation * reservoirMaturity);
+    reconstructionMix = filterStrength;
+    float3 reconstructed = lerp(centerColorTravel.rgb, filtered, filterStrength);
+    float3 neighborhoodMin;
+    float3 neighborhoodMax;
+    currentNeighborhood(centerUv, neighborhoodMin, neighborhoodMax);
+    return clamp(reconstructed, neighborhoodMin, neighborhoodMax);
+}
+
 float blueNoiseAt(float2 uv, uint salt)
 {
     uint width;
@@ -1175,7 +1282,13 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
     float currentReservoirConfidence = currentReservoirGuide.x > 0.0 ? saturate(currentReservoirGuide.x) : 1.0;
     float reservoirSampleAge = max(currentReservoirGuide.y, 0.0);
     float currentReservoirDomainValidity = currentReservoirGuide.z > 0.0 ? saturate(currentReservoirGuide.z) : 1.0;
+    float reconstructionMix = 0.0;
     float3 resolved = resolvedSample.rgb;
+    if (renderDebugMode < 0.5 || (renderDebugMode >= 20.5 && renderDebugMode < 21.5))
+    {
+        resolved = reconstructReservoirColor(input.uv, reconstructionMix);
+    }
+
     float3 finalColor = presentColor(resolved, input.uv, 1.0);
     if (renderDebugMode > 0.5 && renderDebugMode < 1.5)
     {
@@ -1222,6 +1335,10 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
     else if (renderDebugMode >= 11.5 && renderDebugMode < 12.5)
     {
         finalColor = float3(currentReservoirConfidence, saturate(reservoirSampleAge / MAX_HISTORY_AGE), currentReservoirDomainValidity);
+    }
+    else if (renderDebugMode >= 20.5 && renderDebugMode < 21.5)
+    {
+        finalColor = float3(reconstructionMix, currentReservoirConfidence, currentReservoirDomainValidity);
     }
     else if (renderDebugMode >= 12.5 && renderDebugMode < 18.5)
     {

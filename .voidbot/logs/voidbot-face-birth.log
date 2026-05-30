@@ -2756,3 +2756,79 @@ Caused by:
     invalid type: string "cultcache.store.v1", expected struct CultCacheEnvelope
 
 [2026-05-27T17:50:51.745Z] failed repo Face birth for fensalir: cargo exited with 1
+[2026-05-30T21:16:09.450Z] starting repo Face birth for fensalir
+
+> cargo run --quiet --bin epiphany-repo-personality -- scout --root E:\Projects\Fensalir --artifact-dir E:\Projects\Fensalir\.voidbot\birth\terrain
+{
+  "artifactDir": "E:\\Projects\\Fensalir\\.voidbot\\birth\\terrain",
+  "mode": "scout",
+  "profileCount": 1,
+  "repoCount": 1,
+  "repos": [
+    {
+      "confidence": 1.0,
+      "dominantAxes": [
+        "burstiness:1.00",
+        "content_canon_bias:1.00",
+        "contract_strictness:1.00",
+        "evidence_appetite:1.00",
+        "state_hygiene:0.93"
+      ],
+      "families": [
+        "cult_protocol_storage",
+        "gamecult_web_lore_ops",
+        "unity_runtime_body"
+      ],
+      "name": "Fensalir",
+      "path": "\\\\?\\E:\\Projects\\Fensalir",
+      "repoId": "fensalir",
+      "warnings": []
+    }
+  ],
+  "root": "E:\\Projects\\Fensalir",
+  "schemaVersion": "epiphany.repo_personality_artifacts.v0",
+  "store": "E:\\Projects\\Fensalir\\.voidbot\\birth\\terrain\\baseline.msgpack",
+  "trajectoryCount": 1
+}
+
+> cargo run --quiet --bin epiphany-repo-birth-runner -- --repo E:\Projects\Fensalir --baseline E:\Projects\Fensalir\.voidbot\birth\terrain\baseline.msgpack --artifact-dir E:\Projects\Fensalir\.voidbot\birth\runner --init-store E:\Projects\Fensalir\.voidbot\state\repo-initialization.msgpack --agent-store E:\Projects\Fensalir\.voidbot\state\agents.msgpack --heartbeat-store E:\Projects\Fensalir\.voidbot\state\agent-heartbeats.msgpack --runtime-store E:\Projects\Fensalir\.voidbot\state\runtime-spine.msgpack --mode plan --executor codex-exec
+Error: --executor must be model-runtime; Codex CLI execution is not an Epiphany agent prompt path
+[2026-05-30T21:16:19.943Z] failed repo Face birth for fensalir: cargo exited with 1
+[2026-05-30T21:16:47.234Z] starting repo Face birth for fensalir
+
+> cargo run --quiet --bin epiphany-repo-personality -- scout --root E:\Projects\Fensalir --artifact-dir E:\Projects\Fensalir\.voidbot\birth\terrain
+{
+  "artifactDir": "E:\\Projects\\Fensalir\\.voidbot\\birth\\terrain",
+  "mode": "scout",
+  "profileCount": 1,
+  "repoCount": 1,
+  "repos": [
+    {
+      "confidence": 1.0,
+      "dominantAxes": [
+        "burstiness:1.00",
+        "content_canon_bias:1.00",
+        "contract_strictness:1.00",
+        "evidence_appetite:1.00",
+        "state_hygiene:0.93"
+      ],
+      "families": [
+        "cult_protocol_storage",
+        "gamecult_web_lore_ops",
+        "unity_runtime_body"
+      ],
+      "name": "Fensalir",
+      "path": "\\\\?\\E:\\Projects\\Fensalir",
+      "repoId": "fensalir",
+      "warnings": []
+    }
+  ],
+  "root": "E:\\Projects\\Fensalir",
+  "schemaVersion": "epiphany.repo_personality_artifacts.v0",
+  "store": "E:\\Projects\\Fensalir\\.voidbot\\birth\\terrain\\baseline.msgpack",
+  "trajectoryCount": 1
+}
+
+> cargo run --quiet --bin epiphany-repo-birth-runner -- --repo E:\Projects\Fensalir --baseline E:\Projects\Fensalir\.voidbot\birth\terrain\baseline.msgpack --artifact-dir E:\Projects\Fensalir\.voidbot\birth\runner --init-store E:\Projects\Fensalir\.voidbot\state\repo-initialization.msgpack --agent-store E:\Projects\Fensalir\.voidbot\state\agents.msgpack --heartbeat-store E:\Projects\Fensalir\.voidbot\state\agent-heartbeats.msgpack --runtime-store E:\Projects\Fensalir\.voidbot\state\runtime-spine.msgpack --mode plan --executor codex-exec
+Error: --executor must be model-runtime; Codex CLI execution is not an Epiphany agent prompt path
+[2026-05-30T21:16:52.031Z] failed repo Face birth for fensalir: cargo exited with 1

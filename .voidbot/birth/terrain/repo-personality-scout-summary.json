@@ -11,7 +11,7 @@
         "content_canon_bias:1.00",
         "contract_strictness:1.00",
         "evidence_appetite:1.00",
-        "state_hygiene:0.95"
+        "state_hygiene:0.93"
       ],
       "families": [
         "cult_protocol_storage",

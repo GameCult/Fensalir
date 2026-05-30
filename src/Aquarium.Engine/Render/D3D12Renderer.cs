@@ -182,6 +182,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private ID3D12PipelineState? temporalGaussianPipelineState;
     private ID3D12PipelineState? splinePipelineState;
     private ID3D12PipelineState? gpuSensorFusionPipelineState;
+    private ID3D12PipelineState? stereoDepthPipelineState;
     private ID3D12PipelineState? fractalSurfaceSplatRenderPipelineState;
     private ID3D12PipelineState? fractalTransparentSplatRenderPipelineState;
     private ID3D12PipelineState? fractalSplatPipelineState;
@@ -310,6 +311,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private int activeTubeFieldUnplannedLowerings;
     private int activeTubeFieldInvalidColumns;
     private int activeStereoDepthDispatchReadyLowerings;
+    private int activeStereoDepthDispatchedLowerings;
     private int activeStereoDepthUnplannedLowerings;
     private int activeStereoDepthUnresolvedLowerings;
     private int activeFieldResourceUploadCount;
@@ -1026,6 +1028,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         commandList.SetDescriptorHeaps(frameResources.TransientShaderDescriptors.Heap);
         UploadSceneStructuredResources(commandList, frameResources);
         DispatchGpuSensorFusion(commandList, frameResources);
+        DispatchStereoDepth(commandList, frameResources);
         DispatchFractalReservoirs(commandList, frameResources);
         DispatchTubeFields(commandList, frameResources);
         RenderHeightField(commandList, frameResources);
@@ -1160,6 +1163,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         && splinePipelineState is not null
         && temporalGaussianPipelineState is not null
         && gpuSensorFusionPipelineState is not null
+        && stereoDepthPipelineState is not null
         && fractalSurfaceSplatRenderPipelineState is not null
         && fractalTransparentSplatRenderPipelineState is not null
         && fractalSplatPipelineState is not null
@@ -1838,6 +1842,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         temporalGaussian.Name = "Aquarium D3D12 Temporal Gaussian Pipeline";
         var gpuSensorFusion = CreateGpuSensorFusionPipelineState(paths.GpuSensorFusion);
         gpuSensorFusion.Name = "Aquarium D3D12 GPU Sensor Fusion Compute Pipeline";
+        var stereoDepth = CreateStereoDepthPipelineState(paths.StereoDepth);
+        stereoDepth.Name = "Aquarium D3D12 Packed Stereo Depth Compute Pipeline";
         var fractalSurfaceSplatRender = CreateFractalSurfaceSplatRenderPipelineState(paths.FractalSplatRender);
         fractalSurfaceSplatRender.Name = "Aquarium D3D12 Fractal Surface Splat Render Pipeline";
         var fractalTransparentSplatRender = CreateFractalTransparentSplatRenderPipelineState(paths.FractalSplatRender);
@@ -1883,6 +1889,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             spline,
             temporalGaussian,
             gpuSensorFusion,
+            stereoDepth,
             fractalSurfaceSplatRender,
             fractalTransparentSplatRender,
             fractalSplat,
@@ -3358,6 +3365,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private void EvaluateStereoDepthLowerings()
     {
         activeStereoDepthDispatchReadyLowerings = 0;
+        activeStereoDepthDispatchedLowerings = 0;
         activeStereoDepthUnplannedLowerings = 0;
         activeStereoDepthUnresolvedLowerings = 0;
         if (activeFieldEvidenceFrame.StereoDepthLowerings.Count == 0)
@@ -3401,6 +3409,53 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         return planned;
+    }
+
+    private void DispatchStereoDepth(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
+    {
+        activeStereoDepthDispatchedLowerings = 0;
+        if (stereoDepthPipelineState is null || activeFieldEvidenceFrame.StereoDepthLowerings.Count == 0)
+        {
+            return;
+        }
+
+        var plannedClaims = PlannedStereoDepthClaimKeys();
+        foreach (var lowering in activeFieldEvidenceFrame.StereoDepthLowerings)
+        {
+            var normalized = lowering.Normalized();
+            if (!plannedClaims.Contains(normalized.ClaimKey) ||
+                !string.Equals(normalized.LeftResourceKey, normalized.RightResourceKey, StringComparison.Ordinal) ||
+                !fieldResourceRegistry.TryGetTexture2D(normalized.LeftResourceKey, out var packedInput) ||
+                !fieldResourceRegistry.TryGetSurfacePage(normalized.DisparityResourceKey, out var disparityOutput) ||
+                !disparityOutput.AllowsUnorderedAccess)
+            {
+                continue;
+            }
+
+            packedInput.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+            disparityOutput.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+            var inputDescriptor = frameResources.TransientShaderDescriptors.Allocate();
+            packedInput.CreateShaderResourceView(device, inputDescriptor);
+            var outputDescriptor = frameResources.TransientShaderDescriptors.Allocate();
+            if (!disparityOutput.TryCreateUnorderedAccessView(device, outputDescriptor))
+            {
+                continue;
+            }
+
+            var constants = new D3D12StereoDepthConstants(
+                new Vector4(normalized.Width, normalized.Height, normalized.MinDisparity, normalized.DisparityLevels),
+                new Vector4(normalized.CensusRadius, normalized.AggregationPathCount, normalized.SmoothnessPenaltySmall, normalized.SmoothnessPenaltyLarge),
+                new Vector4(1.0f / MathF.Max(1.0f, normalized.DisparityLevels), 0.0f, 0.0f, 0.0f));
+            var constantsUpload = frameResources.UploadRing.WriteConstant(constants);
+            activeCommandList.SetComputeRootSignature(gpuSensorFusionRootSignature);
+            activeCommandList.SetPipelineState(stereoDepthPipelineState);
+            activeCommandList.SetComputeRootConstantBufferView(RootFusionFrameConstants, constantsUpload.GpuVirtualAddress);
+            activeCommandList.SetComputeRootDescriptorTable(RootFusionSensorTextures, inputDescriptor.Gpu);
+            activeCommandList.SetComputeRootDescriptorTable(RootFusionOutput, outputDescriptor.Gpu);
+            activeCommandList.Dispatch((uint)((normalized.Width + 7) / 8), (uint)((normalized.Height + 7) / 8), 1);
+            activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(disparityOutput.Resource));
+            activeStereoDepthDispatchedLowerings++;
+        }
     }
 
     private void UploadFieldResourceData(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
@@ -4131,9 +4186,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
             Console.WriteLine(
                 $"D3D12 stereo depth: lowerings {activeFieldEvidenceFrame.StereoDepthLowerings.Count:N0}; " +
                 $"dispatch-ready {activeStereoDepthDispatchReadyLowerings:N0}; " +
+                $"dispatched {activeStereoDepthDispatchedLowerings:N0}; " +
                 $"unplanned {activeStereoDepthUnplannedLowerings:N0}; " +
                 $"unresolved {activeStereoDepthUnresolvedLowerings:N0}; " +
-                "kernel not installed");
+                "kernel packed-block-match");
         }
 
         if (accumulatedTimingFrames > 0)
@@ -4326,6 +4382,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 splinePipelineState!,
                 temporalGaussianPipelineState!,
                 gpuSensorFusionPipelineState!,
+                stereoDepthPipelineState!,
                 fractalSurfaceSplatRenderPipelineState!,
                 fractalTransparentSplatRenderPipelineState!,
                 fractalSplatPipelineState!,
@@ -4353,6 +4410,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         splinePipelineState = pipelines.Spline;
         temporalGaussianPipelineState = pipelines.TemporalGaussian;
         gpuSensorFusionPipelineState = pipelines.GpuSensorFusion;
+        stereoDepthPipelineState = pipelines.StereoDepth;
         fractalSurfaceSplatRenderPipelineState = pipelines.FractalSurfaceSplatRender;
         fractalTransparentSplatRenderPipelineState = pipelines.FractalTransparentSplatRender;
         fractalSplatPipelineState = pipelines.FractalSplat;
@@ -4382,6 +4440,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         scenePipelineState = null;
         temporalGaussianPipelineState = null;
         gpuSensorFusionPipelineState = null;
+        stereoDepthPipelineState = null;
         fractalSurfaceSplatRenderPipelineState = null;
         fractalTransparentSplatRenderPipelineState = null;
         fractalSplatPipelineState = null;
@@ -4925,6 +4984,17 @@ public sealed class D3D12Renderer : IAquariumRenderer
         return device.CreateComputePipelineState(description);
     }
 
+    private ID3D12PipelineState CreateStereoDepthPipelineState(string path)
+    {
+        var computeShader = CompileShader(path, "D3D12PackedStereoDepthCS", "cs_5_0");
+        var description = new ComputePipelineStateDescription
+        {
+            RootSignature = gpuSensorFusionRootSignature,
+            ComputeShader = computeShader,
+        };
+        return device.CreateComputePipelineState(description);
+    }
+
     private ID3D12PipelineState CreateFractalReservoirPipelineState(string path, string entryPoint)
     {
         var computeShader = CompileShader(path, entryPoint, "cs_5_0");
@@ -5372,12 +5442,19 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct D3D12StereoDepthConstants(
+        Vector4 Shape,
+        Vector4 Match,
+        Vector4 Output);
+
     private sealed record D3D12ShaderPaths(
         string HeightField,
         string Scene,
         string Spline,
         string TemporalGaussian,
         string GpuSensorFusion,
+        string StereoDepth,
         string TubeField,
         string FractalReservoir,
         string FractalSplatRender,
@@ -5388,7 +5465,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         IReadOnlyList<string> Includes,
         string Post)
     {
-        public IReadOnlyList<string> All { get; } = [HeightField, Scene, Spline, TemporalGaussian, GpuSensorFusion, TubeField, FractalReservoir, FractalSplatRender, SdfCommon, SdfProxy, ..SdfShaders, SdfMath, ..Includes, Post];
+        public IReadOnlyList<string> All { get; } = [HeightField, Scene, Spline, TemporalGaussian, GpuSensorFusion, StereoDepth, TubeField, FractalReservoir, FractalSplatRender, SdfCommon, SdfProxy, ..SdfShaders, SdfMath, ..Includes, Post];
 
         public static D3D12ShaderPaths FromManifest(string root, AquariumShaderManifest manifest)
         {
@@ -5402,6 +5479,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 shaderPath("D3D12Scene.hlsl"),
                 shaderPath(manifest.TemporalGaussianShader),
                 shaderPath(manifest.GpuSensorFusionShader),
+                shaderPath("D3D12StereoDepth.hlsl"),
                 shaderPath("D3D12TubeField.hlsl"),
                 shaderPath(manifest.FractalReservoirShader),
                 shaderPath(manifest.FractalSplatRenderShader),
@@ -5421,6 +5499,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         ID3D12PipelineState Spline,
         ID3D12PipelineState TemporalGaussian,
         ID3D12PipelineState GpuSensorFusion,
+        ID3D12PipelineState StereoDepth,
         ID3D12PipelineState FractalSurfaceSplatRender,
         ID3D12PipelineState FractalTransparentSplatRender,
         ID3D12PipelineState FractalSplat,
@@ -5450,6 +5529,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             FractalRadiosityReservoir.Dispose();
             TubeFieldRender.Dispose();
             TubeFieldCompute.Dispose();
+            StereoDepth.Dispose();
             FractalPbrReservoir.Dispose();
             FractalSdfReservoir.Dispose();
             FractalSplat.Dispose();

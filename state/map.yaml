@@ -250,17 +250,21 @@ next_actions:
     compute-writable UAV-backed pages. Empty SurfacePage version is content
     freshness, not texture identity, so compute outputs can update without
     reallocating when shape/format/access are unchanged. FieldEvidence now has
-    an explicit `AquariumFieldStereoDepthLowering` sidecar for future calibrated
+    an explicit `AquariumFieldStereoDepthLowering` sidecar for calibrated
     stereo compute dispatch: validation requires a Height claim whose payload is
     the compute-writable disparity SurfacePage, shader-readable left/right
     Texture2D or RollingTexture resources, profile/calibration/camera-pair
     identity, and coherent output shape/range. This keeps Mimir's libSGM-shaped
     D3D12 depth path inside typed field/resource authority instead of a private
     texture or CUDA/TensorRT dependency. The D3D12 renderer now evaluates
-    stereo-depth dispatch readiness without writing fake depth: a lowering is
-    ready only when its Height claim is planned and left/right input textures
-    plus UAV disparity SurfacePage resolve through the field resource registry;
-    capacity logs still state that the kernel is not installed. The lowering
+    stereo-depth dispatch readiness and runs the first packed-Leap compute
+    kernel: a lowering is eligible only when its Height claim is planned and
+    left/right input textures plus UAV disparity SurfacePage resolve through
+    the field resource registry. The first `D3D12StereoDepth.hlsl` lane handles
+    the immediate Mimir Leap shape where left and right observations are packed
+    into the R/G channels of one Texture2D, then writes crude R16F disparity by
+    local SAD/block matching. This is a live depth proof, not final
+    libSGM-style SGM or calibrated metric depth. The lowering
     sidecar now carries the first SGM-shaped kernel constants too: min
     disparity, disparity levels, aggregation paths, census radius, and P1/P2
     smoothness penalties. VolumeTexture

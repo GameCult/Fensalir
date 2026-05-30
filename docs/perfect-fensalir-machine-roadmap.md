@@ -394,8 +394,12 @@ Add contributors in this order:
    levels, aggregation path count, census radius, and P1/P2 smoothness
    penalties. The D3D12 renderer now accounts for dispatch-ready stereo
    lowerings only when the planned Height claim and all three resolved resources
-   are present; it reports that readiness separately from the not-yet-installed
-   SGM kernel.
+   are present. The first installed compute lane is `D3D12StereoDepth.hlsl`,
+   which handles the immediate Leap shape where left and right observations are
+   packed into the R/G channels of one Texture2D and writes a crude R16F
+   disparity by local SAD/block matching. This is a socket-owning live depth
+   proof, not the final libSGM-style census/aggregation SGM kernel and not
+   calibrated metric depth.
 
 Exit gate:
 

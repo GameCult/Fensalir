@@ -285,7 +285,17 @@ next_actions:
     libSGM-style SGM or calibrated metric depth. The lowering
     sidecar now carries the first SGM-shaped kernel constants too: min
     disparity, disparity levels, aggregation paths, census radius, and P1/P2
-    smoothness penalties. VolumeTexture
+    smoothness penalties. The first Leap point-cloud render lane now follows
+    that disparity socket: Mesh packages with
+    `SourceUri=derived-from:<surface-page-resource>` allocate UAV-capable
+    vertex/index buffers, `D3D12PointCloudFromDisparityCS` fills a standard
+    `PositionNormalUvColor` PointList from the disparity SurfacePage, and
+    `D3D12PointCloudPS` renders it into the scene candidate MRTs through the
+    normal depth/camera path. This is intentionally sourced from typed Mesh and
+    SurfacePage resources; CPU point arrays and unproven RGB depth are not live
+    authorities. Headless pipeline smoke captured
+    `artifacts/runtime/fensalir-point-cloud-pipeline-smoke.png`.
+    VolumeTexture
     resources now have the same
     first resolver shape: contracts and DSL can declare GPU-resident 3D
     textures with dimensions, depth, format, and version, and the D3D12 registry

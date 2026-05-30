@@ -2,6 +2,16 @@
 
 ## Current Slice
 
+Leap/Mimir point-cloud bridge:
+Mimir now declares a Leap disparity-derived `FieldMesh` PointList. Fensalir now
+preserves mesh `SourceUri`, allocates `derived-from:*` mesh buffers as UAV-capable
+GPU resources, fills those vertices/indices from the disparity SurfacePage in
+`D3D12PointCloudFromDisparityCS`, and renders the standard
+`PositionNormalUvColor` point list through `D3D12PointCloudPS` into the scene
+candidate targets. This is the first visible point-cloud lane; full SGM,
+metric calibration, splat sizing, and the global residual/calibration owner are
+still separate cuts.
+
 Turn the native-domain reservoir from a native-resolution cache into a
 budgeted spatiotemporal sampler. The work grid now defaults to half present
 resolution and is clamped below native presentation scale; scene evidence,
@@ -157,6 +167,9 @@ Follow `docs/perfect-fensalir-machine-roadmap.md` Phase 1:
    can tell whether extra samples buy visible stability.
 4. Replace the bounded TubeField replay source descriptor table with a replay
    atlas only if real scenes hit the cap.
+5. For Mimir geometry, verify live Leap point clouds in the editor, then add
+   the residual/calibration owner that consumes Leap point error before other
+   cameras contribute motion/RGB evidence.
 
 ## Verification
 

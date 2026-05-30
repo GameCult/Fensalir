@@ -668,7 +668,8 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             existing.Indices.StrideBytes == mesh.Indices.StrideBytes &&
             existing.Topology == mesh.Topology &&
             existing.IndexFormat == mesh.IndexFormat &&
-            existing.Layout == mesh.Layout)
+            existing.Layout == mesh.Layout &&
+            string.Equals(existing.SourceUri, declaration.SourceUri, StringComparison.Ordinal))
         {
             return true;
         }
@@ -683,12 +684,14 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             device,
             mesh.Vertices.Count,
             mesh.Vertices.StrideBytes,
-            $"Aquarium D3D12 Field Mesh Vertices {declaration.ResourceKey}");
+            $"Aquarium D3D12 Field Mesh Vertices {declaration.ResourceKey}",
+            allowUnorderedAccess: IsGeneratedMeshSource(declaration.SourceUri));
         var indices = new D3D12StructuredBuffer(
             device,
             mesh.Indices.Count,
             mesh.Indices.StrideBytes,
-            $"Aquarium D3D12 Field Mesh Indices {declaration.ResourceKey}");
+            $"Aquarium D3D12 Field Mesh Indices {declaration.ResourceKey}",
+            allowUnorderedAccess: IsGeneratedMeshSource(declaration.SourceUri));
         meshes[declaration.ResourceKey] = new D3D12FieldMesh(
             vertices,
             indices,
@@ -696,9 +699,13 @@ internal sealed class D3D12FieldResourceRegistry : IDisposable
             mesh.IndexFormat,
             mesh.Layout,
             mesh.SubmeshCount,
-            declaration.Version);
+            declaration.Version,
+            declaration.SourceUri);
         return true;
     }
+
+    private static bool IsGeneratedMeshSource(string sourceUri) =>
+        sourceUri.StartsWith("derived-from:", StringComparison.Ordinal);
 
     private int RemoveStaleStructuredBuffers(D3D12ResourceRegistry resourceRegistry, HashSet<string> currentKeys)
     {

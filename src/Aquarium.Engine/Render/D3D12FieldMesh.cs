@@ -13,7 +13,8 @@ internal sealed class D3D12FieldMesh : IDisposable
         AquariumFieldMeshIndexFormat indexFormat,
         AquariumFieldMeshLayout layout,
         int submeshCount,
-        ulong version)
+        ulong version,
+        string sourceUri)
     {
         Vertices = vertices;
         Indices = indices;
@@ -22,6 +23,7 @@ internal sealed class D3D12FieldMesh : IDisposable
         Layout = layout;
         SubmeshCount = submeshCount;
         Version = version;
+        SourceUri = sourceUri;
     }
 
     public D3D12StructuredBuffer Vertices { get; }
@@ -43,6 +45,11 @@ internal sealed class D3D12FieldMesh : IDisposable
     public int SubmeshCount { get; }
 
     public ulong Version { get; }
+
+    public string SourceUri { get; }
+
+    public bool IsGeneratedFromResource =>
+        SourceUri.StartsWith("derived-from:", StringComparison.Ordinal);
 
     public PrimitiveTopology D3DTopology => Topology switch
     {

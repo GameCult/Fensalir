@@ -4346,6 +4346,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             else
             {
                 Console.Error.WriteLine($"D3D12 initial shader pipeline build failed; retrying after source change. {error}");
+                throw new InvalidOperationException("D3D12 initial shader pipeline build failed.", error);
             }
 
             shaderReloadFailureReported = true;

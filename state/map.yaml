@@ -50,6 +50,11 @@ invariants:
   - Fensalir may own reusable built-in field resources, such as the blackbody
     ramp, when the resource is generic engine utility. Clients should reference
     those through contracts instead of hardcoded project-local asset paths.
+  - Client shaders that include engine shared HLSL files must receive those
+    includes in their output shader directory or use explicit engine include
+    paths. Missing shared includes are shader-pipeline failures, not loading
+    states. Initial pipeline build failure now throws instead of spinning behind
+    the startup/loading frame.
   - Epiphany Aquarium depends on Fensalir; Fensalir must not depend on Epiphany.
   - Demo projects inside this repo are allowed to exercise engine features but must not become hidden engine policy.
   - Public `Aquarium.*` assembly names remain for continuity until a deliberate namespace/package migration.

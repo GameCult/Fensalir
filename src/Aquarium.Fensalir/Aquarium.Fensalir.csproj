@@ -17,6 +17,9 @@
   <ItemGroup>
     <Content Include="Shaders\**\*.hlsl" CopyToOutputDirectory="PreserveNewest" TargetPath="Render\Shaders\%(RecursiveDir)%(Filename)%(Extension)" />
     <Content Include="Shaders\**\*.hlsli" CopyToOutputDirectory="PreserveNewest" TargetPath="Render\Shaders\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Content Include="..\Aquarium.Engine\Render\Shaders\D3D12SdfCommon.hlsli" CopyToOutputDirectory="PreserveNewest" TargetPath="Render\Shaders\D3D12SdfCommon.hlsli" />
+    <Content Include="..\Aquarium.Engine\Render\Shaders\D3D12SdfMath.hlsli" CopyToOutputDirectory="PreserveNewest" TargetPath="Render\Shaders\D3D12SdfMath.hlsli" />
+    <Content Include="..\Aquarium.Engine\Render\Shaders\D3D12SdfProxy.hlsli" CopyToOutputDirectory="PreserveNewest" TargetPath="Render\Shaders\D3D12SdfProxy.hlsli" />
     <Content Include="Worlds\**\*.aquageo" CopyToOutputDirectory="PreserveNewest" TargetPath="Worlds\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 

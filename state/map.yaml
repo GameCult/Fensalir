@@ -174,6 +174,11 @@ next_actions:
     `reservoir-sequence-20260530-003746-*` proves it. The next cut is turning
     budget-pressure evidence into a renderer-owned per-tile adaptive update
     contract plus future exact producer SDF replay.
+  - Window resize no longer crashes on the D3D12 swapchain path: resize now
+    disposes DirectWrite overlays and wrapped backbuffers, clears/flushes the
+    D3D11-on-12 context before `ResizeBuffers`, and drops program-output shared
+    textures before recreating size-dependent surfaces. Visible resize probe
+    `20260530-215113-639e6612` survived seven programmatic resizes.
   - Build the planetary flow organ in staged cuts: provenance manifest, static
     relief and reanalysis cube-sphere bake pipeline, stochastic advection
     contracts, synthetic runtime slice, ERA5/OSCAR baseline learning, then

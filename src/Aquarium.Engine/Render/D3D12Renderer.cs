@@ -1826,6 +1826,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
         overlays = [];
         overlayWrappedBackBuffers = [];
+        overlayContext.ClearState();
+        overlayContext.Flush();
     }
 
     private D3D12PipelineSet CreatePipelineSet(D3D12ShaderPaths paths)
@@ -1919,6 +1921,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
         WaitForGpu();
         DisposeBackBufferOverlays();
+        DisposeProgramOutputTexture();
         RemoveBloomRenderTargets();
         RemoveGraphRenderTargets();
         resourceRegistry.RemoveRenderTarget("scene-hdr-target");

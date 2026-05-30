@@ -87,6 +87,15 @@ for the current frame. Smoke
 mode at scale 0.5 / spatial budget 0.5. A bitmap probe counted 32078 green,
 6818 blue, and 3968 other/filtering pixels in the 304x141 present output.
 
+Window resize fix:
+The Fensalir window resize path now explicitly clears and flushes the D3D11-on-12
+overlay context after disposing DirectWrite overlays and wrapped backbuffer
+resources, before `IDXGISwapChain::ResizeBuffers`. Resize also disposes
+program-output shared textures before recreating size-dependent output surfaces.
+Probe `scripts/dev-reload.ps1` visible slot `20260530-215113-639e6612` survived
+seven programmatic resizes and logged rebuilt D3D12 targets at each size with no
+stderr.
+
 ## Hot Lesson
 
 Area ReSTIR confirms that reuse over an area domain is invalid unless the
@@ -113,6 +122,10 @@ SDF history reconstructs the previous selected world hit from stored UV/travel,
 carries it through object center motion, and validates current ray/travel/support
 before temporal reuse can merge it. TubeField batches beyond the manifest source
 cap remain intentionally non-authoritative.
+Swapchain resize correctness depends on releasing both D3D12 backbuffer owners
+and D3D11-on-12 overlay references before `ResizeBuffers`. Disposing wrapped
+resources is not enough; the D3D11 immediate context must be cleared and flushed
+so it stops holding hidden references.
 
 ## Next Bounded Move
 

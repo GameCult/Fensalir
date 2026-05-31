@@ -1967,7 +1967,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         else
         {
             Step("reservoir-history-update");
-            reservoirHistoryUpdate = CreateReservoirHistoryUpdatePipelineState(paths.Post);
+            reservoirHistoryUpdate = CreateReservoirHistoryUpdatePipelineState(paths.ReservoirHistoryUpdate);
             reservoirHistoryUpdate.Name = "Aquarium D3D12 Reservoir History Update Pipeline";
         }
         Step("resolve");
@@ -6155,9 +6155,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
         IReadOnlyList<string> SdfShaders,
         string SdfMath,
         IReadOnlyList<string> Includes,
-        string Post)
+        string Post,
+        string ReservoirHistoryUpdate)
     {
-        public IReadOnlyList<string> All { get; } = [HeightField, Scene, Spline, TemporalGaussian, GpuSensorFusion, StereoDepth, PointCloud, TubeField, FractalReservoir, FractalSplatRender, SdfCommon, SdfProxy, ..SdfShaders, SdfMath, ..Includes, Post];
+        public IReadOnlyList<string> All { get; } = [HeightField, Scene, Spline, TemporalGaussian, GpuSensorFusion, StereoDepth, PointCloud, TubeField, FractalReservoir, FractalSplatRender, SdfCommon, SdfProxy, ..SdfShaders, SdfMath, ..Includes, Post, ReservoirHistoryUpdate];
 
         public static D3D12ShaderPaths FromManifest(string root, AquariumShaderManifest manifest)
         {
@@ -6181,7 +6182,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 manifest.SdfShaderPaths.Select(shaderPath).ToArray(),
                 shaderPath(manifest.SdfMathInclude),
                 [.. includes.Select(shaderPath), shaderPath("D3D12Aces2.hlsl")],
-                shaderPath(manifest.PostShader));
+                shaderPath(manifest.PostShader),
+                shaderPath("D3D12ReservoirHistoryUpdate.hlsl"));
         }
     }
 

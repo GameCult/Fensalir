@@ -405,8 +405,8 @@ internal sealed class DirectWriteOverlay : IDisposable
         var weight = Math.Max(0.001f, element.Weight);
         return element.Kind switch
         {
+            "group" or "pane" or "card" when HasFlexibleChild(element) => null,
             "group" or "pane" or "card" => PreferredContainerExtent(element) * weight,
-            "preview" => 240.0f * weight,
             "text" when element.Role is "mono" => 18.0f * weight,
             "text" when element.Role is "strong" or "title" => 22.0f * weight,
             "text" => 18.0f * weight,
@@ -415,6 +415,12 @@ internal sealed class DirectWriteOverlay : IDisposable
             "metric" => 36.0f * weight,
             _ => null,
         };
+    }
+
+    private static bool HasFlexibleChild(AquariumUiElement element)
+    {
+        var children = element.Children?.Where(static child => child.Visible).ToArray() ?? [];
+        return children.Any(static child => PreferredExtent(child, horizontal: false) is null);
     }
 
     private static float PreferredContainerExtent(AquariumUiElement element)

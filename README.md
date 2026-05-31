@@ -33,6 +33,11 @@ audio buffers, synth patches, and frame state through
 resources: D3D12 pipelines and command lists, shader reloads, presentation,
 audio playback, debug telemetry, and headless capture.
 
+Fensalir's DirectWrite/Direct2D overlay is also an Eve client surface. It should
+consume the shared Eve/CultMesh UI document contract and lower it into
+`AquariumUiDocument`, while provider repos keep ownership of dashboard state and
+commands. See `docs/eve-direct2d-client-surface.md`.
+
 ## Spatial Evidence Machine
 
 Fensalir's field work is not just "some fractal helpers." It is a

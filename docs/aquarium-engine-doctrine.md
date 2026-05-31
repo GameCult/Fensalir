@@ -44,6 +44,9 @@ and UI as living objects.
 - Debug overlay is allowed, but it is explicit chrome.
 - Overlay text uses DirectWrite and stays out of the HDR scene unless a feature
   intentionally projects it into the world.
+- The DirectWrite/Direct2D overlay is a valid Eve client surface when it
+  renders shared CultMesh UI documents through `AquariumUiDocument`. It does not
+  own provider state or dashboard semantics.
 - Diegetic labels and menus should anchor to world objects and unfold locally.
 - Object-owned controls beat global panels.
 - Crisp text, focus, keyboard input, and accessibility are real requirements,

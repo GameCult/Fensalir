@@ -260,6 +260,9 @@ internal sealed class DirectWriteOverlay : IDisposable
             case "button":
                 DrawButtonElement(element, bounds);
                 break;
+            case "preview":
+                DrawPreviewElement(element, bounds);
+                break;
             default:
                 DrawTextElement(element, bounds);
                 break;
@@ -335,6 +338,54 @@ internal sealed class DirectWriteOverlay : IDisposable
         renderTarget.DrawText(element.Text ?? "", smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top, bounds.Right - 8.0f, bounds.Bottom), primaryTextBrush, DrawTextOptions.Clip);
     }
 
+    private void DrawPreviewElement(AquariumUiElement element, Rect bounds)
+    {
+        DrawSurfaceFrame(bounds, null, "neutral", drawTitle: false);
+        renderTarget.DrawText(element.Text ?? "", smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top + 6.0f, bounds.Right - 8.0f, bounds.Top + 24.0f), quietTextBrush, DrawTextOptions.Clip);
+
+        var padded = RectFromEdges(bounds.Left + 10.0f, bounds.Top + 30.0f, bounds.Right - 10.0f, bounds.Bottom - 10.0f);
+        if (padded.Width <= 1.0f || padded.Height <= 1.0f)
+        {
+            return;
+        }
+
+        var targetAspect = 16.0f / 9.0f;
+        var canvasWidth = padded.Width;
+        var canvasHeight = canvasWidth / targetAspect;
+        if (canvasHeight > padded.Height)
+        {
+            canvasHeight = padded.Height;
+            canvasWidth = canvasHeight * targetAspect;
+        }
+
+        var canvas = RectFromEdges(
+            padded.Left + (padded.Width - canvasWidth) * 0.5f,
+            padded.Top + (padded.Height - canvasHeight) * 0.5f,
+            padded.Left + (padded.Width + canvasWidth) * 0.5f,
+            padded.Top + (padded.Height + canvasHeight) * 0.5f);
+        renderTarget.FillRectangle(canvas, panelBrush);
+        renderTarget.DrawRectangle(canvas, outlineBrush, 1.0f);
+
+        var items = element.ReadPreviewItems?.Invoke() ?? [];
+        foreach (var item in items)
+        {
+            var left = canvas.Left + Math.Clamp(item.X, 0.0f, 1.0f) * canvas.Width;
+            var top = canvas.Top + Math.Clamp(item.Y, 0.0f, 1.0f) * canvas.Height;
+            var right = canvas.Left + Math.Clamp(item.X + item.Width, 0.0f, 1.0f) * canvas.Width;
+            var bottom = canvas.Top + Math.Clamp(item.Y + item.Height, 0.0f, 1.0f) * canvas.Height;
+            var itemBounds = RectFromEdges(left, top, right, bottom);
+            if (itemBounds.Width <= 1.0f || itemBounds.Height <= 1.0f)
+            {
+                continue;
+            }
+
+            var brush = item.Selected ? accentBrush : ToneBrush(item.Tone);
+            renderTarget.FillRectangle(itemBounds, item.Selected ? hoverRowBrush : rowBrush);
+            renderTarget.DrawRectangle(itemBounds, brush, item.Selected ? 2.0f : 1.0f);
+            renderTarget.DrawText(item.Label, smallFormat, RectFromEdges(itemBounds.Left + 6.0f, itemBounds.Top + 3.0f, itemBounds.Right - 6.0f, itemBounds.Bottom), primaryTextBrush, DrawTextOptions.Clip);
+        }
+    }
+
     private ID2D1SolidColorBrush ToneBrush(string tone) =>
         tone switch
         {
@@ -355,6 +406,7 @@ internal sealed class DirectWriteOverlay : IDisposable
         return element.Kind switch
         {
             "group" or "pane" or "card" => PreferredContainerExtent(element) * weight,
+            "preview" => 240.0f * weight,
             "text" when element.Role is "mono" => 18.0f * weight,
             "text" when element.Role is "strong" or "title" => 22.0f * weight,
             "text" => 18.0f * weight,

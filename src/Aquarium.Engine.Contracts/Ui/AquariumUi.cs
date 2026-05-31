@@ -81,6 +81,16 @@ public sealed record AquariumUiLayout(
 
 public sealed record AquariumUiStyle(string Variant = "default", string Tone = "neutral");
 
+public sealed record AquariumUiPreviewItem(
+    string Id,
+    string Label,
+    float X,
+    float Y,
+    float Width,
+    float Height,
+    bool Selected = false,
+    string Tone = "neutral");
+
 public sealed record AquariumUiElement(
     string Id,
     string Kind,
@@ -100,6 +110,7 @@ public sealed record AquariumUiElement(
     Func<int>? ReadOption = null,
     Action<int>? WriteOption = null,
     IReadOnlyList<AquariumUiOption>? Options = null,
+    Func<IReadOnlyList<AquariumUiPreviewItem>>? ReadPreviewItems = null,
     Action? Invoke = null,
     Func<bool>? IsVisible = null,
     float Weight = 1.0f,
@@ -186,6 +197,12 @@ public sealed class AquariumUiSurfaceBuilder(List<AquariumUiElement> children)
     public AquariumUiSurfaceBuilder Button(string id, string label, Action invoke, float weight = 1.0f)
     {
         children.Add(new AquariumUiElement(id, "button", label, Invoke: invoke, Weight: Math.Max(0.001f, weight)));
+        return this;
+    }
+
+    public AquariumUiSurfaceBuilder Preview(string id, string label, Func<IReadOnlyList<AquariumUiPreviewItem>> readItems, float weight = 1.0f)
+    {
+        children.Add(new AquariumUiElement(id, "preview", label, ReadPreviewItems: readItems, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 }

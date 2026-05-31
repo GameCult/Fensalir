@@ -8,6 +8,7 @@ public sealed class AquariumAudioDocument
     private readonly ConcurrentQueue<AquariumAudioControlFrame> controlFrames = new();
     private readonly ConcurrentQueue<AquariumStreamingDspProgram> streamingDspPrograms = new();
     private readonly ConcurrentQueue<AquariumStreamingAudioBlock> streamingAudioBlocks = new();
+    private readonly ConcurrentQueue<AquariumAudioCaptureRequest> captureRequests = new();
 
     public static AquariumAudioDocument Empty { get; } = new();
 
@@ -131,6 +132,38 @@ public sealed class AquariumAudioDocument
 
         return drained;
     }
+
+    public void EnqueueSystemLoopbackCapture(
+        string profileId,
+        string sourceId,
+        string displayName,
+        bool enabled,
+        long sequence)
+    {
+        if (string.IsNullOrWhiteSpace(profileId))
+        {
+            return;
+        }
+
+        captureRequests.Enqueue(new AquariumAudioCaptureRequest(
+            profileId,
+            string.IsNullOrWhiteSpace(sourceId) ? "system-loopback" : sourceId,
+            string.IsNullOrWhiteSpace(displayName) ? "System audio" : displayName,
+            AquariumAudioCaptureKind.SystemLoopback,
+            enabled,
+            sequence));
+    }
+
+    public IReadOnlyList<AquariumAudioCaptureRequest> DrainCaptureRequests(int maxRequests = 8)
+    {
+        var drained = new List<AquariumAudioCaptureRequest>();
+        while (drained.Count < maxRequests && captureRequests.TryDequeue(out var request))
+        {
+            drained.Add(request);
+        }
+
+        return drained;
+    }
 }
 
 public sealed record AquariumPcmAudioChunk(float[] MonoSamples, int SampleRate, float LeftGain = 1.0f, float RightGain = 1.0f);
@@ -177,6 +210,19 @@ public sealed record AquariumStreamingAudioChannel(
     int ChannelIndex,
     string SourceId,
     float[] Samples);
+
+public enum AquariumAudioCaptureKind
+{
+    SystemLoopback
+}
+
+public sealed record AquariumAudioCaptureRequest(
+    string ProfileId,
+    string SourceId,
+    string DisplayName,
+    AquariumAudioCaptureKind Kind,
+    bool Enabled,
+    long Sequence);
 
 public sealed record AquariumAudioStemFrame(
     string ProfileId,

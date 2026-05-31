@@ -117,6 +117,11 @@ invariants:
     owns an `IAquariumAudioStemBus` service for published processed stems,
     optional monitor playback is explicit, and OBS-facing publication remains
     a later host cut.
+  - System audio capture is an engine-owned audio-host request, not a client
+    sidecar. Clients enqueue a profile-keyed system-loopback capture request on
+    `AquariumAudioDocument`; Fensalir owns WASAPI loopback capture, publishes a
+    mono `system_mix` stem through `IAquariumAudioStemBus`, and clients consume
+    it through the same stem service as streaming DSP outputs.
   - The named D3D12 program-output texture is an external publication surface.
     After copying the completed backbuffer into it, the renderer must leave the
     resource in `Common` so OBS/EVE/native consumers can transition it for

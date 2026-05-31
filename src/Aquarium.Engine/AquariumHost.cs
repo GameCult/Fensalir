@@ -134,6 +134,7 @@ public static class AquariumHost
                         activeRuntime.OnSceneReady();
                         sceneReadyRuntime = activeRuntime;
                         synthHost ??= new AquariumSynthHost(audioStemBus);
+                        synthHost.Update(AquariumSynthDocument.Combine(activeRuntime.Synth, renderer.DebugSynth), activeRuntime.Audio, 0.0f);
                         lastFrame = frameClock.Elapsed;
                     }
                 }

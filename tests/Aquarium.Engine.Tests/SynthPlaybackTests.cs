@@ -60,6 +60,26 @@ public sealed class SynthPlaybackTests
     }
 
     [Fact]
+    public void AquariumAudioDocumentDrainsLoopbackCaptureRequests()
+    {
+        var document = new AquariumAudioDocument();
+        document.EnqueueSystemLoopbackCapture(
+            "perlines:system-loopback",
+            "windows-default-render",
+            "System mix",
+            enabled: true,
+            sequence: 7);
+
+        var drained = document.DrainCaptureRequests();
+
+        Assert.Single(drained);
+        Assert.Equal(AquariumAudioCaptureKind.SystemLoopback, drained[0].Kind);
+        Assert.Equal("perlines:system-loopback", drained[0].ProfileId);
+        Assert.True(drained[0].Enabled);
+        Assert.Empty(document.DrainCaptureRequests());
+    }
+
+    [Fact]
     public void StreamingDspHostProcessesControlDrivenInputBlocksWhenToolchainIsAvailable()
     {
         const string source = """

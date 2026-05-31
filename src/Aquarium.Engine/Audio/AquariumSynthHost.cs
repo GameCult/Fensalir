@@ -13,6 +13,8 @@ internal sealed class AquariumSynthHost : IDisposable
     private readonly IAquariumAudioStemBus audioStemBus;
     private readonly WasapiAudioDevice audioDevice = new();
     private readonly AquaSynthPatchCompiler patchCompiler = new(new AquaSynthNativeOptions(DspSourceDirectory: Path.Combine(AppContext.BaseDirectory, "Synth")));
+    private WasapiLoopbackCaptureDevice? loopbackCapture;
+    private AquariumAudioCaptureRequest? activeCaptureRequest;
     private float timeSeconds;
 
     public AquariumSynthHost(IAquariumAudioStemBus? audioStemBus = null)
@@ -81,6 +83,11 @@ internal sealed class AquariumSynthHost : IDisposable
             PlayMonitorOutputs(block, stemFrame);
         }
 
+        foreach (var request in audio.DrainCaptureRequests())
+        {
+            ApplyCaptureRequest(request);
+        }
+
         if (!synth.Enabled)
         {
             return;
@@ -111,6 +118,42 @@ internal sealed class AquariumSynthHost : IDisposable
                 Play(runtime, patch, synth.MasterGain);
             }
         }
+    }
+
+    private void ApplyCaptureRequest(AquariumAudioCaptureRequest request)
+    {
+        if (request.Kind != AquariumAudioCaptureKind.SystemLoopback)
+        {
+            return;
+        }
+
+        if (!request.Enabled)
+        {
+            if (activeCaptureRequest?.ProfileId == request.ProfileId)
+            {
+                loopbackCapture?.Dispose();
+                loopbackCapture = null;
+                activeCaptureRequest = null;
+            }
+
+            return;
+        }
+
+        if (activeCaptureRequest is not null &&
+            activeCaptureRequest.ProfileId == request.ProfileId &&
+            activeCaptureRequest.SourceId == request.SourceId &&
+            activeCaptureRequest.DisplayName == request.DisplayName)
+        {
+            return;
+        }
+
+        loopbackCapture?.Dispose();
+        loopbackCapture = new WasapiLoopbackCaptureDevice(
+            audioStemBus,
+            request.ProfileId,
+            request.SourceId,
+            request.DisplayName);
+        activeCaptureRequest = request;
     }
 
     private void PlayMonitorOutputs(AquariumStreamingAudioBlock block, AquariumAudioStemFrame stemFrame)
@@ -341,6 +384,7 @@ internal sealed class AquariumSynthHost : IDisposable
         }
 
         streamingDsp.Dispose();
+        loopbackCapture?.Dispose();
         audioDevice.Dispose();
         patchCompiler.Dispose();
     }

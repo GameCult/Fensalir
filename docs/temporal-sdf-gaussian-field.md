@@ -91,9 +91,9 @@ residency, tiled/bin dispatch, GPU accumulation, and clustered visibility.
 The active GPU boundary is deliberately narrow:
 
 ```text
-Mimir calibration/device metadata
--> AquariumGpuSensorFrame { calibrated cameras + shared GPU textures }
--> D3D12 sensor metadata buffers + imported texture SRVs
+Mimir calibration/device metadata or FieldEvidence camera Feature claims
+-> AquariumGpuSensorFrame or planned GpuSensorFusion packets
+-> D3D12 sensor metadata buffers + imported/leased texture SRVs
 -> D3D12 GPU sensor fusion compute shader
 -> RWStructuredBuffer<TemporalGaussian>
 -> instanced SDF Gaussian draw
@@ -103,7 +103,11 @@ Mimir calibration/device metadata
 Ownership:
 
 - `AquariumGpuSensorFrame` is the live renderer contract for GPU-owned fusion
-  input.
+  input when a client publishes the legacy direct sensor frame.
+- FieldEvidence camera-sensor `Feature` claims with `SensorObservation`
+  proposal policy are the current Mimir sensor-fusion contract. They plan to
+  the `GpuSensorFusion` backend, and `D3D12Renderer` derives sensor metadata
+  plus SRV bindings from resolved Texture2D resources.
 - `AquariumGpuFusionField` remains a temporary fallback/debug contract for
   already-derived point claims.
 - Mimir-owned adapters may convert app-specific point claims into compact seeds
@@ -130,6 +134,13 @@ per-sample visual descriptor, compares it against a neighboring camera stream,
 raises confidence when stochastic samples appear to correspond, and shrinks the
 kernel toward the matched surface. Acoustic constraints from the ultrasonic
 chirplet loop bias confidence and velocity near measured room/position returns.
+
+The current FieldEvidence cut also consumes Mimir camera texture leases without
+restoring the retired direct sensor DTO path. LeapStereoIr and Bayer8/R8-style
+textures are sampled directly by the compute shader; YUY2 camera textures are
+selected as `GpuSensorFusion` evidence but skipped by the renderer until a
+format-aware YUY2 conversion/feature lane exists. Packed video formats must not
+pretend to be RGBA.
 
 Next cut: replace the first-pass descriptor comparison with calibrated
 epipolar/flow search, Leap packed-map channel extraction, and a persistent GPU

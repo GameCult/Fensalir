@@ -36,7 +36,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int MaxGpuSensorCameraCount = 32;
     private const int MaxGpuSensorTextureCount = 8;
     private const int MaxAcousticConstraintCount = 128;
-    private const int GpuSensorSamplesPerTexture = 131_072;
+    private const int GpuSensorSamplesPerTexture = 16_384;
     private const int MaxTemporalGaussianCount = 1_048_576;
     private const int MaxVisibleFractalSplatCount = 524_288;
     private const int MaxTubeFieldSegments = 65_536;
@@ -293,6 +293,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly AquariumSdfLight[] sdfLights = new AquariumSdfLight[MaxSdfLightCount];
     private readonly AquariumSdfObject[] sdfObjects = new AquariumSdfObject[MaxSdfObjectCount];
     private readonly D3D12GpuSensorCameraPacket[] gpuSensorCameras = new D3D12GpuSensorCameraPacket[MaxGpuSensorCameraCount];
+    private readonly string[] gpuSensorFieldTextureKeys = new string[MaxGpuSensorTextureCount];
     private readonly D3D12AcousticConstraintPacket[] acousticConstraints = new D3D12AcousticConstraintPacket[MaxAcousticConstraintCount];
     private readonly D3D12GpuFusionSeedPacket[] gpuFusionSeeds = new D3D12GpuFusionSeedPacket[MaxTemporalGaussianCount];
     private readonly D3D12TemporalGaussianPacket[] temporalGaussians = new D3D12TemporalGaussianPacket[MaxTemporalGaussianCount];
@@ -300,6 +301,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private int temporalGaussianCount;
     private int gpuSensorCameraCount;
     private int gpuSensorTextureCount;
+    private int gpuSensorExternalTextureCount;
+    private int gpuSensorFieldTextureCount;
+    private int gpuSensorFieldUnsupportedTextureCount;
     private int acousticConstraintCount;
     private int gpuFusionSeedCount;
     private int gpuFusionPointCount;
@@ -3320,6 +3324,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
         {
             gpuFusionSeedBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
             gpuFusionPointBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+            for (var index = 0; index < gpuSensorFieldTextureCount; index++)
+            {
+                if (TryGetFieldTexture2D(gpuSensorFieldTextureKeys[index], out var fieldTexture))
+                {
+                    fieldTexture.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+                }
+            }
+
             temporalGaussianBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
             activeCommandList.SetDescriptorHeaps(frameResources.TransientShaderDescriptors.Heap);
             activeCommandList.SetComputeRootSignature(gpuSensorFusionRootSignature);
@@ -3926,7 +3938,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private void CreateGpuSensorTextureViews(AquariumGpuSensorFrame sensorFrame, D3D12DescriptorSlot firstDescriptor)
     {
         var activeHandles = new HashSet<string>(StringComparer.Ordinal);
-        gpuSensorTextureCount = Math.Min(sensorFrame.ExternalTextures.Count, MaxGpuSensorTextureCount);
+        gpuSensorExternalTextureCount = Math.Min(sensorFrame.ExternalTextures.Count, MaxGpuSensorTextureCount);
 
         for (var index = 0; index < MaxGpuSensorTextureCount; index++)
         {
@@ -3934,6 +3946,22 @@ public sealed class D3D12Renderer : IAquariumRenderer
             if (index >= gpuSensorTextureCount)
             {
                 CreateNullSensorTextureView(descriptor);
+                continue;
+            }
+
+            if (index >= gpuSensorExternalTextureCount)
+            {
+                var fieldTextureIndex = index - gpuSensorExternalTextureCount;
+                if (fieldTextureIndex < gpuSensorFieldTextureCount &&
+                    TryGetFieldTexture2D(gpuSensorFieldTextureKeys[fieldTextureIndex], out var fieldTexture))
+                {
+                    fieldTexture.CreateShaderResourceView(device, descriptor);
+                }
+                else
+                {
+                    CreateNullSensorTextureView(descriptor);
+                }
+
                 continue;
             }
 
@@ -4020,6 +4048,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
         temporalGaussianCount = 0;
         gpuSensorCameraCount = 0;
         gpuSensorTextureCount = 0;
+        gpuSensorExternalTextureCount = 0;
+        gpuSensorFieldTextureCount = 0;
+        gpuSensorFieldUnsupportedTextureCount = 0;
+        Array.Clear(gpuSensorFieldTextureKeys);
         acousticConstraintCount = 0;
         gpuFusionSeedCount = 0;
         gpuFusionPointCount = 0;
@@ -4086,6 +4118,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         {
             gpuSensorCameras[index] = ToGpuSensorCameraPacket(scene.GpuSensorFrame.Cameras[index]);
         }
+        gpuSensorExternalTextureCount = Math.Min(scene.GpuSensorFrame.ExternalTextures.Count, MaxGpuSensorTextureCount);
+        AppendFieldEvidenceGpuSensorInputs();
 
         acousticConstraintCount = Math.Min(scene.AcousticFieldFrame.Constraints.Count, MaxAcousticConstraintCount);
         for (var index = 0; index < acousticConstraintCount; index++)
@@ -4125,7 +4159,6 @@ public sealed class D3D12Renderer : IAquariumRenderer
             return;
         }
 
-        gpuSensorTextureCount = Math.Min(scene.GpuSensorFrame.ExternalTextures.Count, MaxGpuSensorTextureCount);
         if (gpuSensorTextureCount > 0 && gpuSensorCameraCount > 0)
         {
             temporalGaussianCount = Math.Min(MaxTemporalGaussianCount, gpuSensorTextureCount * GpuSensorSamplesPerTexture);
@@ -4140,6 +4173,101 @@ public sealed class D3D12Renderer : IAquariumRenderer
             temporalGaussians[index] = ToTemporalGaussianPacket(scene.TemporalGaussianField.Gaussians[index]);
         }
     }
+
+    private void AppendFieldEvidenceGpuSensorInputs()
+    {
+        gpuSensorTextureCount = gpuSensorExternalTextureCount;
+        if (!activeFieldEvidenceFrame.HasInput ||
+            activeFieldLoweringPlan.Packets.Count == 0 ||
+            gpuSensorCameraCount >= MaxGpuSensorCameraCount ||
+            gpuSensorTextureCount >= MaxGpuSensorTextureCount)
+        {
+            return;
+        }
+
+        var resources = activeFieldEvidenceFrame.Resources.ToDictionary(static resource => resource.ResourceKey, StringComparer.Ordinal);
+        var usedResources = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var packet in activeFieldLoweringPlan.Packets)
+        {
+            if (packet.Backend != AquariumFieldBackendKind.GpuSensorFusion ||
+                packet.Encoding != AquariumFieldEncoding.Feature ||
+                string.IsNullOrWhiteSpace(packet.PayloadHandle) ||
+                !usedResources.Add(packet.PayloadHandle) ||
+                gpuSensorCameraCount >= MaxGpuSensorCameraCount ||
+                gpuSensorTextureCount >= MaxGpuSensorTextureCount ||
+                !resources.TryGetValue(packet.PayloadHandle, out var declaration) ||
+                declaration.Kind != AquariumFieldResourceKind.Texture2D ||
+                !declaration.IsGpuVisible)
+            {
+                continue;
+            }
+
+            if (!IsGpuSensorFusionSampleable(declaration) ||
+                !TryGetFieldTexture2D(declaration.ResourceKey, out var texture))
+            {
+                gpuSensorFieldUnsupportedTextureCount++;
+                continue;
+            }
+
+            var firstTextureIndex = gpuSensorTextureCount;
+            gpuSensorFieldTextureKeys[gpuSensorFieldTextureCount] = declaration.ResourceKey;
+            gpuSensorFieldTextureCount++;
+            gpuSensorTextureCount++;
+            var width = Math.Max(1, texture.Width);
+            var height = Math.Max(1, texture.Height);
+            var kind = SensorKindForFieldTexture(declaration);
+            gpuSensorCameras[gpuSensorCameraCount] = ToGpuSensorCameraPacket(new AquariumGpuSensorCamera(
+                SensorId: declaration.ResourceKey,
+                Kind: kind,
+                WorldFromSensor: Matrix4x4.Identity,
+                SensorFromWorld: Matrix4x4.Identity,
+                Intrinsics: new Vector4(width, height, width * 0.5f, height * 0.5f),
+                Distortion01: Vector4.Zero,
+                Distortion23: Vector4.Zero,
+                Width: width,
+                Height: height,
+                FirstTextureIndex: firstTextureIndex,
+                TextureCount: 1,
+                TimestampNs: declaration.ValidFromNs > 0 ? declaration.ValidFromNs : unchecked((long)Math.Min(declaration.Version, (ulong)long.MaxValue))));
+            gpuSensorCameraCount++;
+        }
+    }
+
+    private static AquariumGpuSensorKind SensorKindForFieldTexture(AquariumFieldResourceDeclaration declaration)
+    {
+        if (declaration.Format.Equals("LeapStereoIr", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("LeapPackedMap", StringComparison.OrdinalIgnoreCase))
+        {
+            return AquariumGpuSensorKind.LeapPackedMap;
+        }
+
+        if (declaration.Format.Equals("Bayer8", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("Gray8", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("R8", StringComparison.OrdinalIgnoreCase) ||
+            declaration.ResourceKey.Contains("ps3-eye", StringComparison.OrdinalIgnoreCase))
+        {
+            return AquariumGpuSensorKind.HighRateTracker;
+        }
+
+        return AquariumGpuSensorKind.RgbCamera;
+    }
+
+    private static bool IsGpuSensorFusionSampleable(AquariumFieldResourceDeclaration declaration) =>
+        declaration.Format.Equals("LeapStereoIr", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("LeapPackedMap", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("Bayer8", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("Gray8", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("R8", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("R8Unorm", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("R8_UNorm", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("Rg8", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("Rg8Unorm", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("R8G8_UNorm", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("Bgra8", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("Bgra8Unorm", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("B8G8R8A8_UNorm", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("Rgba8Unorm", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("R8G8B8A8_UNorm", StringComparison.OrdinalIgnoreCase);
 
     private static D3D12AcousticConstraintPacket ToAcousticConstraintPacket(AquariumAcousticConstraint constraint)
     {
@@ -4727,6 +4855,18 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 $"unplanned {activeStereoDepthUnplannedLowerings:N0}; " +
                 $"unresolved {activeStereoDepthUnresolvedLowerings:N0}; " +
                 "kernel packed-block-match");
+        }
+
+        if (gpuSensorTextureCount > 0 ||
+            gpuSensorFieldUnsupportedTextureCount > 0)
+        {
+            Console.WriteLine(
+                $"D3D12 GPU sensor fusion: cameras {gpuSensorCameraCount:N0}; " +
+                $"textures {gpuSensorTextureCount:N0}; " +
+                $"field textures {gpuSensorFieldTextureCount:N0}; " +
+                $"unsupported field textures {gpuSensorFieldUnsupportedTextureCount:N0}; " +
+                $"samples/texture {GpuSensorSamplesPerTexture:N0}; " +
+                $"generated gaussians {(temporalGaussiansGpuGenerated ? temporalGaussianCount : 0):N0}");
         }
 
         if (activePointCloudGeneratedMeshes > 0 ||

@@ -62,6 +62,7 @@ public enum AquariumFieldBackendKind
     SurfacePage = 5,
     TubeField = 6,
     DebugOverlay = 7,
+    GpuSensorFusion = 8,
 }
 
 public enum AquariumFieldResourceKind
@@ -1124,6 +1125,9 @@ public static class AquariumFieldLoweringPlanner
             AquariumFieldEncoding.Feature
                 when domainKind == AquariumFieldDomainKind.CameraSensor &&
                      request.ProposalKind == AquariumFieldProposalKind.DeterministicStructural => AquariumFieldBackendKind.DebugOverlay,
+            AquariumFieldEncoding.Feature
+                when domainKind == AquariumFieldDomainKind.CameraSensor &&
+                     request.ProposalKind == AquariumFieldProposalKind.SensorObservation => AquariumFieldBackendKind.GpuSensorFusion,
             _ => AquariumFieldBackendKind.Unknown,
         };
 

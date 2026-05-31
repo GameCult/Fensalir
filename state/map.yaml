@@ -268,10 +268,19 @@ next_actions:
     until a real planar copy path exists; GPU producers can still write NV12
     leases directly. This makes imported handles an edge case, not the primary
     live camera authority. Missing or unresolved TubeField ramps bind a Fensalir-owned linear fallback ramp.
-    Camera texture claims can therefore resolve resources, but their first
-    visual use stays debug-view-only for now; production visual-fusion and
-    feature-extraction lowerings are deferred until the renderer and audio work
-    are fixed. TubeField compute now
+    Camera texture claims can therefore resolve resources. Camera-sensor
+    Feature claims with `SensorObservation` proposal policy now plan to the
+    `GpuSensorFusion` backend instead of deferring. `D3D12Renderer` derives
+    sensor-camera packets and SRV table entries from planned FieldEvidence
+    Texture2D resources, then dispatches `D3D12GpuSensorFusionCS` into the
+    temporal-gaussian buffer. The 2026-05-31 Mimir all-sensor proof planned all
+    12 packets with zero deferred requests; the D3D12 host dispatched feature
+    extraction for LeapStereoIr plus both Bayer8 PS3 Eyes at 16,384 sparse
+    samples per texture, generating 49,152 gaussians with sensor-fusion timing
+    around 0.059 ms/frame. Kiyo YUY2 claims are selected but intentionally
+    skipped by the current shader inlet until Fensalir owns an explicit YUY2
+    conversion/feature path; packed video is not allowed to masquerade as RGBA.
+    TubeField compute now
     emits one GPU-resident D3D12 DrawIndexed indirect argument packet per
     material/resource batch, and render binds the batch source/ramp state then
     executes the packet with ExecuteIndirect. The first material is opaque field

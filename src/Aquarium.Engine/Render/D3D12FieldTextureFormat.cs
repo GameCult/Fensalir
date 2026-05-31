@@ -8,7 +8,7 @@ internal static class D3D12FieldTextureFormat
     {
         format = formatName switch
         {
-            "Gray8" or "R8" or "R8Unorm" or "R8_UNorm" or "R8_UNORM" => Format.R8_UNorm,
+            "Bayer8" or "Gray8" or "R8" or "R8Unorm" or "R8_UNorm" or "R8_UNORM" => Format.R8_UNorm,
             "R16Float" or "R16_Float" or "R16_FLOAT" => Format.R16_Float,
             "R32Float" or "R32_Float" or "R32_FLOAT" or "Float32" => Format.R32_Float,
             "Rg8" or "Rg8Unorm" or "R8G8_UNorm" or "R8G8_UNORM" or "LeapStereoIr" or "LeapPackedMap" => Format.R8G8_UNorm,

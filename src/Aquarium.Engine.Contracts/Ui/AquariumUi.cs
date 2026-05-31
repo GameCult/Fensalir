@@ -3,11 +3,14 @@ namespace Aquarium.Engine.Ui;
 public sealed class AquariumUiDocument
 {
     private readonly List<AquariumUiPanel> panels = [];
+    private readonly List<AquariumUiSurface> surfaces = [];
     private readonly List<AquariumConsoleCommand> commands = [];
 
     public static AquariumUiDocument Empty { get; } = new();
 
     public IReadOnlyList<AquariumUiPanel> Panels => panels;
+
+    public IReadOnlyList<AquariumUiSurface> Surfaces => surfaces;
 
     public IReadOnlyList<AquariumConsoleCommand> Commands => commands;
 
@@ -29,6 +32,19 @@ public sealed class AquariumUiDocument
         return this;
     }
 
+    public AquariumUiDocument Surface(string id, string title, float left, float top, float width, float height, Action<AquariumUiSurfaceBuilder> compose)
+    {
+        var children = new List<AquariumUiElement>();
+        compose(new AquariumUiSurfaceBuilder(children));
+        surfaces.Add(new AquariumUiSurface(
+            "cultmesh.eve_surface.v0",
+            id,
+            title,
+            new AquariumUiRect(left, top, width, height),
+            new AquariumUiElement(id + ".root", "dashboard", title, Role: "root", Layout: AquariumUiLayout.Vertical(8.0f, 8.0f), Children: children)));
+        return this;
+    }
+
     public AquariumUiDocument Command(string name, Func<IReadOnlyList<string>, string> execute, string description = "")
     {
         commands.Add(new AquariumConsoleCommand(name, execute, description));
@@ -43,6 +59,136 @@ public sealed record AquariumUiPanel(
     float Width,
     IReadOnlyList<AquariumUiControl> Controls,
     bool FadeWhenMouseDistant = false);
+
+public sealed record AquariumUiSurface(
+    string Schema,
+    string Id,
+    string Title,
+    AquariumUiRect Bounds,
+    AquariumUiElement Root);
+
+public sealed record AquariumUiRect(float Left, float Top, float Width, float Height);
+
+public sealed record AquariumUiLayout(
+    string Direction = "vertical",
+    float Gap = 8.0f,
+    float Padding = 8.0f)
+{
+    public static AquariumUiLayout Vertical(float gap = 8.0f, float padding = 8.0f) => new("vertical", gap, padding);
+
+    public static AquariumUiLayout Horizontal(float gap = 8.0f, float padding = 8.0f) => new("horizontal", gap, padding);
+}
+
+public sealed record AquariumUiStyle(string Variant = "default", string Tone = "neutral");
+
+public sealed record AquariumUiElement(
+    string Id,
+    string Kind,
+    string? Text = null,
+    string? Role = null,
+    AquariumUiLayout? Layout = null,
+    AquariumUiStyle? Style = null,
+    Func<string>? ReadText = null,
+    Func<double>? ReadMetric = null,
+    Func<bool>? ReadToggle = null,
+    Action<bool>? WriteToggle = null,
+    Func<float>? ReadFloat = null,
+    Action<float>? WriteFloat = null,
+    float Min = 0.0f,
+    float Max = 1.0f,
+    string Format = "0.###",
+    Func<int>? ReadOption = null,
+    Action<int>? WriteOption = null,
+    IReadOnlyList<AquariumUiOption>? Options = null,
+    Action? Invoke = null,
+    Func<bool>? IsVisible = null,
+    float Weight = 1.0f,
+    IReadOnlyList<AquariumUiElement>? Children = null)
+{
+    public bool Visible => IsVisible?.Invoke() ?? true;
+}
+
+public sealed class AquariumUiSurfaceBuilder(List<AquariumUiElement> children)
+{
+    public AquariumUiSurfaceBuilder Vertical(string id, Action<AquariumUiSurfaceBuilder> compose, float weight = 1.0f, float gap = 8.0f, float padding = 0.0f)
+    {
+        var scopeChildren = new List<AquariumUiElement>();
+        compose(new AquariumUiSurfaceBuilder(scopeChildren));
+        children.Add(new AquariumUiElement(id, "group", Layout: AquariumUiLayout.Vertical(gap, padding), Weight: Math.Max(0.001f, weight), Children: scopeChildren));
+        return this;
+    }
+
+    public AquariumUiSurfaceBuilder Horizontal(string id, Action<AquariumUiSurfaceBuilder> compose, float weight = 1.0f, float gap = 8.0f, float padding = 0.0f)
+    {
+        var scopeChildren = new List<AquariumUiElement>();
+        compose(new AquariumUiSurfaceBuilder(scopeChildren));
+        children.Add(new AquariumUiElement(id, "group", Layout: AquariumUiLayout.Horizontal(gap, padding), Weight: Math.Max(0.001f, weight), Children: scopeChildren));
+        return this;
+    }
+
+    public AquariumUiSurfaceBuilder Row(string id, Action<AquariumUiSurfaceBuilder> compose, float weight = 1.0f)
+    {
+        return Horizontal(id, compose, weight);
+    }
+
+    public AquariumUiSurfaceBuilder Pane(string id, string title, Action<AquariumUiSurfaceBuilder> compose, string tone = "neutral", float weight = 1.0f)
+    {
+        var paneChildren = new List<AquariumUiElement>();
+        compose(new AquariumUiSurfaceBuilder(paneChildren));
+        children.Add(new AquariumUiElement(id, "pane", title, Style: new AquariumUiStyle("panel", tone), Layout: AquariumUiLayout.Vertical(8.0f, 10.0f), Weight: Math.Max(0.001f, weight), Children: paneChildren));
+        return this;
+    }
+
+    public AquariumUiSurfaceBuilder Card(string id, Action<AquariumUiSurfaceBuilder> compose, string tone = "neutral", float weight = 1.0f)
+    {
+        var cardChildren = new List<AquariumUiElement>();
+        compose(new AquariumUiSurfaceBuilder(cardChildren));
+        children.Add(new AquariumUiElement(id, "card", Style: new AquariumUiStyle("compact", tone), Layout: AquariumUiLayout.Vertical(4.0f, 8.0f), Weight: Math.Max(0.001f, weight), Children: cardChildren));
+        return this;
+    }
+
+    public AquariumUiSurfaceBuilder Text(string id, string text, string role = "body", float weight = 1.0f)
+    {
+        children.Add(new AquariumUiElement(id, "text", text, role, Weight: Math.Max(0.001f, weight)));
+        return this;
+    }
+
+    public AquariumUiSurfaceBuilder Text(string id, Func<string> read, string role = "body", float weight = 1.0f)
+    {
+        children.Add(new AquariumUiElement(id, "text", Role: role, ReadText: read, Weight: Math.Max(0.001f, weight)));
+        return this;
+    }
+
+    public AquariumUiSurfaceBuilder Metric(string id, string label, Func<double> read, string tone = "neutral", float weight = 1.0f)
+    {
+        children.Add(new AquariumUiElement(id, "metric", label, Style: new AquariumUiStyle("compact", tone), ReadMetric: read, Weight: Math.Max(0.001f, weight)));
+        return this;
+    }
+
+    public AquariumUiSurfaceBuilder Toggle(string id, string label, Func<bool> read, Action<bool> write, float weight = 1.0f)
+    {
+        children.Add(new AquariumUiElement(id, "toggle", label, ReadToggle: read, WriteToggle: write, Weight: Math.Max(0.001f, weight)));
+        return this;
+    }
+
+    public AquariumUiSurfaceBuilder Slider(string id, string label, Func<float> read, Action<float> write, float min, float max, string format = "0.###", float weight = 1.0f)
+    {
+        children.Add(new AquariumUiElement(id, "slider", label, ReadFloat: read, WriteFloat: write, Min: min, Max: max, Format: format, Weight: Math.Max(0.001f, weight)));
+        return this;
+    }
+
+    public AquariumUiSurfaceBuilder Options(string id, string label, Func<int> read, Action<int> write, IReadOnlyList<AquariumUiOption> options, float weight = 1.0f)
+    {
+        children.Add(new AquariumUiElement(id, "select", label, ReadOption: read, WriteOption: write, Options: options, Weight: Math.Max(0.001f, weight)));
+        return this;
+    }
+
+    public AquariumUiSurfaceBuilder Button(string id, string label, Action invoke, float weight = 1.0f)
+    {
+        children.Add(new AquariumUiElement(id, "button", label, Invoke: invoke, Weight: Math.Max(0.001f, weight)));
+        return this;
+    }
+}
 
 public sealed class AquariumUiPanelBuilder(List<AquariumUiControl> controls)
 {

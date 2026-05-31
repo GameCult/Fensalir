@@ -216,6 +216,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly AutoResetEvent fenceEvent = new(false);
     private DebugUi debugUi;
     private IReadOnlyList<DebugUi> clientUiPanels = [];
+    private IReadOnlyList<AquariumUiSurface> clientUiSurfaces = [];
     private AquariumUiDocument? currentClientUi;
     private int activeDebugTab;
     private string[] debugTabTitles = ["Aquarium", "Terminal", "Synth"];
@@ -580,6 +581,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         {
             currentClientUi = clientUi;
             clientCommands = clientUi.Commands;
+            clientUiSurfaces = clientUi.Surfaces;
             var debugPanels = clientUi.Panels.Where(panel => !panel.FadeWhenMouseDistant).ToArray();
             var floatingPanels = clientUi.Panels.Where(panel => panel.FadeWhenMouseDistant).ToArray();
             debugTabTitles = ["Aquarium", "Terminal", "Synth", .. debugPanels.Select(panel => panel.Title)];
@@ -1868,7 +1870,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     {
         var wrappedBackBuffer = overlayWrappedBackBuffers[frameIndex];
         overlayOn12Device.AcquireWrappedResources([wrappedBackBuffer]);
-        overlays[frameIndex].Render(frame, RenderDebugMode, debugUi, clientUiPanels, visibleFrameRateText);
+        overlays[frameIndex].Render(frame, RenderDebugMode, debugUi, clientUiPanels, clientUiSurfaces, visibleFrameRateText);
         overlayOn12Device.ReleaseWrappedResources([wrappedBackBuffer]);
         overlayContext.Flush();
         frameResources.BackBuffer.MarkState(ResourceStates.Present);

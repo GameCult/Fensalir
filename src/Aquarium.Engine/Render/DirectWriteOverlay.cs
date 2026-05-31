@@ -4,6 +4,7 @@ using Vortice.DirectWrite;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 using Aquarium.Engine.Render.Ui;
+using Aquarium.Engine.Ui;
 using D2DFactoryType = Vortice.Direct2D1.FactoryType;
 using DWriteFactoryType = Vortice.DirectWrite.FactoryType;
 
@@ -84,7 +85,7 @@ internal sealed class DirectWriteOverlay : IDisposable
         monospaceFormat = CreateTextFormat("Ubuntu Sans Mono", 11.0f, FontWeight.Regular, ParagraphAlignment.Near);
     }
 
-    public void Render(AquariumFrame frame, int renderDebugMode, DebugUi? debugUi, IReadOnlyList<DebugUi> clientUiPanels, string performanceText)
+    public void Render(AquariumFrame frame, int renderDebugMode, DebugUi? debugUi, IReadOnlyList<DebugUi> clientUiPanels, IReadOnlyList<AquariumUiSurface> clientUiSurfaces, string performanceText)
     {
         renderTarget.BeginDraw();
         DrawPerformanceCounter(performanceText);
@@ -96,6 +97,11 @@ internal sealed class DirectWriteOverlay : IDisposable
         foreach (var panel in clientUiPanels)
         {
             DrawPanel(panel, panel.DrawOpacity());
+        }
+
+        foreach (var surface in clientUiSurfaces)
+        {
+            DrawSurface(surface);
         }
 
         renderTarget.EndDraw();
@@ -173,6 +179,162 @@ internal sealed class DirectWriteOverlay : IDisposable
             }
         }
     }
+
+    private void DrawSurface(AquariumUiSurface surface)
+    {
+        var bounds = RectFromEdges(
+            Math.Clamp(surface.Bounds.Left, 8.0f, Math.Max(8.0f, width - 80.0f)),
+            Math.Clamp(surface.Bounds.Top, 8.0f, Math.Max(8.0f, height - 48.0f)),
+            Math.Clamp(surface.Bounds.Left + surface.Bounds.Width, 88.0f, width - 8.0f),
+            Math.Clamp(surface.Bounds.Top + surface.Bounds.Height, 56.0f, height - 8.0f));
+        renderTarget.FillRectangle(bounds, panelBrush);
+        renderTarget.DrawRectangle(bounds, outlineBrush, 1.0f);
+        DrawHeader(surface.Title, titleFormat, RectFromEdges(bounds.Left + 12.0f, bounds.Top + 8.0f, bounds.Right - 12.0f, bounds.Top + 34.0f), primaryTextBrush);
+        var content = RectFromEdges(bounds.Left + 8.0f, bounds.Top + 42.0f, bounds.Right - 8.0f, bounds.Bottom - 8.0f);
+        DrawSurfaceChildren(surface.Root.Children ?? [], content, surface.Root.Layout ?? AquariumUiLayout.Vertical());
+    }
+
+    private void DrawSurfaceChildren(IReadOnlyList<AquariumUiElement> elements, Rect bounds, AquariumUiLayout layout)
+    {
+        var visible = elements.Where(static element => element.Visible).ToArray();
+        if (visible.Length == 0)
+        {
+            return;
+        }
+
+        var content = RectFromEdges(
+            bounds.Left + layout.Padding,
+            bounds.Top + layout.Padding,
+            bounds.Right - layout.Padding,
+            bounds.Bottom - layout.Padding);
+        var totalGap = layout.Gap * Math.Max(0, visible.Length - 1);
+        var totalWeight = Math.Max(0.001f, visible.Sum(static element => Math.Max(0.001f, element.Weight)));
+        var horizontal = string.Equals(layout.Direction, "horizontal", StringComparison.Ordinal);
+        var cursor = horizontal ? content.Left : content.Top;
+        var available = Math.Max(0.0f, (horizontal ? content.Width : content.Height) - totalGap);
+        foreach (var element in visible)
+        {
+            var extent = available * Math.Max(0.001f, element.Weight) / totalWeight;
+            var childBounds = horizontal
+                ? RectFromEdges(cursor, content.Top, Math.Min(content.Right, cursor + extent), content.Bottom)
+                : RectFromEdges(content.Left, cursor, content.Right, Math.Min(content.Bottom, cursor + extent));
+            DrawSurfaceElement(element, childBounds);
+            cursor += extent + layout.Gap;
+        }
+    }
+
+    private void DrawSurfaceElement(AquariumUiElement element, Rect bounds)
+    {
+        switch (element.Kind)
+        {
+            case "group":
+                DrawSurfaceChildren(element.Children ?? [], bounds, element.Layout ?? AquariumUiLayout.Vertical());
+                break;
+            case "pane":
+                DrawSurfaceFrame(bounds, element.Text ?? element.Id, element.Style?.Tone ?? "neutral", drawTitle: true);
+                DrawSurfaceChildren(element.Children ?? [], RectFromEdges(bounds.Left + 6.0f, bounds.Top + 32.0f, bounds.Right - 6.0f, bounds.Bottom - 6.0f), element.Layout ?? AquariumUiLayout.Vertical());
+                break;
+            case "card":
+                DrawSurfaceFrame(bounds, null, element.Style?.Tone ?? "neutral", drawTitle: false);
+                DrawSurfaceChildren(element.Children ?? [], bounds, element.Layout ?? AquariumUiLayout.Vertical(4.0f, 8.0f));
+                break;
+            case "metric":
+                DrawMetricElement(element, bounds);
+                break;
+            case "toggle":
+                DrawToggleElement(element, bounds);
+                break;
+            case "slider":
+                DrawSliderElement(element, bounds);
+                break;
+            case "select":
+                DrawSelectElement(element, bounds);
+                break;
+            case "button":
+                DrawButtonElement(element, bounds);
+                break;
+            default:
+                DrawTextElement(element, bounds);
+                break;
+        }
+    }
+
+    private void DrawSurfaceFrame(Rect bounds, string? titleText, string tone, bool drawTitle)
+    {
+        renderTarget.FillRectangle(bounds, tone == "danger" ? activeRowBrush : tone == "warm" ? hoverRowBrush : rowBrush);
+        renderTarget.DrawRectangle(bounds, ToneBrush(tone), 1.0f);
+        if (drawTitle && !string.IsNullOrWhiteSpace(titleText))
+        {
+            DrawHeader(titleText, smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top + 6.0f, bounds.Right - 8.0f, bounds.Top + 28.0f), accentBrush);
+        }
+    }
+
+    private void DrawTextElement(AquariumUiElement element, Rect bounds)
+    {
+        var text = element.ReadText?.Invoke() ?? element.Text ?? "";
+        var format = element.Role is "mono" ? monospaceFormat : smallFormat;
+        var brush = element.Role is "caption" ? quietTextBrush : element.Role is "strong" or "title" ? primaryTextBrush : primaryTextBrush;
+        renderTarget.DrawText(text, format, bounds, brush, DrawTextOptions.Clip);
+    }
+
+    private void DrawMetricElement(AquariumUiElement element, Rect bounds)
+    {
+        var value = Math.Clamp(element.ReadMetric?.Invoke() ?? 0.0, 0.0, 1.0);
+        DrawSurfaceFrame(bounds, null, element.Style?.Tone ?? "neutral", drawTitle: false);
+        renderTarget.DrawText($"{element.Text}: {value:0.000}", smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top + 2.0f, bounds.Right - 8.0f, bounds.Top + 18.0f), primaryTextBrush, DrawTextOptions.Clip);
+        var track = RectFromEdges(bounds.Left + 8.0f, bounds.Bottom - 10.0f, bounds.Right - 8.0f, bounds.Bottom - 5.0f);
+        renderTarget.FillRectangle(track, dimAccentBrush);
+        renderTarget.FillRectangle(RectFromEdges(track.Left, track.Top, track.Left + track.Width * (float)value, track.Bottom), ToneBrush(element.Style?.Tone ?? "neutral"));
+    }
+
+    private void DrawToggleElement(AquariumUiElement element, Rect bounds)
+    {
+        var isOn = element.ReadToggle?.Invoke() ?? false;
+        DrawSurfaceFrame(bounds, null, isOn ? "cool" : "neutral", drawTitle: false);
+        renderTarget.DrawText(element.Text ?? "", smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top, bounds.Right - 36.0f, bounds.Bottom), primaryTextBrush, DrawTextOptions.Clip);
+        var box = RectFromEdges(bounds.Right - 26.0f, bounds.Top + 7.0f, bounds.Right - 10.0f, bounds.Top + 23.0f);
+        renderTarget.DrawRectangle(box, isOn ? accentBrush : outlineBrush, 1.0f);
+        if (isOn)
+        {
+            renderTarget.FillRectangle(RectFromEdges(box.Left + 3.0f, box.Top + 3.0f, box.Right - 3.0f, box.Bottom - 3.0f), accentBrush);
+        }
+    }
+
+    private void DrawSliderElement(AquariumUiElement element, Rect bounds)
+    {
+        var raw = element.ReadFloat?.Invoke() ?? element.Min;
+        var span = Math.Max(0.0001f, element.Max - element.Min);
+        var normalized = Math.Clamp((raw - element.Min) / span, 0.0f, 1.0f);
+        DrawSurfaceFrame(bounds, null, "neutral", drawTitle: false);
+        renderTarget.DrawText($"{element.Text}: {raw.ToString(element.Format, System.Globalization.CultureInfo.InvariantCulture)}", smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top, bounds.Left + 170.0f, bounds.Bottom), primaryTextBrush, DrawTextOptions.Clip);
+        var track = RectFromEdges(bounds.Left + 178.0f, bounds.Top + 13.0f, bounds.Right - 12.0f, bounds.Top + 18.0f);
+        renderTarget.FillRectangle(track, dimAccentBrush);
+        renderTarget.FillRectangle(RectFromEdges(track.Left, track.Top, track.Left + track.Width * normalized, track.Bottom), accentBrush);
+    }
+
+    private void DrawSelectElement(AquariumUiElement element, Rect bounds)
+    {
+        var selected = element.ReadOption?.Invoke() ?? 0;
+        var label = element.Options?.FirstOrDefault(option => option.Value == selected).Label ?? selected.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        DrawSurfaceFrame(bounds, null, "neutral", drawTitle: false);
+        renderTarget.DrawText(element.Text ?? "", smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top, bounds.Left + 130.0f, bounds.Bottom), accentBrush, DrawTextOptions.Clip);
+        renderTarget.DrawText(label, smallFormat, RectFromEdges(bounds.Left + 138.0f, bounds.Top, bounds.Right - 8.0f, bounds.Bottom), primaryTextBrush, DrawTextOptions.Clip);
+    }
+
+    private void DrawButtonElement(AquariumUiElement element, Rect bounds)
+    {
+        DrawSurfaceFrame(bounds, null, "warm", drawTitle: false);
+        renderTarget.DrawText(element.Text ?? "", smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top, bounds.Right - 8.0f, bounds.Bottom), primaryTextBrush, DrawTextOptions.Clip);
+    }
+
+    private ID2D1SolidColorBrush ToneBrush(string tone) =>
+        tone switch
+        {
+            "cool" => primaryTextBrush,
+            "warm" => accentBrush,
+            "danger" => accentActiveBrush,
+            _ => outlineBrush,
+        };
 
     public void Dispose()
     {

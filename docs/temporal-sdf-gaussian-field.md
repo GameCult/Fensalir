@@ -136,11 +136,14 @@ kernel toward the matched surface. Acoustic constraints from the ultrasonic
 chirplet loop bias confidence and velocity near measured room/position returns.
 
 The current FieldEvidence cut also consumes Mimir camera texture leases without
-restoring the retired direct sensor DTO path. LeapStereoIr and Bayer8/R8-style
-textures are sampled directly by the compute shader; YUY2 camera textures are
-selected as `GpuSensorFusion` evidence but skipped by the renderer until a
-format-aware YUY2 conversion/feature lane exists. Packed video formats must not
-pretend to be RGBA.
+restoring the retired direct sensor DTO path. LeapStereoIr, Bayer8/R8-style,
+and YUY2 camera textures are sampled directly by the compute shader. YUY2 uses
+the documented D3D12/DXGI SRV view path for `DXGI_FORMAT_YUY2`: Fensalir binds
+an `R8G8B8A8_UNORM` SRV, reads `Y0/U/Y1/V`, and converts to RGB in
+`D3D12GpuSensorFusion.hlsl` before feature scoring. Provenance:
+<https://learn.microsoft.com/en-us/windows/win32/api/dxgiformat/ne-dxgiformat-dxgi_format>.
+Packed video formats must not pretend to be ordinary RGBA; the declared format
+selects the decode path.
 
 Next cut: replace the first-pass descriptor comparison with calibrated
 epipolar/flow search, Leap packed-map channel extraction, and a persistent GPU

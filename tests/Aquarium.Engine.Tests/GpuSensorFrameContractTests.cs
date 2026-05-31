@@ -46,6 +46,7 @@ public sealed class GpuSensorFrameContractTests
         Assert.True(scene.GpuSensorFrame.HasInput);
         Assert.Equal("kiyo-pro-left", scene.GpuSensorFrame.Cameras[0].SensorId);
         Assert.Equal(AquariumGpuSensorPixelFormat.Bgra8Unorm, scene.GpuSensorFrame.ExternalTextures[0].PixelFormat);
+        Assert.Equal(AquariumGpuSensorPixelFormat.Unknown, scene.GpuSensorFrame.Cameras[0].PixelFormat);
         Assert.Equal("Mimir/KiyoProLeft/Bgra", scene.GpuSensorFrame.ExternalTextures[0].SharedHandleName);
         Assert.Equal(18.0f, scene.GpuSensorFrame.AccumulationWindowSeconds, 6);
     }

@@ -312,6 +312,7 @@ public enum AquariumGpuSensorPixelFormat
     R16Float,
     Rg8Unorm,
     LeapPackedMap,
+    Yuy2,
 }
 
 public readonly record struct AquariumExternalGpuTexture(
@@ -336,7 +337,8 @@ public readonly record struct AquariumGpuSensorCamera(
     int Height,
     int FirstTextureIndex,
     int TextureCount,
-    long TimestampNs);
+    long TimestampNs,
+    AquariumGpuSensorPixelFormat PixelFormat = AquariumGpuSensorPixelFormat.Unknown);
 
 public sealed class AquariumGpuSensorFrame
 {

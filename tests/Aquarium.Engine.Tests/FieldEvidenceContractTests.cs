@@ -544,7 +544,7 @@ public sealed class FieldEvidenceContractTests
     }
 
     [Fact]
-    public void LoweringPlannerDefersAmbiguousFeatureEvidence()
+    public void LoweringPlannerSelectsCameraSensorFeatureEvidenceForGpuSensorFusion()
     {
         var support = new AquariumFieldSupport(
             Vector3.Zero,
@@ -603,10 +603,11 @@ public sealed class FieldEvidenceContractTests
 
         var plan = AquariumFieldLoweringPlanner.Plan(frame);
 
-        Assert.False(plan.HasPackets);
-        Assert.Empty(plan.Packets);
-        Assert.Single(plan.DeferredRequests);
-        Assert.Equal("claim:feature", plan.DeferredRequests[0].ClaimKey);
+        Assert.True(plan.HasPackets);
+        Assert.Empty(plan.DeferredRequests);
+        Assert.Single(plan.Packets);
+        Assert.Equal("claim:feature", plan.Packets[0].ClaimKey);
+        Assert.Equal(AquariumFieldBackendKind.GpuSensorFusion, plan.Packets[0].Backend);
     }
 
     [Fact]

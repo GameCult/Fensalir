@@ -274,12 +274,17 @@ next_actions:
     sensor-camera packets and SRV table entries from planned FieldEvidence
     Texture2D resources, then dispatches `D3D12GpuSensorFusionCS` into the
     temporal-gaussian buffer. The 2026-05-31 Mimir all-sensor proof planned all
-    12 packets with zero deferred requests; the D3D12 host dispatched feature
-    extraction for LeapStereoIr plus both Bayer8 PS3 Eyes at 16,384 sparse
-    samples per texture, generating 49,152 gaussians with sensor-fusion timing
-    around 0.059 ms/frame. Kiyo YUY2 claims are selected but intentionally
-    skipped by the current shader inlet until Fensalir owns an explicit YUY2
-    conversion/feature path; packed video is not allowed to masquerade as RGBA.
+    12 packets with zero deferred requests; the first D3D12 host dispatched
+    feature extraction for LeapStereoIr plus both Bayer8 PS3 Eyes at 16,384
+    sparse samples per texture, generating 49,152 gaussians with sensor-fusion
+    timing around 0.059 ms/frame. The follow-up YUY2 decode cut binds
+    `DXGI_FORMAT_YUY2` resources through the Microsoft-documented
+    `R8G8B8A8_UNORM` SRV view, decodes `Y0/U/Y1/V` in
+    `D3D12GpuSensorFusion.hlsl`, and the Mimir all-sensor proof dispatched all
+    five camera textures with zero unsupported field textures, generating
+    81,920 sparse gaussians at about 0.08 ms/frame sensor-fusion GPU time.
+    Packed video is not allowed to masquerade as ordinary RGBA; declared format
+    metadata selects the decode path.
     TubeField compute now
     emits one GPU-resident D3D12 DrawIndexed indirect argument packet per
     material/resource batch, and render binds the batch source/ramp state then

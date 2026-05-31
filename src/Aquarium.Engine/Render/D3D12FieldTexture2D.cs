@@ -192,7 +192,7 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
             Resource,
             new ShaderResourceViewDescription
             {
-                Format = Format,
+                Format = ToShaderResourceViewFormat(Format),
                 ViewDimension = ShaderResourceViewDimension.Texture2D,
                 Shader4ComponentMapping = ShaderComponentMapping.Default,
                 Texture2D = new Texture2DShaderResourceView { MipLevels = 1 },
@@ -235,6 +235,13 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
     {
         uploadResource?.Dispose();
         Resource.Dispose();
+    }
+
+    private static Format ToShaderResourceViewFormat(Format format)
+    {
+        return format == Format.YUY2
+            ? Format.R8G8B8A8_UNorm
+            : format;
     }
 
     private static D3D12FieldTexture2D CreateRgba8(

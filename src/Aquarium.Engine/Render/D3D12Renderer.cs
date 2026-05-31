@@ -4228,7 +4228,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 Height: height,
                 FirstTextureIndex: firstTextureIndex,
                 TextureCount: 1,
-                TimestampNs: declaration.ValidFromNs > 0 ? declaration.ValidFromNs : unchecked((long)Math.Min(declaration.Version, (ulong)long.MaxValue))));
+                TimestampNs: declaration.ValidFromNs > 0 ? declaration.ValidFromNs : unchecked((long)Math.Min(declaration.Version, (ulong)long.MaxValue)),
+                PixelFormat: PixelFormatForFieldTexture(declaration)));
             gpuSensorCameraCount++;
         }
     }
@@ -4267,7 +4268,49 @@ public sealed class D3D12Renderer : IAquariumRenderer
         declaration.Format.Equals("Bgra8Unorm", StringComparison.OrdinalIgnoreCase) ||
         declaration.Format.Equals("B8G8R8A8_UNorm", StringComparison.OrdinalIgnoreCase) ||
         declaration.Format.Equals("Rgba8Unorm", StringComparison.OrdinalIgnoreCase) ||
-        declaration.Format.Equals("R8G8B8A8_UNorm", StringComparison.OrdinalIgnoreCase);
+        declaration.Format.Equals("R8G8B8A8_UNorm", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("Yuy2", StringComparison.OrdinalIgnoreCase) ||
+        declaration.Format.Equals("YUY2", StringComparison.OrdinalIgnoreCase);
+
+    private static AquariumGpuSensorPixelFormat PixelFormatForFieldTexture(AquariumFieldResourceDeclaration declaration)
+    {
+        if (declaration.Format.Equals("LeapStereoIr", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("LeapPackedMap", StringComparison.OrdinalIgnoreCase))
+        {
+            return AquariumGpuSensorPixelFormat.LeapPackedMap;
+        }
+
+        if (declaration.Format.Equals("Bayer8", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("Gray8", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("R8", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("R8Unorm", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("R8_UNorm", StringComparison.OrdinalIgnoreCase))
+        {
+            return AquariumGpuSensorPixelFormat.R8Unorm;
+        }
+
+        if (declaration.Format.Equals("Rg8", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("Rg8Unorm", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("R8G8_UNorm", StringComparison.OrdinalIgnoreCase))
+        {
+            return AquariumGpuSensorPixelFormat.Rg8Unorm;
+        }
+
+        if (declaration.Format.Equals("Bgra8", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("Bgra8Unorm", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("B8G8R8A8_UNorm", StringComparison.OrdinalIgnoreCase))
+        {
+            return AquariumGpuSensorPixelFormat.Bgra8Unorm;
+        }
+
+        if (declaration.Format.Equals("Yuy2", StringComparison.OrdinalIgnoreCase) ||
+            declaration.Format.Equals("YUY2", StringComparison.OrdinalIgnoreCase))
+        {
+            return AquariumGpuSensorPixelFormat.Yuy2;
+        }
+
+        return AquariumGpuSensorPixelFormat.Rgba8Unorm;
+    }
 
     private static D3D12AcousticConstraintPacket ToAcousticConstraintPacket(AquariumAcousticConstraint constraint)
     {
@@ -4306,7 +4349,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 Math.Max(0, camera.FirstTextureIndex),
                 camera.TextureCount,
                 camera.TimestampNs * 0.000000001f,
-                0.0f),
+                (int)camera.PixelFormat),
             Row0(camera.WorldFromSensor),
             Row1(camera.WorldFromSensor),
             Row2(camera.WorldFromSensor),

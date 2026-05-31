@@ -59,7 +59,7 @@ internal sealed class D3D12ExternalSensorTexture : IDisposable
             Resource,
             new ShaderResourceViewDescription
             {
-                Format = Format,
+                Format = ToShaderResourceViewFormat(Format),
                 ViewDimension = ShaderResourceViewDimension.Texture2D,
                 Shader4ComponentMapping = ShaderComponentMapping.Default,
                 Texture2D = new Texture2DShaderResourceView { MipLevels = 1 },
@@ -131,8 +131,16 @@ internal sealed class D3D12ExternalSensorTexture : IDisposable
             AquariumGpuSensorPixelFormat.R16Float => Format.R16_Float,
             AquariumGpuSensorPixelFormat.Rg8Unorm => Format.R8G8_UNorm,
             AquariumGpuSensorPixelFormat.LeapPackedMap => Format.R8G8B8A8_UNorm,
+            AquariumGpuSensorPixelFormat.Yuy2 => Format.YUY2,
             _ => Format.Unknown,
         };
+    }
+
+    private static Format ToShaderResourceViewFormat(Format format)
+    {
+        return format == Format.YUY2
+            ? Format.R8G8B8A8_UNorm
+            : format;
     }
 
     public void Dispose()

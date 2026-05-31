@@ -94,6 +94,11 @@ StructuredBuffer<AcousticConstraint> acousticConstraints : register(t36);
 StructuredBuffer<GpuFusionPoint> fusionPoints : register(t37);
 RWStructuredBuffer<TemporalGaussian> temporalGaussiansOut : register(u0);
 
+static const uint SensorFormatR8Unorm = 3u;
+static const uint SensorFormatRg8Unorm = 6u;
+static const uint SensorFormatLeapPackedMap = 7u;
+static const uint SensorFormatYuy2 = 8u;
+
 float Hash01(uint value)
 {
     value ^= value >> 16;
@@ -126,6 +131,41 @@ float4 LoadSensorTexture(uint slot, int3 pixel)
         case 6u: return sensorTextures[6].Load(pixel);
         default: return sensorTextures[7].Load(pixel);
     }
+}
+
+float3 YuvToRgb(float y, float u, float v)
+{
+    float cb = u - 0.5;
+    float cr = v - 0.5;
+    return saturate(float3(
+        y + 1.5748 * cr,
+        y - 0.1873 * cb - 0.4681 * cr,
+        y + 1.8556 * cb));
+}
+
+float4 DecodeSensorSample(uint slot, GpuSensorCamera camera, uint x, uint y)
+{
+    uint format = (uint)round(camera.textureRangeTime.w);
+    if (format == SensorFormatYuy2)
+    {
+        float4 yuyv = LoadSensorTexture(slot, int3((int)(x >> 1), (int)y, 0));
+        float luma = (x & 1u) == 0u ? yuyv.r : yuyv.b;
+        return float4(YuvToRgb(luma, yuyv.g, yuyv.a), 1.0);
+    }
+
+    float4 sample = LoadSensorTexture(slot, int3((int)x, (int)y, 0));
+    if (format == SensorFormatR8Unorm)
+    {
+        return float4(sample.rrr, 1.0);
+    }
+
+    if (format == SensorFormatRg8Unorm ||
+        format == SensorFormatLeapPackedMap)
+    {
+        return float4(sample.rg, 0.5 * (sample.r + sample.g), 1.0);
+    }
+
+    return sample;
 }
 
 float AcousticSupport(float3 center, out float3 velocityBias)
@@ -224,9 +264,12 @@ void D3D12GpuSensorFusionCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     uint localIndex = textureSampleIndex + textureSlot * 747796405u;
     uint x = (localIndex * 73u + (uint)(Hash01(localIndex) * 37.0)) % width;
     uint y = (localIndex / width * 41u + (uint)(Hash01(localIndex ^ 0x9e3779b9u) * 29.0)) % height;
-    float4 rgba = LoadSensorTexture(textureSlot, int3((int)x, (int)y, 0));
     uint pairSlot = (textureSlot + 1u) % max(1u, textureCount);
-    float4 pairRgba = LoadSensorTexture(pairSlot, int3((int)x, (int)y, 0));
+    GpuSensorCamera pairCamera = sensorCameras[min(cameraCount - 1, pairSlot % cameraCount)];
+    uint pairWidth = max(1u, (uint)pairCamera.extentsKind.x);
+    uint pairHeight = max(1u, (uint)pairCamera.extentsKind.y);
+    float4 rgba = DecodeSensorSample(textureSlot, camera, x, y);
+    float4 pairRgba = DecodeSensorSample(pairSlot, pairCamera, min(x, pairWidth - 1u), min(y, pairHeight - 1u));
     float luma = dot(rgba.rgb, float3(0.2126, 0.7152, 0.0722));
     float pairLuma = dot(pairRgba.rgb, float3(0.2126, 0.7152, 0.0722));
     float descriptor = frac(luma * 3.17 + rgba.r * 1.91 + rgba.g * 2.37 + Hash01(localIndex ^ 0x27d4eb2du) * 0.07);

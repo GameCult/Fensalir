@@ -167,7 +167,7 @@ public sealed class EveSurfaceRuntime : IAquariumRuntime
                 panel.Readout("Health", () => selected?.Health ?? "");
                 panel.TextBox("State", () => selected?.Detail ?? "No selected node.", _ => { }, lines: 18, acceptsReturn: false, monospace: true);
             })
-            .Command("eve-status", _ => $"{connectionStatus}; {snapshot.ProviderId} v{snapshot.Version}; nodes {nodes.Count}", "Report the active Eve surface subscription.");
+            .Command("eve-status", _ => $"{connectionStatus}; {snapshot.ProviderId} v{snapshot.Version}; nodes {nodes.Count}; surface {snapshot.Surface?.Schema ?? "none"} root {snapshot.Surface?.Root?.Kind ?? "none"}", "Report the active Eve surface subscription.");
     }
 
     private void Reconnect()
@@ -301,7 +301,8 @@ internal sealed record EveSurfaceState(
     long Version,
     string UpdatedAt,
     string SelectedNodeId,
-    IReadOnlyList<EveSurfaceNode> Nodes)
+    IReadOnlyList<EveSurfaceNode> Nodes,
+    EveCompositionSurface? Surface)
 {
     public static EveSurfaceState Empty { get; } = new(
         "",
@@ -309,7 +310,8 @@ internal sealed record EveSurfaceState(
         0,
         "",
         "",
-        []);
+        [],
+        null);
 
     public static EveSurfaceState Parse(string json)
     {
@@ -341,7 +343,53 @@ internal sealed record EveSurfaceState(
             ReadInt64(root, "version"),
             ReadString(root, "updatedAt"),
             ReadString(root, "selectedNodeId"),
-            nodes);
+            nodes,
+            ReadSurface(root));
+    }
+
+    private static EveCompositionSurface? ReadSurface(JsonElement root)
+    {
+        if (!root.TryGetProperty("surface", out var surface) || surface.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return new EveCompositionSurface(
+            ReadString(surface, "schema"),
+            ReadString(surface, "id"),
+            ReadString(surface, "title"),
+            surface.TryGetProperty("root", out var rootElement) ? ReadElement(rootElement) : null,
+            surface.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array
+                ? assets.EnumerateArray()
+                    .Select(static asset => new EveCompositionAsset(
+                        ReadString(asset, "id"),
+                        ReadString(asset, "kind"),
+                        ReadString(asset, "uri")))
+                    .Where(static asset => !string.IsNullOrWhiteSpace(asset.Id))
+                    .ToArray()
+                : []);
+    }
+
+    private static EveCompositionElement? ReadElement(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var children = element.TryGetProperty("children", out var childArray) && childArray.ValueKind == JsonValueKind.Array
+            ? childArray.EnumerateArray().Select(ReadElement).OfType<EveCompositionElement>().ToArray()
+            : [];
+        return new EveCompositionElement(
+            ReadString(element, "id"),
+            ReadString(element, "kind"),
+            ReadString(element, "role"),
+            ReadString(element, "text"),
+            ReadString(element, "assetRef"),
+            ReadString(element, "assetUri"),
+            ReadString(element, "bindNodeId"),
+            ReadString(element, "commandId"),
+            children);
     }
 
     private static string ReadString(JsonElement element, string property, string fallback = "")
@@ -378,3 +426,23 @@ internal sealed record EveSurfaceNode(
     string Detail,
     string StatePath,
     string AvatarUrl);
+
+internal sealed record EveCompositionSurface(
+    string Schema,
+    string Id,
+    string Title,
+    EveCompositionElement? Root,
+    IReadOnlyList<EveCompositionAsset> Assets);
+
+internal sealed record EveCompositionElement(
+    string Id,
+    string Kind,
+    string Role,
+    string Text,
+    string AssetRef,
+    string AssetUri,
+    string BindNodeId,
+    string CommandId,
+    IReadOnlyList<EveCompositionElement> Children);
+
+internal sealed record EveCompositionAsset(string Id, string Kind, string Uri);

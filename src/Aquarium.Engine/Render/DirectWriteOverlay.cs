@@ -208,13 +208,20 @@ internal sealed class DirectWriteOverlay : IDisposable
             bounds.Right - layout.Padding,
             bounds.Bottom - layout.Padding);
         var totalGap = layout.Gap * Math.Max(0, visible.Length - 1);
-        var totalWeight = Math.Max(0.001f, visible.Sum(static element => Math.Max(0.001f, element.Weight)));
         var horizontal = string.Equals(layout.Direction, "horizontal", StringComparison.Ordinal);
         var cursor = horizontal ? content.Left : content.Top;
         var available = Math.Max(0.0f, (horizontal ? content.Width : content.Height) - totalGap);
-        foreach (var element in visible)
+        var preferred = visible.Select(element => PreferredExtent(element, horizontal)).ToArray();
+        var preferredTotal = preferred.Sum(static value => value ?? 0.0f);
+        var preferredScale = preferredTotal > available && preferredTotal > 0.0f ? available / preferredTotal : 1.0f;
+        var flexibleWeight = Math.Max(0.001f, visible.Where((_, index) => preferred[index] is null).Sum(static element => Math.Max(0.001f, element.Weight)));
+        var flexibleAvailable = Math.Max(0.0f, available - preferredTotal * preferredScale);
+        for (var index = 0; index < visible.Length; index++)
         {
-            var extent = available * Math.Max(0.001f, element.Weight) / totalWeight;
+            var element = visible[index];
+            var extent = preferred[index] is { } fixedExtent
+                ? fixedExtent * preferredScale
+                : flexibleAvailable * Math.Max(0.001f, element.Weight) / flexibleWeight;
             var childBounds = horizontal
                 ? RectFromEdges(cursor, content.Top, Math.Min(content.Right, cursor + extent), content.Bottom)
                 : RectFromEdges(content.Left, cursor, content.Right, Math.Min(content.Bottom, cursor + extent));
@@ -335,6 +342,26 @@ internal sealed class DirectWriteOverlay : IDisposable
             "danger" => accentActiveBrush,
             _ => outlineBrush,
         };
+
+    private static float? PreferredExtent(AquariumUiElement element, bool horizontal)
+    {
+        if (horizontal)
+        {
+            return null;
+        }
+
+        var weight = Math.Max(0.001f, element.Weight);
+        return element.Kind switch
+        {
+            "text" when element.Role is "mono" => 34.0f * weight,
+            "text" when element.Role is "strong" or "title" => 22.0f * weight,
+            "text" => 18.0f * weight,
+            "toggle" or "select" or "slider" => 24.0f * weight,
+            "button" => 30.0f * weight,
+            "metric" => 36.0f * weight,
+            _ => null,
+        };
+    }
 
     public void Dispose()
     {

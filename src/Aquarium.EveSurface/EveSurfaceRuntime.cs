@@ -101,6 +101,12 @@ public sealed class EveSurfaceRuntime : IAquariumRuntime
             ?? nodes.FirstOrDefault();
         var ctb = nodes.Where(static node => string.Equals(node.Kind, "ctb-turn", StringComparison.OrdinalIgnoreCase)).Take(12).ToArray();
         var leaves = nodes.Where(static node => string.Equals(node.Kind, "state-leaf", StringComparison.OrdinalIgnoreCase)).Take(32).ToArray();
+        var primaryNodes = ctb.Length > 0 ? ctb : nodes.Take(16).ToArray();
+        var detailNodes = leaves.Length > 0 ? leaves : nodes.Skip(primaryNodes.Length).Take(32).ToArray();
+        if (detailNodes.Length == 0 && ctb.Length == 0)
+        {
+            detailNodes = nodes.Take(32).ToArray();
+        }
         var summary = nodes.FirstOrDefault(static node => node.Id == "voidbot-summary");
         var agent = nodes.FirstOrDefault(static node => node.Id == "agent-detail");
 
@@ -115,10 +121,10 @@ public sealed class EveSurfaceRuntime : IAquariumRuntime
                 panel.Readout("Status", () => connectionStatus);
                 panel.Button("Reconnect", Reconnect, "Restart the WebSocket subscription and reopen the provider.");
             })
-            .Panel("CTB", 456.0f, 82.0f, 520.0f, fadeWhenMouseDistant: true, panel =>
+            .Panel(ctb.Length > 0 ? "CTB" : "Surface Nodes", 456.0f, 82.0f, 520.0f, fadeWhenMouseDistant: true, panel =>
             {
-                panel.Section("VoidBot Turn Bar");
-                foreach (var node in ctb)
+                panel.Section(ctb.Length > 0 ? "VoidBot Turn Bar" : snapshot.Title);
+                foreach (var node in primaryNodes)
                 {
                     panel.TreeItem(
                         CompactLabel(node.Label),
@@ -131,7 +137,7 @@ public sealed class EveSurfaceRuntime : IAquariumRuntime
                         detail: CompactDetail(node));
                 }
             })
-            .Panel("Selected Face", 18.0f, 382.0f, 420.0f, fadeWhenMouseDistant: true, panel =>
+            .Panel(ctb.Length > 0 ? "Selected Face" : "Selected Node", 18.0f, 382.0f, 420.0f, fadeWhenMouseDistant: true, panel =>
             {
                 panel.Section(summary?.Label ?? "VoidBot Swarm");
                 panel.Readout("Summary", () => summary?.Health ?? "waiting");
@@ -140,8 +146,8 @@ public sealed class EveSurfaceRuntime : IAquariumRuntime
             })
             .Panel("State Graph", 456.0f, 222.0f, 520.0f, fadeWhenMouseDistant: true, panel =>
             {
-                panel.Section("Leaves");
-                foreach (var node in leaves)
+                panel.Section(leaves.Length > 0 ? "Leaves" : "Details");
+                foreach (var node in detailNodes)
                 {
                     panel.TreeItem(
                         CompactLabel(node.Label),

@@ -286,12 +286,13 @@ internal sealed class DirectWriteOverlay : IDisposable
 
     private void DrawMetricElement(AquariumUiElement element, Rect bounds)
     {
-        var value = Math.Clamp(element.ReadMetric?.Invoke() ?? 0.0, 0.0, 1.0);
+        var value = element.ReadMetric?.Invoke() ?? 0.0;
+        var normalized = Math.Clamp(value, 0.0, 1.0);
         DrawSurfaceFrame(bounds, null, element.Style?.Tone ?? "neutral", drawTitle: false);
         renderTarget.DrawText($"{element.Text}: {value:0.000}", smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top + 2.0f, bounds.Right - 8.0f, bounds.Top + 18.0f), primaryTextBrush, DrawTextOptions.Clip);
         var track = RectFromEdges(bounds.Left + 8.0f, bounds.Bottom - 10.0f, bounds.Right - 8.0f, bounds.Bottom - 5.0f);
         renderTarget.FillRectangle(track, dimAccentBrush);
-        renderTarget.FillRectangle(RectFromEdges(track.Left, track.Top, track.Left + track.Width * (float)value, track.Bottom), ToneBrush(element.Style?.Tone ?? "neutral"));
+        renderTarget.FillRectangle(RectFromEdges(track.Left, track.Top, track.Left + track.Width * (float)normalized, track.Bottom), ToneBrush(element.Style?.Tone ?? "neutral"));
     }
 
     private void DrawToggleElement(AquariumUiElement element, Rect bounds)
@@ -353,13 +354,38 @@ internal sealed class DirectWriteOverlay : IDisposable
         var weight = Math.Max(0.001f, element.Weight);
         return element.Kind switch
         {
-            "text" when element.Role is "mono" => 34.0f * weight,
+            "group" or "pane" or "card" => PreferredContainerExtent(element) * weight,
+            "text" when element.Role is "mono" => 18.0f * weight,
             "text" when element.Role is "strong" or "title" => 22.0f * weight,
             "text" => 18.0f * weight,
             "toggle" or "select" or "slider" => 24.0f * weight,
             "button" => 30.0f * weight,
             "metric" => 36.0f * weight,
             _ => null,
+        };
+    }
+
+    private static float PreferredContainerExtent(AquariumUiElement element)
+    {
+        var layout = element.Layout ?? AquariumUiLayout.Vertical();
+        var children = element.Children?.Where(static child => child.Visible).ToArray() ?? [];
+        if (children.Length == 0)
+        {
+            return element.Kind == "pane" ? 72.0f : 24.0f;
+        }
+
+        var horizontal = string.Equals(layout.Direction, "horizontal", StringComparison.Ordinal);
+        var childExtents = children.Select(static child => PreferredExtent(child, horizontal: false) ?? 48.0f * Math.Max(0.001f, child.Weight)).ToArray();
+        var contentExtent = horizontal
+            ? childExtents.Max()
+            : childExtents.Sum() + layout.Gap * Math.Max(0, childExtents.Length - 1);
+        contentExtent += layout.Padding * 2.0f;
+
+        return element.Kind switch
+        {
+            "pane" => contentExtent + 38.0f,
+            "card" => contentExtent,
+            _ => contentExtent,
         };
     }
 

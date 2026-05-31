@@ -29,10 +29,19 @@ The existing engine contract already has the right narrow surface:
 - `D3D12Renderer.UpdateUi`
 - `DirectWriteOverlay`
 
-The first implementation should add an adapter from the shared Eve surface
-document into `AquariumUiDocument`. Do not bypass that path by teaching the
-renderer about VoidBot, Mimir, or any provider-specific dashboard. Provider
-specificity belongs in the provider document.
+`src/Aquarium.EveSurface` is the first native client cut. It subscribes to
+Mimir's `/eve/deck` WebSocket, opens a provider such as `voidbot.swarm`, and
+lowers the received surface document into `AquariumUiDocument` panels. It does
+not teach the renderer about VoidBot, Mimir, or any provider-specific dashboard.
+Provider specificity belongs in the provider document.
+
+Run it locally:
+
+```powershell
+$env:FENSALIR_EVE_BROKER = 'ws://127.0.0.1:8795/eve/deck'
+$env:FENSALIR_EVE_PROVIDER = 'voidbot.swarm'
+.\scripts\dev-reload.ps1 -ClientProject src\Aquarium.EveSurface\Aquarium.EveSurface.csproj
+```
 
 ## Invariants
 
@@ -48,9 +57,9 @@ specificity belongs in the provider document.
 
 ## First Cut
 
-1. Define the shared Eve surface DTO in a neutral contract package or mirror the
-   first schema in Fensalir as an adapter boundary.
-2. Map simple nodes into `AquariumUiPanel` and existing controls:
+1. Move the mirrored first schema into a neutral shared Eve/CultMesh contract
+   package once the browser reference stops changing daily.
+2. Expand node lowering into `AquariumUiPanel` and existing controls:
    readouts, buttons, toggles, sliders, options, text boxes, tree items, and
    detail panes.
 3. Route control activation back to a provider command sink.

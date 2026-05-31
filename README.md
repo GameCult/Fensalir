@@ -38,6 +38,14 @@ consume the shared Eve/CultMesh UI document contract and lower it into
 `AquariumUiDocument`, while provider repos keep ownership of dashboard state and
 commands. See `docs/eve-direct2d-client-surface.md`.
 
+Run the native Eve surface client against Mimir's VoidBot dashboard:
+
+```powershell
+$env:FENSALIR_EVE_BROKER = 'ws://127.0.0.1:8795/eve/deck'
+$env:FENSALIR_EVE_PROVIDER = 'voidbot.swarm'
+.\scripts\dev-reload.ps1 -ClientProject src\Aquarium.EveSurface\Aquarium.EveSurface.csproj
+```
+
 ## Spatial Evidence Machine
 
 Fensalir's field work is not just "some fractal helpers." It is a
@@ -141,6 +149,8 @@ how WASAPI or Faust got invited to the party.
   audio/synth host, bundled assets, and renderer-owned shaders.
 - `src/Aquarium.Engine.Fractal`: `.aquageo`, IFS/fractal fields, temporal
   reservoirs, evidence tracks, contribution cache, and lowering machinery.
+- `src/Aquarium.EveSurface`: native DirectWrite Eve surface client for shared
+  dashboard documents such as Mimir's `voidbot.swarm` provider.
 - `src/Saga`: stochastic planetary flow middleware for cube-sphere Transport
   fields, arbitrary forcing, Coriolis-aware advection, and learned atmosphere /
   ocean / debris flow packets.

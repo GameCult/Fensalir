@@ -87,7 +87,10 @@ internal sealed class DebugUi
 
     public static DebugUi FromContract(AquariumUiPanel source)
     {
-        var ui = new DebugUi(source.Title, source.Left, source.Top, source.Width, source.FadeWhenMouseDistant, [], () => 0, _ => { });
+        var ui = new DebugUi(source.Title, source.Left, source.Top, source.Width, source.FadeWhenMouseDistant, [], () => 0, _ => { })
+        {
+            IsVisible = true
+        };
         foreach (var control in source.Controls)
         {
             ui.AddContractControl(control);

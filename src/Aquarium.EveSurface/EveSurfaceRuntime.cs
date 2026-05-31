@@ -105,7 +105,7 @@ public sealed class EveSurfaceRuntime : IAquariumRuntime
         var agent = nodes.FirstOrDefault(static node => node.Id == "agent-detail");
 
         return new AquariumUiDocument()
-            .Panel("Eve Surface", 18.0f, 82.0f, 420.0f, panel =>
+            .Panel("Eve Surface", 18.0f, 82.0f, 420.0f, fadeWhenMouseDistant: true, panel =>
             {
                 panel.Section("CultMesh Provider");
                 panel.Readout("Provider", () => string.IsNullOrWhiteSpace(snapshot.ProviderId) ? providerId : snapshot.ProviderId);
@@ -115,7 +115,7 @@ public sealed class EveSurfaceRuntime : IAquariumRuntime
                 panel.Readout("Status", () => connectionStatus);
                 panel.Button("Reconnect", Reconnect, "Restart the WebSocket subscription and reopen the provider.");
             })
-            .Panel("CTB", 456.0f, 82.0f, 520.0f, panel =>
+            .Panel("CTB", 456.0f, 82.0f, 520.0f, fadeWhenMouseDistant: true, panel =>
             {
                 panel.Section("VoidBot Turn Bar");
                 foreach (var node in ctb)
@@ -131,14 +131,14 @@ public sealed class EveSurfaceRuntime : IAquariumRuntime
                         detail: CompactDetail(node));
                 }
             })
-            .Panel("Selected Face", 18.0f, 382.0f, 420.0f, panel =>
+            .Panel("Selected Face", 18.0f, 382.0f, 420.0f, fadeWhenMouseDistant: true, panel =>
             {
                 panel.Section(summary?.Label ?? "VoidBot Swarm");
                 panel.Readout("Summary", () => summary?.Health ?? "waiting");
                 panel.TextBox("Selected", () => selected?.Label ?? "none", _ => { }, lines: 1, acceptsReturn: false, monospace: false);
                 panel.TextBox("Detail", () => selected?.Detail ?? agent?.Detail ?? "No provider detail yet.", _ => { }, lines: 12, acceptsReturn: false, monospace: true);
             })
-            .Panel("State Graph", 456.0f, 222.0f, 520.0f, panel =>
+            .Panel("State Graph", 456.0f, 222.0f, 520.0f, fadeWhenMouseDistant: true, panel =>
             {
                 panel.Section("Leaves");
                 foreach (var node in leaves)
@@ -154,7 +154,7 @@ public sealed class EveSurfaceRuntime : IAquariumRuntime
                         detail: CompactDetail(node));
                 }
             })
-            .Panel("Surface Detail", 994.0f, 82.0f, 520.0f, panel =>
+            .Panel("Surface Detail", 994.0f, 82.0f, 520.0f, fadeWhenMouseDistant: true, panel =>
             {
                 panel.Section(selected?.Kind ?? "detail");
                 panel.Readout("Node", () => selected?.Id ?? "none");
@@ -272,7 +272,6 @@ public sealed class EveSurfaceRuntime : IAquariumRuntime
         var app = new AquariumApp();
         var scene = app.RenderTargets.Hdr("scene");
         app.Cameras.Perspective("main");
-        app.Graph.Pass("scene").Fullscreen();
         app.Features.Presentation(scene.Color);
         app.Features.DirectWriteOverlay();
         app.Debug.View("Scene", scene.Color);

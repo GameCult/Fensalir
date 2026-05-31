@@ -366,6 +366,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly string shaderSourceRoot;
     private readonly D3D12ShaderPaths shaderPaths;
     private readonly CompiledRenderGraph renderGraph;
+    private readonly bool hasSceneRenderingPass;
     private readonly Stopwatch shaderReloadClock = Stopwatch.StartNew();
     private readonly Dictionary<string, DateTime> shaderWriteTimesUtc = new(StringComparer.OrdinalIgnoreCase);
     private readonly double[] accumulatedGpuTimingMilliseconds = new double[(int)D3D12GpuTimingPass.Count];
@@ -407,6 +408,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         programOutputRingCount = ResolveProgramOutputRingCount();
         var activeRenderPlan = renderPlan ?? new AquariumRenderPlan();
         renderGraph = D3D12RenderGraphCompiler.Compile(activeRenderPlan);
+        hasSceneRenderingPass = renderGraph.Passes.Any(static pass =>
+            pass.Kind is AquariumPassKind.Fullscreen or AquariumPassKind.Proxy or AquariumPassKind.Instanced or AquariumPassKind.Compute);
         shaderSourceRoot = ResolveShaderSourceRoot(shaderPath, activeRenderPlan.Shaders);
         shaderPaths = D3D12ShaderPaths.FromManifest(shaderSourceRoot, activeRenderPlan.Shaders);
         sdfProxyPipelineStates = new ID3D12PipelineState?[shaderPaths.SdfShaders.Count];
@@ -580,7 +583,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
             var debugUiVisible = debugUi.IsVisible;
             debugUi = CreateDebugUi(debugPanels);
             debugUi.IsVisible = debugUiVisible;
-            clientUiPanels = floatingPanels.Select(DebugUi.FromContract).ToArray();
+            clientUiPanels = floatingPanels
+                .Select(panel => DebugUi.FromContract(panel with { FadeWhenMouseDistant = false }))
+                .ToArray();
         }
 
         debugUi.Update(input);
@@ -1065,14 +1070,22 @@ public sealed class D3D12Renderer : IAquariumRenderer
         commandList.BeginEvent("Aquarium D3D12 Frame");
         BeginGpuTiming(commandList, frameResources, D3D12GpuTimingPass.FrameRecord);
         commandList.SetDescriptorHeaps(frameResources.TransientShaderDescriptors.Heap);
-        UploadSceneStructuredResources(commandList, frameResources);
-        DispatchGpuSensorFusion(commandList, frameResources);
-        DispatchStereoDepth(commandList, frameResources);
-        DispatchPointClouds(commandList, frameResources);
-        DispatchFractalReservoirs(commandList, frameResources);
-        DispatchTubeFields(commandList, frameResources);
-        RenderHeightField(commandList, frameResources);
-        RenderSceneAndPresent(new D3D12PassContext(commandList, frameResources.BackBuffer, frameResources.BackBufferRenderTargetView.Cpu), frameResources);
+        var passContext = new D3D12PassContext(commandList, frameResources.BackBuffer, frameResources.BackBufferRenderTargetView.Cpu);
+        if (hasSceneRenderingPass)
+        {
+            UploadSceneStructuredResources(commandList, frameResources);
+            DispatchGpuSensorFusion(commandList, frameResources);
+            DispatchStereoDepth(commandList, frameResources);
+            DispatchPointClouds(commandList, frameResources);
+            DispatchFractalReservoirs(commandList, frameResources);
+            DispatchTubeFields(commandList, frameResources);
+            RenderHeightField(commandList, frameResources);
+            RenderSceneAndPresent(passContext, frameResources);
+        }
+        else
+        {
+            ClearEmptyBackBuffer(passContext);
+        }
         EndGpuTiming(commandList, frameResources, D3D12GpuTimingPass.FrameRecord);
         ResolveGpuTimings(commandList, frameResources, temporalFrameIndex > 4);
         commandList.EndEvent();
@@ -3233,6 +3246,27 @@ public sealed class D3D12Renderer : IAquariumRenderer
         finally
         {
             EndGpuTiming(context.CommandList, frameResources, D3D12GpuTimingPass.PresentationResolve);
+            context.CommandList.EndEvent();
+        }
+    }
+
+    private void ClearEmptyBackBuffer(D3D12PassContext context)
+    {
+        context.CommandList.BeginEvent("Empty Presentation Clear");
+        try
+        {
+            context.BackBuffer.Transition(context.CommandList, ResourceStates.RenderTarget);
+            context.CommandList.RSSetViewports(viewport);
+            context.CommandList.RSSetScissorRects(scissorRect);
+            context.CommandList.OMSetRenderTargets(
+            [
+                context.RenderTargetView,
+            ],
+            null);
+            context.CommandList.ClearRenderTargetView(context.RenderTargetView, new Color4(0.0f, 0.0f, 0.0f, 1.0f));
+        }
+        finally
+        {
             context.CommandList.EndEvent();
         }
     }

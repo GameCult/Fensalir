@@ -340,10 +340,16 @@ internal sealed class DirectWriteOverlay : IDisposable
 
     private void DrawPreviewElement(AquariumUiElement element, Rect bounds)
     {
-        DrawSurfaceFrame(bounds, null, "neutral", drawTitle: false);
-        renderTarget.DrawText(element.Text ?? "", smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top + 6.0f, bounds.Right - 8.0f, bounds.Top + 24.0f), quietTextBrush, DrawTextOptions.Clip);
+        var hasLabel = !string.IsNullOrWhiteSpace(element.Text);
+        if (hasLabel)
+        {
+            DrawSurfaceFrame(bounds, null, "neutral", drawTitle: false);
+            renderTarget.DrawText(element.Text ?? "", smallFormat, RectFromEdges(bounds.Left + 8.0f, bounds.Top + 6.0f, bounds.Right - 8.0f, bounds.Top + 24.0f), quietTextBrush, DrawTextOptions.Clip);
+        }
 
-        var padded = RectFromEdges(bounds.Left + 10.0f, bounds.Top + 30.0f, bounds.Right - 10.0f, bounds.Bottom - 10.0f);
+        var padded = hasLabel
+            ? RectFromEdges(bounds.Left + 10.0f, bounds.Top + 30.0f, bounds.Right - 10.0f, bounds.Bottom - 10.0f)
+            : RectFromEdges(bounds.Left + 2.0f, bounds.Top + 2.0f, bounds.Right - 2.0f, bounds.Bottom - 2.0f);
         if (padded.Width <= 1.0f || padded.Height <= 1.0f)
         {
             return;

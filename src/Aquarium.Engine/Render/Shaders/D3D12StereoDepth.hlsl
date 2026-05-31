@@ -15,7 +15,8 @@ float PackedLeft(uint2 pixel)
 
 float PackedRight(uint2 pixel)
 {
-    return PackedStereoIr.Load(int3(pixel, 0)).g;
+    const uint stereoWidth = max(1u, (uint)Shape.x);
+    return PackedStereoIr.Load(int3(uint2(pixel.x + stereoWidth, pixel.y), 0)).r;
 }
 
 [numthreads(8, 8, 1)]

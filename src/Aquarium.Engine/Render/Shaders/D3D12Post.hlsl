@@ -1229,12 +1229,13 @@ float4 reservoirDebugOrColor(FieldReservoirSample candidate, uint2 pixel)
 FieldReservoirResolveOut D3D12FieldReservoirResolvePS(VertexOut input)
 {
     uint2 pixel = (uint2)pixelFromUv(input.uv);
+    FieldReservoirSample current = currentFrameReservoirSample(pixel, input.uv);
 
     FieldReservoirResolveOut output;
-    output.colorTravel = sourceTexture.Load(int3(pixel, 0));
-    output.metadata = loadCurrentMetadata(input.uv);
-    output.control = loadCurrentControl(input.uv);
-    output.reservoirGuide = loadCurrentReservoirGuide(input.uv);
+    output.colorTravel = reservoirDebugOrColor(current, pixel);
+    output.metadata = current.metadata;
+    output.control = current.control;
+    output.reservoirGuide = current.guide;
     return output;
 }
 

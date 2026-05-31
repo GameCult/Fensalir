@@ -165,6 +165,27 @@ internal sealed unsafe class D3D12FieldTexture2D : IDisposable
         }
     }
 
+    public static D3D12FieldTexture2D WrapOwned(
+        ID3D12Resource resource,
+        int width,
+        int height,
+        Format format,
+        bool allowsUnorderedAccess,
+        ResourceStates state,
+        string name)
+    {
+        var texture = new D3D12FieldTexture2D(
+            resource,
+            uploadResource: null,
+            Math.Max(1, width),
+            Math.Max(1, height),
+            format,
+            allowsUnorderedAccess,
+            name);
+        texture.State = state;
+        return texture;
+    }
+
     public void CreateShaderResourceView(ID3D12Device device, D3D12DescriptorSlot descriptor)
     {
         device.CreateShaderResourceView(

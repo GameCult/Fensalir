@@ -94,10 +94,15 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootFusionAcousticConstraints = 4;
     private const int RootFusionOutput = 5;
     private const int RootFusionNativePoints = 6;
-    private const int RootPointCloudConstants = 0;
-    private const int RootPointCloudDisparity = 1;
-    private const int RootPointCloudVertices = 2;
-    private const int RootPointCloudIndices = 3;
+    private const int RootPointCloudFrameConstants = 0;
+    private const int RootPointCloudConstants = 1;
+    private const int RootPointCloudDisparity = 2;
+    private const int RootPointCloudVertices = 3;
+    private const int RootPointCloudIndices = 4;
+    private const int RootPointCloudFractalSplats = 5;
+    private const int RootPointCloudSdfReservoirs = 6;
+    private const int RootPointCloudPbrReservoirs = 7;
+    private const int RootPointCloudRadiosityReservoirs = 8;
     private const int RootFractalConstants = 0;
     private const int RootFractalSplats = 1;
     private const int RootFractalSdfReservoirs = 2;
@@ -326,6 +331,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private int activePointCloudRenderedMeshes;
     private int activePointCloudUnresolvedMeshes;
     private int activePointCloudUnplannedMeshes;
+    private bool activePointCloudSurfaceReservoir;
     private int activeFieldResourceUploadCount;
     private int activeFieldResourceUploadSkippedCount;
     private Viewport viewport;
@@ -787,7 +793,6 @@ public sealed class D3D12Renderer : IAquariumRenderer
         {
             var resource = device.CreateCommittedResource(
                 HeapType.Default,
-                HeapFlags.Shared,
                 ResourceDescription.Texture2D(
                     format,
                     (uint)width,
@@ -799,16 +804,19 @@ public sealed class D3D12Renderer : IAquariumRenderer
                     resourceFlags),
                 ResourceStates.PixelShaderResource,
                 null);
-            resource.Name = $"Aquarium D3D12 Field Texture2D Lease {request.ResourceKey}";
-            var nativeHandle = device.CreateSharedHandle(resource, null, null!);
+            var texture = D3D12FieldTexture2D.WrapOwned(
+                resource,
+                width,
+                height,
+                format,
+                resourceFlags.HasFlag(Vortice.Direct3D12.ResourceFlags.AllowUnorderedAccess),
+                ResourceStates.PixelShaderResource,
+                $"Aquarium D3D12 Field Texture2D Lease {request.ResourceKey}");
             var producerFence = device.CreateFence(0);
             producerFence.Name = $"Aquarium D3D12 Field Texture2D Producer Fence {request.ResourceKey}";
-            var producerFenceHandle = device.CreateSharedHandle(producerFence, null, null!);
             var slot = new SharedTextureLeaseSlot(
-                resource,
+                texture,
                 producerFence,
-                nativeHandle,
-                producerFenceHandle,
                 width,
                 height,
                 format,
@@ -817,20 +825,30 @@ public sealed class D3D12Renderer : IAquariumRenderer
             sharedTextureLeases[request.ResourceKey] = slot;
             return CreateLease(request, slot);
         }
-        catch (SharpGenException)
+        catch (SharpGenException ex)
         {
+            LogTextureLeaseFailure(request, ex);
             return AquariumFieldResourceLease.Invalid;
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
+            LogTextureLeaseFailure(request, ex);
             return AquariumFieldResourceLease.Invalid;
+        }
+    }
+
+    private static void LogTextureLeaseFailure(AquariumTexture2DLeaseRequest request, Exception exception)
+    {
+        if (Environment.GetEnvironmentVariable("AQUARIUM_TEXTURE_LEASE_DIAG") == "1")
+        {
+            Console.WriteLine(
+                $"aquarium-texture-lease-failed resource={request.ResourceKey} {request.Width}x{request.Height} format={request.Format} access={request.ProducerAccess} error={exception.GetType().Name}: {exception.Message}");
         }
     }
 
     public bool CommitLeaseVersion(string resourceKey, ulong version, ulong producerFenceValue)
     {
         if (string.IsNullOrWhiteSpace(resourceKey) ||
-            producerFenceValue == 0 ||
             !sharedTextureLeases.TryGetValue(resourceKey, out var slot))
         {
             return false;
@@ -839,7 +857,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         sharedTextureLeases[resourceKey] = slot with
         {
             Version = version,
-            CommittedProducerFenceValue = Math.Max(slot.CommittedProducerFenceValue, producerFenceValue),
+            CommittedProducerFenceValue = 0,
+            WaitedProducerFenceValue = 0,
         };
         return true;
     }
@@ -1338,7 +1357,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             declaration,
             slot.NativeHandle,
             "fensalir-owned-d3d12-texture2d",
-            slot.ProducerFenceHandle,
+            IntPtr.Zero,
             request.Version,
             true);
     }
@@ -1397,14 +1416,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
                     Offset = 0,
                     Footprint = new SubresourceFootPrint(slot.Format, (uint)upload.Width, (uint)upload.Height, 1, (uint)rowPitch),
                 });
-            var destination = new TextureCopyLocation(slot.Resource, 0);
+            var destination = new TextureCopyLocation(slot.Texture.Resource, 0);
             uploadList.ResourceBarrier(ResourceBarrier.BarrierTransition(
-                slot.Resource,
+                slot.Texture.Resource,
                 ResourceStates.PixelShaderResource,
                 ResourceStates.CopyDest));
             uploadList.CopyTextureRegion(destination, 0, 0, 0, source, null);
             uploadList.ResourceBarrier(ResourceBarrier.BarrierTransition(
-                slot.Resource,
+                slot.Texture.Resource,
                 ResourceStates.CopyDest,
                 ResourceStates.PixelShaderResource));
             uploadList.Close();
@@ -1858,59 +1877,100 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private D3D12PipelineSet CreatePipelineSet(D3D12ShaderPaths paths)
     {
+        static void Step(string name)
+        {
+            if (Environment.GetEnvironmentVariable("AQUARIUM_PIPELINE_DIAG") == "1")
+            {
+                Console.WriteLine($"D3D12 pipeline build step: {name}");
+            }
+        }
+
+        Step("height-field-base");
         var heightFieldBase = CreateHeightFieldBasePipelineState(paths.HeightField);
         heightFieldBase.Name = "Aquarium D3D12 Height Field Base Pipeline";
+        Step("height-field-brush");
         var heightFieldBrush = CreateHeightFieldBrushPipelineState(paths.HeightField);
         heightFieldBrush.Name = "Aquarium D3D12 Height Field Brush Pipeline";
+        Step("scene");
         var scene = CreateScenePipelineState(paths.Scene);
         scene.Name = "Aquarium D3D12 Scene Pipeline";
+        Step("spline");
         var spline = CreateSplinePipelineState(paths.Spline);
         spline.Name = "Aquarium D3D12 Spline Surface Claim Pipeline";
+        Step("temporal-gaussian");
         var temporalGaussian = CreateTemporalGaussianPipelineState(paths.TemporalGaussian);
         temporalGaussian.Name = "Aquarium D3D12 Temporal Gaussian Pipeline";
+        Step("gpu-sensor-fusion");
         var gpuSensorFusion = CreateGpuSensorFusionPipelineState(paths.GpuSensorFusion);
         gpuSensorFusion.Name = "Aquarium D3D12 GPU Sensor Fusion Compute Pipeline";
+        Step("stereo-depth");
         var stereoDepth = CreateStereoDepthPipelineState(paths.StereoDepth);
         stereoDepth.Name = "Aquarium D3D12 Packed Stereo Depth Compute Pipeline";
+        Step("point-cloud-compute");
         var pointCloudCompute = CreatePointCloudComputePipelineState(paths.PointCloud);
         pointCloudCompute.Name = "Aquarium D3D12 Point Cloud Projection Compute Pipeline";
+        Step("point-cloud-render");
         var pointCloudRender = CreatePointCloudRenderPipelineState(paths.PointCloud);
         pointCloudRender.Name = "Aquarium D3D12 Point Cloud Render Pipeline";
+        Step("fractal-surface-splat");
         var fractalSurfaceSplatRender = CreateFractalSurfaceSplatRenderPipelineState(paths.FractalSplatRender);
         fractalSurfaceSplatRender.Name = "Aquarium D3D12 Fractal Surface Splat Render Pipeline";
+        Step("fractal-transparent-splat");
         var fractalTransparentSplatRender = CreateFractalTransparentSplatRenderPipelineState(paths.FractalSplatRender);
         fractalTransparentSplatRender.Name = "Aquarium D3D12 Fractal Transparent Splat Render Pipeline";
+        Step("fractal-splat");
         var fractalSplat = CreateFractalReservoirPipelineState(paths.FractalReservoir, "D3D12FractalSplatReceiptCS");
         fractalSplat.Name = "Aquarium D3D12 Fractal Splat Compute Pipeline";
+        Step("fractal-sdf-reservoir");
         var fractalSdfReservoir = CreateFractalReservoirPipelineState(paths.FractalReservoir, "D3D12SdfEnvelopeReservoirCS");
         fractalSdfReservoir.Name = "Aquarium D3D12 Fractal SDF Reservoir Compute Pipeline";
+        Step("fractal-pbr-reservoir");
         var fractalPbrReservoir = CreateFractalReservoirPipelineState(paths.FractalReservoir, "D3D12PbrMaterialReservoirCS");
         fractalPbrReservoir.Name = "Aquarium D3D12 Fractal PBR Reservoir Compute Pipeline";
+        Step("fractal-radiosity-reservoir");
         var fractalRadiosityReservoir = CreateFractalReservoirPipelineState(paths.FractalReservoir, "D3D12RadiosityReservoirCS");
         fractalRadiosityReservoir.Name = "Aquarium D3D12 Fractal Radiosity Reservoir Compute Pipeline";
+        Step("tube-field-compute");
         var tubeFieldCompute = CreateTubeFieldComputePipelineState(paths.TubeField);
         tubeFieldCompute.Name = "Aquarium D3D12 TubeField Compute Pipeline";
+        Step("tube-field-render");
         var tubeFieldRender = CreateTubeFieldRenderPipelineState(paths.TubeField);
         tubeFieldRender.Name = "Aquarium D3D12 TubeField Render Pipeline";
+        Step("field-reservoir-resolve");
         var fieldReservoirResolve = CreateFieldReservoirResolvePipelineState(paths.Post);
         fieldReservoirResolve.Name = "Aquarium D3D12 Field Reservoir Resolve Pipeline";
         var sdfProxies = new ID3D12PipelineState[paths.SdfShaders.Count];
         for (var index = 0; index < paths.SdfShaders.Count; index++)
         {
+            Step($"sdf-proxy-{index}");
             sdfProxies[index] = CreateSdfObjectProxyPipelineState(paths.SdfShaders[index]);
             sdfProxies[index].Name = $"Aquarium D3D12 Sdf Proxy Pipeline {index}";
         }
 
+        Step("bloom-prefilter");
         var bloomPrefilter = CreateBloomPrefilterPipelineState(paths.Post);
         bloomPrefilter.Name = "Aquarium D3D12 Bloom Prefilter Pipeline";
+        Step("bloom-downsample");
         var bloomDownsample = CreateBloomDownsamplePipelineState(paths.Post);
         bloomDownsample.Name = "Aquarium D3D12 Bloom Downsample Pipeline";
+        Step("bloom-blur-horizontal");
         var bloomBlurHorizontal = CreateBloomBlurHorizontalPipelineState(paths.Post);
         bloomBlurHorizontal.Name = "Aquarium D3D12 Bloom Blur Horizontal Pipeline";
+        Step("bloom-blur-vertical");
         var bloomBlurVertical = CreateBloomBlurVerticalPipelineState(paths.Post);
         bloomBlurVertical.Name = "Aquarium D3D12 Bloom Blur Vertical Pipeline";
-        var reservoirHistoryUpdate = CreateReservoirHistoryUpdatePipelineState(paths.Post);
-        reservoirHistoryUpdate.Name = "Aquarium D3D12 Reservoir History Update Pipeline";
+        ID3D12PipelineState? reservoirHistoryUpdate = null;
+        if (Environment.GetEnvironmentVariable("AQUARIUM_DISABLE_RESERVOIR_HISTORY") == "1")
+        {
+            Step("reservoir-history-update disabled");
+        }
+        else
+        {
+            Step("reservoir-history-update");
+            reservoirHistoryUpdate = CreateReservoirHistoryUpdatePipelineState(paths.Post);
+            reservoirHistoryUpdate.Name = "Aquarium D3D12 Reservoir History Update Pipeline";
+        }
+        Step("resolve");
         var resolve = CreateResolvePipelineState(paths.Post);
         resolve.Name = "Aquarium D3D12 Resolve Pipeline";
 
@@ -2592,9 +2652,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         ResolveFieldReservoir(context.CommandList, frameResources);
-        UpdateReservoirHistory(context.CommandList, frameResources);
-        RenderBloom(context.CommandList, frameResources, reservoirResolvedRenderTarget, frameResources.ReservoirResolvedDescriptor);
-        PresentBackBuffer(context, frameResources);
+        var historyUpdated = UpdateReservoirHistory(context.CommandList, frameResources);
+        var presentationSourceTarget = historyUpdated ? reservoirResolvedRenderTarget : sceneRenderTarget;
+        var presentationSourceDescriptor = historyUpdated ? frameResources.ReservoirResolvedDescriptor : frameResources.SceneDescriptor;
+        RenderBloom(context.CommandList, frameResources, presentationSourceTarget, presentationSourceDescriptor);
+        PresentBackBuffer(context, frameResources, presentationSourceTarget, presentationSourceDescriptor);
     }
 
     private void RenderSplineSurfaceClaims(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
@@ -2700,11 +2762,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
     }
 
-    private void UpdateReservoirHistory(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
+    private bool UpdateReservoirHistory(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
     {
         if (reservoirHistoryUpdatePipelineState is null)
         {
-            return;
+            return false;
         }
 
         activeCommandList.BeginEvent("Reservoir History Update");
@@ -2768,6 +2830,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             EndGpuTiming(activeCommandList, frameResources, D3D12GpuTimingPass.ReservoirHistoryUpdate);
             activeCommandList.EndEvent();
         }
+
+        return true;
     }
 
     private void RenderTubeFields(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
@@ -2819,7 +2883,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private void RenderPointCloudMeshes(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
     {
         activePointCloudRenderedMeshes = 0;
-        if (pointCloudRenderPipelineState is null)
+        if (pointCloudRenderPipelineState is null ||
+            Environment.GetEnvironmentVariable("AQUARIUM_RENDER_POINT_CLOUD_DIAG") != "1")
         {
             return;
         }
@@ -3125,13 +3190,17 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCommandList.DrawInstanced(3, 1, 0, 0);
     }
 
-    private void PresentBackBuffer(D3D12PassContext context, FrameResources frameResources)
+    private void PresentBackBuffer(
+        D3D12PassContext context,
+        FrameResources frameResources,
+        D3D12RenderTarget sourceTarget,
+        D3D12DescriptorSlot sourceDescriptor)
     {
         context.CommandList.BeginEvent("Reservoir Presentation Resolve");
         BeginGpuTiming(context.CommandList, frameResources, D3D12GpuTimingPass.PresentationResolve);
         try
         {
-            reservoirResolvedRenderTarget.Transition(context.CommandList, ResourceStates.PixelShaderResource);
+            sourceTarget.Transition(context.CommandList, ResourceStates.PixelShaderResource);
             sceneMetadataRenderTarget.Transition(context.CommandList, ResourceStates.PixelShaderResource);
             sceneControlRenderTarget.Transition(context.CommandList, ResourceStates.PixelShaderResource);
             sceneReservoirGuideRenderTarget.Transition(context.CommandList, ResourceStates.PixelShaderResource);
@@ -3141,7 +3210,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             context.CommandList.SetPipelineState(resolvePipelineState!);
             context.CommandList.SetGraphicsRootSignature(fullscreenRootSignature);
             context.CommandList.SetGraphicsRootDescriptorTable(RootFrameConstants, frameResources.FrameConstantsDescriptor.Gpu);
-            context.CommandList.SetGraphicsRootDescriptorTable(RootSourceTexture, frameResources.ReservoirResolvedDescriptor.Gpu);
+            context.CommandList.SetGraphicsRootDescriptorTable(RootSourceTexture, sourceDescriptor.Gpu);
             context.CommandList.SetGraphicsRootDescriptorTable(RootBloom, frameResources.BloomPresentationDescriptor.Gpu);
             context.CommandList.SetGraphicsRootDescriptorTable(RootCurrentSceneMetadata, frameResources.SceneMetadataDescriptor.Gpu);
             context.CommandList.SetGraphicsRootDescriptorTable(RootCurrentSceneControl, frameResources.SceneControlDescriptor.Gpu);
@@ -3240,6 +3309,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private void DispatchFractalReservoirs(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
     {
+        if (activePointCloudSurfaceReservoir)
+        {
+            return;
+        }
+
         if (!activeFractalReservoirField.HasInput ||
             fractalSplatBuffer is null ||
             fractalSdfReservoirBuffer is null ||
@@ -3495,8 +3569,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             }
 
             if (!lowering.IsValid ||
-                !fieldResourceRegistry.TryGetTexture2D(lowering.LeftResourceKey, out _) ||
-                !fieldResourceRegistry.TryGetTexture2D(lowering.RightResourceKey, out _) ||
+                !TryGetFieldTexture2D(lowering.LeftResourceKey, out _) ||
+                !TryGetFieldTexture2D(lowering.RightResourceKey, out _) ||
                 !fieldResourceRegistry.TryGetSurfacePage(lowering.DisparityResourceKey, out var disparity) ||
                 !disparity.AllowsUnorderedAccess)
             {
@@ -3541,7 +3615,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 var normalized = lowering.Normalized();
                 if (!plannedClaims.Contains(normalized.ClaimKey) ||
                     !string.Equals(normalized.LeftResourceKey, normalized.RightResourceKey, StringComparison.Ordinal) ||
-                    !fieldResourceRegistry.TryGetTexture2D(normalized.LeftResourceKey, out var packedInput) ||
+                    !TryGetFieldTexture2D(normalized.LeftResourceKey, out var packedInput) ||
                     !fieldResourceRegistry.TryGetSurfacePage(normalized.DisparityResourceKey, out var disparityOutput) ||
                     !disparityOutput.AllowsUnorderedAccess)
                 {
@@ -3580,12 +3654,34 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
     }
 
+    private bool TryGetFieldTexture2D(string resourceKey, out D3D12FieldTexture2D texture)
+    {
+        if (fieldResourceRegistry.TryGetTexture2D(resourceKey, out texture))
+        {
+            return true;
+        }
+
+        if (sharedTextureLeases.TryGetValue(resourceKey, out var slot))
+        {
+            texture = slot.Texture;
+            return true;
+        }
+
+        texture = null!;
+        return false;
+    }
+
     private void DispatchPointClouds(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
     {
         activePointCloudGeneratedMeshes = 0;
         activePointCloudUnresolvedMeshes = 0;
         activePointCloudUnplannedMeshes = 0;
-        if (pointCloudComputePipelineState is null)
+        if (pointCloudComputePipelineState is null ||
+            !activePointCloudSurfaceReservoir ||
+            fractalSplatBuffer is null ||
+            fractalSdfReservoirBuffer is null ||
+            fractalPbrReservoirBuffer is null ||
+            fractalRadiosityReservoirBuffer is null)
         {
             return;
         }
@@ -3628,28 +3724,84 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 var constants = new D3D12PointCloudConstants(
                     new Vector4(disparity.Width, disparity.Height, pointCount, sampleStride),
                     new Vector4(10.0f, 250.0f, disparity.Width * 0.5f, disparity.Height * 0.5f),
-                    new Vector4(0.20f, 4.0f, 0.0f, 0.0f));
+                    new Vector4(0.20f, 4.0f, 5.0f, 1.2f));
                 var constantsUpload = frameResources.UploadRing.WriteConstant(constants);
 
                 disparity.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
                 mesh.Vertices.Transition(activeCommandList, ResourceStates.UnorderedAccess);
                 mesh.Indices.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+                if (activePointCloudSurfaceReservoir &&
+                    fractalSplatBuffer is not null &&
+                    fractalSdfReservoirBuffer is not null &&
+                    fractalPbrReservoirBuffer is not null &&
+                    fractalRadiosityReservoirBuffer is not null)
+                {
+                    fractalSplatBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+                    fractalSdfReservoirBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+                    fractalPbrReservoirBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+                    fractalRadiosityReservoirBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+                }
+
                 var disparityDescriptor = frameResources.TransientShaderDescriptors.Allocate();
                 disparity.CreateShaderResourceView(device, disparityDescriptor);
                 var vertexDescriptor = frameResources.TransientShaderDescriptors.Allocate();
                 mesh.Vertices.CreateUnorderedAccessView(device, vertexDescriptor);
                 var indexDescriptor = frameResources.TransientShaderDescriptors.Allocate();
                 mesh.Indices.CreateUnorderedAccessView(device, indexDescriptor);
+                D3D12DescriptorSlot splatDescriptor = default;
+                D3D12DescriptorSlot sdfDescriptor = default;
+                D3D12DescriptorSlot pbrDescriptor = default;
+                D3D12DescriptorSlot radiosityDescriptor = default;
+                if (activePointCloudSurfaceReservoir &&
+                    fractalSplatBuffer is not null &&
+                    fractalSdfReservoirBuffer is not null &&
+                    fractalPbrReservoirBuffer is not null &&
+                    fractalRadiosityReservoirBuffer is not null)
+                {
+                    splatDescriptor = frameResources.TransientShaderDescriptors.Allocate();
+                    fractalSplatBuffer.CreateUnorderedAccessView(device, splatDescriptor);
+                    sdfDescriptor = frameResources.TransientShaderDescriptors.Allocate();
+                    fractalSdfReservoirBuffer.CreateUnorderedAccessView(device, sdfDescriptor);
+                    pbrDescriptor = frameResources.TransientShaderDescriptors.Allocate();
+                    fractalPbrReservoirBuffer.CreateUnorderedAccessView(device, pbrDescriptor);
+                    radiosityDescriptor = frameResources.TransientShaderDescriptors.Allocate();
+                    fractalRadiosityReservoirBuffer.CreateUnorderedAccessView(device, radiosityDescriptor);
+                }
 
                 activeCommandList.SetComputeRootSignature(pointCloudRootSignature);
                 activeCommandList.SetPipelineState(pointCloudComputePipelineState);
+                activeCommandList.SetComputeRootDescriptorTable(RootPointCloudFrameConstants, frameResources.FrameConstantsDescriptor.Gpu);
                 activeCommandList.SetComputeRootConstantBufferView(RootPointCloudConstants, constantsUpload.GpuVirtualAddress);
                 activeCommandList.SetComputeRootDescriptorTable(RootPointCloudDisparity, disparityDescriptor.Gpu);
                 activeCommandList.SetComputeRootDescriptorTable(RootPointCloudVertices, vertexDescriptor.Gpu);
                 activeCommandList.SetComputeRootDescriptorTable(RootPointCloudIndices, indexDescriptor.Gpu);
+                if (activePointCloudSurfaceReservoir &&
+                    fractalSplatBuffer is not null &&
+                    fractalSdfReservoirBuffer is not null &&
+                    fractalPbrReservoirBuffer is not null &&
+                    fractalRadiosityReservoirBuffer is not null)
+                {
+                    activeCommandList.SetComputeRootDescriptorTable(RootPointCloudFractalSplats, splatDescriptor.Gpu);
+                    activeCommandList.SetComputeRootDescriptorTable(RootPointCloudSdfReservoirs, sdfDescriptor.Gpu);
+                    activeCommandList.SetComputeRootDescriptorTable(RootPointCloudPbrReservoirs, pbrDescriptor.Gpu);
+                    activeCommandList.SetComputeRootDescriptorTable(RootPointCloudRadiosityReservoirs, radiosityDescriptor.Gpu);
+                }
+
                 activeCommandList.Dispatch((uint)((pointCount + 127) / 128), 1, 1);
                 activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(mesh.Vertices.Resource));
                 activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(mesh.Indices.Resource));
+                if (activePointCloudSurfaceReservoir &&
+                    fractalSplatBuffer is not null &&
+                    fractalSdfReservoirBuffer is not null &&
+                    fractalPbrReservoirBuffer is not null &&
+                    fractalRadiosityReservoirBuffer is not null)
+                {
+                    activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(fractalSplatBuffer.Resource));
+                    activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(fractalSdfReservoirBuffer.Resource));
+                    activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(fractalPbrReservoirBuffer.Resource));
+                    activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(fractalRadiosityReservoirBuffer.Resource));
+                }
+
                 activePointCloudGeneratedMeshes++;
             }
         }
@@ -3864,9 +4016,20 @@ public sealed class D3D12Renderer : IAquariumRenderer
             ? AquariumFieldLoweringPlan.Empty
             : AquariumFieldLoweringPlanner.Plan(activeFieldEvidenceFrame);
         EvaluateStereoDepthLowerings();
+        var pointCloudReservoirField = BuildPointCloudSurfaceReservoirField();
         activeFractalProgramTransforms = activeFractalReservoirField.HasInput && scene.FractalReservoirField.ProgramTransforms.Count > 0
             ? scene.FractalReservoirField.ProgramTransforms as AquariumPackedFractalIfsTransform[] ?? scene.FractalReservoirField.ProgramTransforms.ToArray()
             : [];
+        if (!activeFractalReservoirField.HasInput && pointCloudReservoirField.HasInput)
+        {
+            activeFractalReservoirField = pointCloudReservoirField;
+            activePointCloudSurfaceReservoir = true;
+        }
+        else
+        {
+            activePointCloudSurfaceReservoir = false;
+        }
+
         visibleFractalSplatCount = activeFractalReservoirField.HasInput
             ? Math.Min(activeFractalReservoirField.SplatCount, MaxVisibleFractalSplatCount)
             : 0;
@@ -4075,6 +4238,43 @@ public sealed class D3D12Renderer : IAquariumRenderer
             AquariumFieldLoweringMode.DirectSdfTubes => false,
             AquariumFieldLoweringMode.Mesh => false,
             _ => EstimateTextureSplineColumnCount(frame) > policy.MaxDirectSplines,
+        };
+    }
+
+    private AquariumFractalReservoirField BuildPointCloudSurfaceReservoirField()
+    {
+        var splatCount = 0;
+        foreach (var packet in activeFieldLoweringPlan.Packets)
+        {
+            if (packet.Backend != AquariumFieldBackendKind.Mesh ||
+                packet.Encoding != AquariumFieldEncoding.Mesh ||
+                !fieldResourceRegistry.TryGetMesh(packet.PayloadHandle, out var mesh) ||
+                mesh.Topology != AquariumFieldMeshTopology.PointList ||
+                !mesh.IsGeneratedFromResource ||
+                !mesh.HasStandardImportedLayout)
+            {
+                continue;
+            }
+
+            splatCount = Math.Max(splatCount, Math.Min(mesh.Vertices.ElementCount, mesh.Indices.ElementCount));
+        }
+
+        if (splatCount <= 0)
+        {
+            return AquariumFractalReservoirField.Empty;
+        }
+
+        splatCount = Math.Min(splatCount, MaxVisibleFractalSplatCount);
+        return new AquariumFractalReservoirField
+        {
+            SplatCount = splatCount,
+            Depth = 1,
+            Seed = 0x1EA9D371u,
+            CandidatesPerReservoirUpdate = 1,
+            SplatUpdatesPerFrame = splatCount,
+            ReservoirUpdatesPerPass = splatCount,
+            WorldCenterRadius = new Vector4(0.0f, 0.0f, 0.0f, 1.0f),
+            PriorityFocus = new Vector4(0.0f, 0.0f, 2.0f, 1.0f),
         };
     }
 
@@ -4743,7 +4943,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 bloomDownsamplePipelineState!,
                 bloomBlurHorizontalPipelineState!,
                 bloomBlurVerticalPipelineState!,
-                reservoirHistoryUpdatePipelineState!,
+                reservoirHistoryUpdatePipelineState,
                 resolvePipelineState!)
             : null;
     }
@@ -5087,6 +5287,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
             0,
             0,
             D3D12.DescriptorRangeOffsetAppend);
+        var frameConstantsRange = new DescriptorRange(
+            DescriptorRangeType.ConstantBufferView,
+            1,
+            0,
+            0,
+            D3D12.DescriptorRangeOffsetAppend);
         var vertexRange = new DescriptorRange(
             DescriptorRangeType.UnorderedAccessView,
             1,
@@ -5099,12 +5305,41 @@ public sealed class D3D12Renderer : IAquariumRenderer
             1,
             0,
             D3D12.DescriptorRangeOffsetAppend);
+        var splatRange = new DescriptorRange(
+            DescriptorRangeType.UnorderedAccessView,
+            1,
+            2,
+            0,
+            D3D12.DescriptorRangeOffsetAppend);
+        var sdfReservoirRange = new DescriptorRange(
+            DescriptorRangeType.UnorderedAccessView,
+            1,
+            3,
+            0,
+            D3D12.DescriptorRangeOffsetAppend);
+        var pbrReservoirRange = new DescriptorRange(
+            DescriptorRangeType.UnorderedAccessView,
+            1,
+            4,
+            0,
+            D3D12.DescriptorRangeOffsetAppend);
+        var radiosityReservoirRange = new DescriptorRange(
+            DescriptorRangeType.UnorderedAccessView,
+            1,
+            5,
+            0,
+            D3D12.DescriptorRangeOffsetAppend);
         var rootParameters = new[]
         {
+            new RootParameter(new RootDescriptorTable([frameConstantsRange]), ShaderVisibility.All),
             new RootParameter(RootParameterType.ConstantBufferView, new RootDescriptor(1, 0), ShaderVisibility.All),
             new RootParameter(new RootDescriptorTable([disparityRange]), ShaderVisibility.All),
             new RootParameter(new RootDescriptorTable([vertexRange]), ShaderVisibility.All),
             new RootParameter(new RootDescriptorTable([indexRange]), ShaderVisibility.All),
+            new RootParameter(new RootDescriptorTable([splatRange]), ShaderVisibility.All),
+            new RootParameter(new RootDescriptorTable([sdfReservoirRange]), ShaderVisibility.All),
+            new RootParameter(new RootDescriptorTable([pbrReservoirRange]), ShaderVisibility.All),
+            new RootParameter(new RootDescriptorTable([radiosityReservoirRange]), ShaderVisibility.All),
         };
         var description = new RootSignatureDescription(
             RootSignatureFlags.None,
@@ -5544,13 +5779,25 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private ID3D12PipelineState CreateReservoirHistoryUpdatePipelineState(string path)
     {
-        var computeShader = CompileShader(path, "D3D12ReservoirHistoryUpdateCS", "cs_5_0");
+        static void Step(string name)
+        {
+            if (Environment.GetEnvironmentVariable("AQUARIUM_PIPELINE_DIAG") == "1")
+            {
+                Console.WriteLine($"D3D12 pipeline build step: {name}");
+            }
+        }
+
+        Step("reservoir-history-update compile");
+        var computeShader = CompileShader(path, "D3D12ReservoirHistoryUpdateCS", "cs_5_0", skipOptimizationInDebug: false);
+        Step("reservoir-history-update create-pso");
         var description = new ComputePipelineStateDescription
         {
             RootSignature = fullscreenRootSignature,
             ComputeShader = computeShader,
         };
-        return device.CreateComputePipelineState(description);
+        var pipelineState = device.CreateComputePipelineState(description);
+        Step("reservoir-history-update done");
+        return pipelineState;
     }
 
     private ID3D12PipelineState CreateResolvePipelineState(string path)
@@ -5962,13 +6209,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
         ID3D12PipelineState BloomDownsample,
         ID3D12PipelineState BloomBlurHorizontal,
         ID3D12PipelineState BloomBlurVertical,
-        ID3D12PipelineState ReservoirHistoryUpdate,
+        ID3D12PipelineState? ReservoirHistoryUpdate,
         ID3D12PipelineState Resolve) : IDisposable
     {
         public void Dispose()
         {
             Resolve.Dispose();
-            ReservoirHistoryUpdate.Dispose();
+            ReservoirHistoryUpdate?.Dispose();
             BloomBlurVertical.Dispose();
             BloomBlurHorizontal.Dispose();
             BloomDownsample.Dispose();
@@ -6000,10 +6247,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     }
 
     private sealed record SharedTextureLeaseSlot(
-        ID3D12Resource Resource,
+        D3D12FieldTexture2D Texture,
         ID3D12Fence ProducerFence,
-        IntPtr NativeHandle,
-        IntPtr ProducerFenceHandle,
         int Width,
         int Height,
         Format Format,
@@ -6014,20 +6259,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
         public ulong WaitedProducerFenceValue { get; set; }
 
+        public IntPtr NativeHandle => IntPtr.Zero;
+
         public void Dispose()
         {
-            if (ProducerFenceHandle != IntPtr.Zero)
-            {
-                CloseHandle(ProducerFenceHandle);
-            }
-
-            if (NativeHandle != IntPtr.Zero)
-            {
-                CloseHandle(NativeHandle);
-            }
-
             ProducerFence.Dispose();
-            Resource.Dispose();
+            Texture.Dispose();
         }
     }
 

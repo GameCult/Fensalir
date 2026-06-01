@@ -133,7 +133,10 @@ invariants:
     repos still own dashboard state, accepted commands, and meaning. CultUI
     preview elements may expose reusable item-body/corner-handle gestures in
     normalized preview coordinates, but the client remains the owner of what
-    those gestures do.
+    those gestures do. The preview primitive also carries hover/active state,
+    empty-canvas hits, drag-end events, and client-provided normalized guides
+    so compositor surfaces can show snap/selection feedback without becoming
+    renderer-owned policy.
   - Planetary ocean/atmosphere flow is an engine field organ when reduced to
     reusable stochastic advection machinery. Fensalir owns cube-sphere flow
     addressing, dataset provenance, model contracts, stochastic advection

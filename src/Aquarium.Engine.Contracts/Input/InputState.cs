@@ -128,8 +128,13 @@ public enum KeyCode
     Delete,
     Enter,
     LeftArrow,
+    UpArrow,
     RightArrow,
+    DownArrow,
     Home,
     End,
+    PageUp,
+    PageDown,
     Shift,
+    Control,
 }

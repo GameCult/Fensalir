@@ -1,3 +1,4 @@
+using System.Numerics;
 using Vortice.DCommon;
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
@@ -396,8 +397,10 @@ internal sealed class DirectWriteOverlay : IDisposable
         }
 
         renderTarget.DrawRectangle(canvas, outlineBrush, 1.0f);
+        DrawPreviewGuides(element, canvas);
 
         var items = element.ReadPreviewItems?.Invoke() ?? [];
+        var state = element.ReadPreviewState?.Invoke() ?? default;
         foreach (var item in items)
         {
             var left = canvas.Left + Math.Clamp(item.X, 0.0f, 1.0f) * canvas.Width;
@@ -410,24 +413,51 @@ internal sealed class DirectWriteOverlay : IDisposable
                 continue;
             }
 
-            var brush = item.Selected ? accentBrush : ToneBrush(item.Tone);
-            renderTarget.FillRectangle(itemBounds, item.Selected ? hoverRowBrush : rowBrush);
-            renderTarget.DrawRectangle(itemBounds, brush, item.Selected ? 2.0f : 1.0f);
+            var hovered = string.Equals(state.HoverItemId, item.Id, StringComparison.Ordinal);
+            var active = string.Equals(state.ActiveItemId, item.Id, StringComparison.Ordinal);
+            var brush = active || item.Selected ? accentBrush : ToneBrush(item.Tone);
+            renderTarget.FillRectangle(itemBounds, active ? activeRowBrush : hovered ? hoverRowBrush : rowBrush);
+            renderTarget.DrawRectangle(itemBounds, brush, active || item.Selected ? 2.0f : hovered ? 1.5f : 1.0f);
             renderTarget.DrawText(item.Label, smallFormat, RectFromEdges(itemBounds.Left + 6.0f, itemBounds.Top + 3.0f, itemBounds.Right - 6.0f, itemBounds.Bottom), primaryTextBrush, DrawTextOptions.Clip);
             if (item.Selected && element.HandlePreviewInteraction is not null)
             {
-                DrawPreviewHandle(itemBounds.Left, itemBounds.Top);
-                DrawPreviewHandle(itemBounds.Right, itemBounds.Top);
-                DrawPreviewHandle(itemBounds.Left, itemBounds.Bottom);
-                DrawPreviewHandle(itemBounds.Right, itemBounds.Bottom);
+                DrawPreviewHandle(itemBounds.Left, itemBounds.Top, state, item.Id, "nw");
+                DrawPreviewHandle(itemBounds.Right, itemBounds.Top, state, item.Id, "ne");
+                DrawPreviewHandle(itemBounds.Left, itemBounds.Bottom, state, item.Id, "sw");
+                DrawPreviewHandle(itemBounds.Right, itemBounds.Bottom, state, item.Id, "se");
             }
         }
     }
 
-    private void DrawPreviewHandle(float x, float y)
+    private void DrawPreviewGuides(AquariumUiElement element, Rect canvas)
     {
-        var handle = RectFromEdges(x - 4.0f, y - 4.0f, x + 4.0f, y + 4.0f);
-        renderTarget.FillRectangle(handle, accentActiveBrush);
+        var guides = element.ReadPreviewGuides?.Invoke() ?? [];
+        foreach (var guide in guides)
+        {
+            var position = Math.Clamp(guide.Position, 0.0f, 1.0f);
+            var brush = ToneBrush(guide.Tone);
+            if (string.Equals(guide.Axis, "x", StringComparison.Ordinal))
+            {
+                var x = canvas.Left + position * canvas.Width;
+                renderTarget.DrawLine(new Vector2(x, canvas.Top), new Vector2(x, canvas.Bottom), brush, 1.25f);
+            }
+            else if (string.Equals(guide.Axis, "y", StringComparison.Ordinal))
+            {
+                var y = canvas.Top + position * canvas.Height;
+                renderTarget.DrawLine(new Vector2(canvas.Left, y), new Vector2(canvas.Right, y), brush, 1.25f);
+            }
+        }
+    }
+
+    private void DrawPreviewHandle(float x, float y, AquariumUiPreviewState state, string itemId, string handleId)
+    {
+        var active = string.Equals(state.ActiveItemId, itemId, StringComparison.Ordinal) &&
+            string.Equals(state.ActiveHandle, handleId, StringComparison.Ordinal);
+        var hovered = string.Equals(state.HoverItemId, itemId, StringComparison.Ordinal) &&
+            string.Equals(state.HoverHandle, handleId, StringComparison.Ordinal);
+        var radius = active ? 6.0f : hovered ? 5.0f : 4.0f;
+        var handle = RectFromEdges(x - radius, y - radius, x + radius, y + radius);
+        renderTarget.FillRectangle(handle, active ? accentActiveBrush : hovered ? accentHoverBrush : accentBrush);
         renderTarget.DrawRectangle(handle, panelBrush, 1.0f);
     }
 

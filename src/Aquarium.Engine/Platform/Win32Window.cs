@@ -69,10 +69,15 @@ public sealed class Win32Window : IDisposable
     private const int VK_DELETE = 0x2E;
     private const int VK_RETURN = 0x0D;
     private const int VK_LEFT = 0x25;
+    private const int VK_UP = 0x26;
     private const int VK_RIGHT = 0x27;
+    private const int VK_DOWN = 0x28;
     private const int VK_HOME = 0x24;
     private const int VK_END = 0x23;
+    private const int VK_PRIOR = 0x21;
+    private const int VK_NEXT = 0x22;
     private const int VK_SHIFT = 0x10;
+    private const int VK_CONTROL = 0x11;
     private const int WHEEL_DELTA = 120;
 
     private readonly WndProc windowProcedure;
@@ -824,8 +829,14 @@ public sealed class Win32Window : IDisposable
             case VK_LEFT:
                 input.SetKey(KeyCode.LeftArrow, isDown);
                 break;
+            case VK_UP:
+                input.SetKey(KeyCode.UpArrow, isDown);
+                break;
             case VK_RIGHT:
                 input.SetKey(KeyCode.RightArrow, isDown);
+                break;
+            case VK_DOWN:
+                input.SetKey(KeyCode.DownArrow, isDown);
                 break;
             case VK_HOME:
                 input.SetKey(KeyCode.Home, isDown);
@@ -833,8 +844,17 @@ public sealed class Win32Window : IDisposable
             case VK_END:
                 input.SetKey(KeyCode.End, isDown);
                 break;
+            case VK_PRIOR:
+                input.SetKey(KeyCode.PageUp, isDown);
+                break;
+            case VK_NEXT:
+                input.SetKey(KeyCode.PageDown, isDown);
+                break;
             case VK_SHIFT:
                 input.SetKey(KeyCode.Shift, isDown);
+                break;
+            case VK_CONTROL:
+                input.SetKey(KeyCode.Control, isDown);
                 break;
         }
     }

@@ -613,6 +613,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
             clientUiSurfaceWantsMouse = true;
             if (!input.LeftMouseDown)
             {
+                active.Element.HandlePreviewInteraction?.Invoke(new AquariumUiPreviewInteraction(
+                    active.ItemId,
+                    active.Handle,
+                    "end",
+                    Math.Clamp((input.MousePosition.X - active.Canvas.Left) / Math.Max(1.0f, active.Canvas.Width), 0.0f, 1.0f),
+                    Math.Clamp((input.MousePosition.Y - active.Canvas.Top) / Math.Max(1.0f, active.Canvas.Height), 0.0f, 1.0f),
+                    0.0f,
+                    0.0f));
                 activePreviewDrag = null;
                 return;
             }
@@ -633,6 +641,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
         if (TryHitPreview(input.MousePosition, out var hit))
         {
             clientUiSurfaceWantsMouse = true;
+            hit.Element.HandlePreviewInteraction?.Invoke(new AquariumUiPreviewInteraction(
+                hit.ItemId,
+                hit.Handle,
+                "hover",
+                hit.X,
+                hit.Y,
+                0.0f,
+                0.0f));
             if (input.IsMousePressed(MouseButton.Left))
             {
                 activePreviewDrag = new AquariumUiPreviewDrag(hit.Element, hit.ItemId, hit.Handle, hit.Canvas);
@@ -766,7 +782,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
             return true;
         }
 
-        return false;
+        hit = new AquariumUiPreviewHit(
+            element,
+            "",
+            "canvas",
+            canvas,
+            Math.Clamp((point.X - canvas.Left) / Math.Max(1.0f, canvas.Width), 0.0f, 1.0f),
+            Math.Clamp((point.Y - canvas.Top) / Math.Max(1.0f, canvas.Height), 0.0f, 1.0f));
+        return true;
     }
 
     private static bool TryPreviewCanvas(Rect bounds, bool hasLabel, out Rect canvas)

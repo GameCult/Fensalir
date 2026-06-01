@@ -100,6 +100,17 @@ public readonly record struct AquariumUiPreviewInteraction(
     float DeltaX,
     float DeltaY);
 
+public readonly record struct AquariumUiPreviewState(
+    string HoverItemId = "",
+    string HoverHandle = "",
+    string ActiveItemId = "",
+    string ActiveHandle = "");
+
+public readonly record struct AquariumUiPreviewGuide(
+    string Axis,
+    float Position,
+    string Tone = "neutral");
+
 public sealed record AquariumUiElement(
     string Id,
     string Kind,
@@ -120,6 +131,8 @@ public sealed record AquariumUiElement(
     Action<int>? WriteOption = null,
     IReadOnlyList<AquariumUiOption>? Options = null,
     Func<IReadOnlyList<AquariumUiPreviewItem>>? ReadPreviewItems = null,
+    Func<AquariumUiPreviewState>? ReadPreviewState = null,
+    Func<IReadOnlyList<AquariumUiPreviewGuide>>? ReadPreviewGuides = null,
     bool PreviewBlitsOutputBuffer = false,
     Action<AquariumUiPreviewInteraction>? HandlePreviewInteraction = null,
     Action? Invoke = null,
@@ -217,13 +230,17 @@ public sealed class AquariumUiSurfaceBuilder(List<AquariumUiElement> children)
         Func<IReadOnlyList<AquariumUiPreviewItem>> readItems,
         float weight = 1.0f,
         bool blitOutputBuffer = false,
-        Action<AquariumUiPreviewInteraction>? handleInteraction = null)
+        Action<AquariumUiPreviewInteraction>? handleInteraction = null,
+        Func<AquariumUiPreviewState>? readState = null,
+        Func<IReadOnlyList<AquariumUiPreviewGuide>>? readGuides = null)
     {
         children.Add(new AquariumUiElement(
             id,
             "preview",
             label,
             ReadPreviewItems: readItems,
+            ReadPreviewState: readState,
+            ReadPreviewGuides: readGuides,
             PreviewBlitsOutputBuffer: blitOutputBuffer,
             HandlePreviewInteraction: handleInteraction,
             Weight: Math.Max(0.001f, weight)));

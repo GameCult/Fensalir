@@ -108,6 +108,7 @@ struct SceneOut
     float4 metadata : SV_Target1;
     float4 control : SV_Target2;
     float4 reservoirGuide : SV_Target3;
+    float overdraw : SV_Target4;
     float depth : SV_Depth;
 };
 
@@ -285,6 +286,7 @@ SceneOut D3D12PointCloudPS(VertexOut input)
     output.metadata = float4(FIELD_ID_POINT_CLOUD, normalize(input.normal));
     output.control = float4(alpha, 1.0, 0.35, 0.0);
     output.reservoirGuide = float4(alpha, 0.0, alpha, 0.0);
+    output.overdraw = 1.0;
     output.depth = input.position.z / input.position.w;
     return output;
 }

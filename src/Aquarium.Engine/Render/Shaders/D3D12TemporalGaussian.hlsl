@@ -52,6 +52,7 @@ struct SceneOut
     float4 metadata : SV_Target1;
     float4 control : SV_Target2;
     float4 reservoirGuide : SV_Target3;
+    float overdraw : SV_Target4;
     float depth : SV_Depth;
 };
 
@@ -185,6 +186,7 @@ SceneOut D3D12TemporalGaussianPS(TemporalGaussianVertexOut input)
     output.metadata = float4(FIELD_ID_TEMPORAL_GAUSSIAN_BASE + gaussian.previousCenterFieldId.w, normal);
     output.control = float4(opacity, saturate(gaussian.centerHistoryWeight.w), saturate(gaussian.shapePad.x / 8.0), 0.0);
     output.reservoirGuide = float4(saturate(gaussian.velocityConfidence.w), 0.0, 1.0, 0.0);
+    output.overdraw = 1.0;
     output.depth = saturate(travel / max(farDistance, 0.001));
     return output;
 }

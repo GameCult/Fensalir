@@ -55,6 +55,7 @@ struct SceneOut
     float4 metadata : SV_Target1;
     float4 control : SV_Target2;
     float4 reservoirGuide : SV_Target3;
+    float overdraw : SV_Target4;
     float depth : SV_Depth;
 };
 
@@ -408,6 +409,7 @@ SceneOut D3D12ScenePS(VertexOut input)
     output.metadata = float4(result.fieldId, result.normal);
     output.control = float4(result.coverage, result.stepCount / 72.0, 0.0, 0.0);
     output.reservoirGuide = float4(1.0, 0.0, 1.0, 0.0);
+    output.overdraw = 1.0;
     output.depth = saturate(result.travel / max(farDistance, 0.001));
     return output;
 }
@@ -662,6 +664,7 @@ SceneOut D3D12SplinePS(SplineVertexOut input)
     output.metadata = float4(5000.0, closestT, sdf, radiusPx);
     output.control = float4(claimCoverage, coverage, saturate(radiusPx / 32.0), 0.0);
     output.reservoirGuide = float4(claimCoverage, 0.0, coverage, 0.0);
+    output.overdraw = 1.0;
     output.depth = saturate(travel / max(farDistance, 0.0001));
     return output;
 }

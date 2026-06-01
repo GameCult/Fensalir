@@ -369,6 +369,7 @@ struct SceneOut
     float4 metadata : SV_Target1;
     float4 control : SV_Target2;
     float4 reservoirGuide : SV_Target3;
+    float overdraw : SV_Target4;
     float depth : SV_Depth;
 };
 
@@ -877,6 +878,7 @@ SceneOut D3D12TubeFieldPS(TubeFieldVertexOut input)
     output.metadata = float4(candidateFieldId, tubeNormal);
     output.control = float4(claimCoverage, supportCoverage, saturate(radiusWorld / max(viewRadius, 0.0001)), value);
     output.reservoirGuide = float4(claimCoverage, 0.0, supportCoverage, value);
+    output.overdraw = 1.0;
     output.depth = saturate(travel / max(farDistance, 0.0001));
     float target = fieldReservoirDefaultTarget(output.colorTravel, output.control, output.reservoirGuide);
     float selectedColumn = round(input.tubeData.x);

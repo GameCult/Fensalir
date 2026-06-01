@@ -135,6 +135,7 @@ SceneOut D3D12SdfProxyPS(SdfObjectProxyVertexOut input)
         saturate(surface.temporalDetail),
         saturate(surface.reservoirConfidence));
     output.reservoirGuide = float4(saturate(surface.reservoirConfidence), 0.0, 1.0, 0.0);
+    output.overdraw = 1.0;
     output.depth = saturate(travel / max(farDistance, 0.001));
     return output;
 }

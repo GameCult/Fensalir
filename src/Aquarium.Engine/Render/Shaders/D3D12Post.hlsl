@@ -42,6 +42,7 @@ Texture2D<float4> bloomTexture4 : register(t33);
 Texture2D<float4> bloomTexture5 : register(t34);
 Texture2D<float4> bloomTexture6 : register(t35);
 Texture2D<float4> bloomTexture7 : register(t36);
+Texture2D<float> sceneOverdrawTexture : register(t76);
 Texture2D<float4> currentReservoirGuideTexture : register(t26);
 Texture2D<float> blueNoiseTexture : register(t28);
 SamplerState sourceSampler : register(s0);
@@ -1226,6 +1227,19 @@ float4 reservoirDebugOrColor(FieldReservoirSample candidate, uint2 pixel)
     return float4(fieldReservoirResolvedColor(candidate, farDistance), candidate.colorTravel.w);
 }
 
+float3 overdrawHeat(float overdraw)
+{
+    if (overdraw <= 0.5)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    float hot = saturate(log2(max(overdraw, 1.0)) / 4.0);
+    float3 low = lerp(float3(0.0, 0.22, 0.95), float3(0.0, 0.95, 0.35), saturate(overdraw - 1.0));
+    float3 mid = lerp(low, float3(1.0, 0.92, 0.05), saturate((overdraw - 2.0) / 2.0));
+    return lerp(mid, float3(1.0, 0.05, 0.35), hot);
+}
+
 FieldReservoirResolveOut D3D12FieldReservoirResolvePS(VertexOut input)
 {
     uint2 pixel = (uint2)pixelFromUv(input.uv);
@@ -1339,7 +1353,8 @@ ResolveOut D3D12ReservoirPresentationResolvePS(VertexOut input)
     }
     else if (renderDebugMode >= 20.5 && renderDebugMode < 21.5)
     {
-        finalColor = float3(reconstructionMix, currentReservoirConfidence, currentReservoirDomainValidity);
+        float overdraw = sceneOverdrawTexture.SampleLevel(sourceSampler, input.uv, 0.0);
+        finalColor = overdrawHeat(overdraw);
     }
     else if (renderDebugMode >= 12.5 && renderDebugMode < 18.5)
     {

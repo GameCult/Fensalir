@@ -87,6 +87,7 @@ struct SceneOut
     float4 metadata : SV_Target1;
     float4 control : SV_Target2;
     float4 reservoirGuide : SV_Target3;
+    float overdraw : SV_Target4;
     float depth : SV_Depth;
 };
 
@@ -237,6 +238,7 @@ SceneOut ResolveFractalSplat(FractalSplatVertexOut input, bool renderTransparent
     output.metadata = float4(FIELD_ID_FRACTAL_SPLAT_BASE, normal);
     output.control = float4(opacity, reservoirConfidence, transparentField ? splat.materialConfidence.z / 10.0 : saturate((sdfResident ? sdf.centerRadius.w : splat.centerRadius.w) * 40.0), 0.0);
     output.reservoirGuide = float4(reservoirConfidence, reservoirSampleAge, domainValidity, 0.0);
+    output.overdraw = 1.0;
     output.depth = saturate(input.travel / max(farDistance, 0.0001));
     return output;
 }

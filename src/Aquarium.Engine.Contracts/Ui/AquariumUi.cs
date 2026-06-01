@@ -111,6 +111,7 @@ public sealed record AquariumUiElement(
     Action<int>? WriteOption = null,
     IReadOnlyList<AquariumUiOption>? Options = null,
     Func<IReadOnlyList<AquariumUiPreviewItem>>? ReadPreviewItems = null,
+    bool PreviewBlitsOutputBuffer = false,
     Action? Invoke = null,
     Func<bool>? IsVisible = null,
     float Weight = 1.0f,
@@ -200,9 +201,9 @@ public sealed class AquariumUiSurfaceBuilder(List<AquariumUiElement> children)
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Preview(string id, string label, Func<IReadOnlyList<AquariumUiPreviewItem>> readItems, float weight = 1.0f)
+    public AquariumUiSurfaceBuilder Preview(string id, string label, Func<IReadOnlyList<AquariumUiPreviewItem>> readItems, float weight = 1.0f, bool blitOutputBuffer = false)
     {
-        children.Add(new AquariumUiElement(id, "preview", label, ReadPreviewItems: readItems, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(id, "preview", label, ReadPreviewItems: readItems, PreviewBlitsOutputBuffer: blitOutputBuffer, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 }

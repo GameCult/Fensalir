@@ -17,6 +17,7 @@ internal sealed class DirectWriteOverlay : IDisposable
     private readonly IDWriteFontCollection fontCollection;
     private readonly IDWriteTypography smallCapsTypography;
     private readonly ID2D1RenderTarget renderTarget;
+    private readonly ID2D1Bitmap outputSnapshot;
     private readonly ID2D1SolidColorBrush primaryTextBrush;
     private readonly ID2D1SolidColorBrush quietTextBrush;
     private readonly ID2D1SolidColorBrush panelBrush;
@@ -66,6 +67,14 @@ internal sealed class DirectWriteOverlay : IDisposable
         renderTarget = direct2DFactory.CreateDxgiSurfaceRenderTarget(backBufferSurface, renderTargetProperties);
         renderTarget.AntialiasMode = AntialiasMode.PerPrimitive;
         renderTarget.TextAntialiasMode = Vortice.Direct2D1.TextAntialiasMode.Grayscale;
+        outputSnapshot = renderTarget.CreateBitmap(
+            new SizeI(width, height),
+            IntPtr.Zero,
+            0,
+            new BitmapProperties(
+                new PixelFormat(Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Ignore),
+                96.0f,
+                96.0f));
 
         primaryTextBrush = renderTarget.CreateSolidColorBrush(new Color4(0.88f, 0.96f, 1.0f, 0.92f));
         quietTextBrush = renderTarget.CreateSolidColorBrush(new Color4(0.54f, 0.68f, 0.72f, 0.72f));
@@ -87,6 +96,8 @@ internal sealed class DirectWriteOverlay : IDisposable
 
     public void Render(AquariumFrame frame, int renderDebugMode, DebugUi? debugUi, IReadOnlyList<DebugUi> clientUiPanels, IReadOnlyList<AquariumUiSurface> clientUiSurfaces, string performanceText)
     {
+        CaptureOutputSnapshot();
+
         renderTarget.BeginDraw();
         DrawPerformanceCounter(performanceText);
         if (debugUi is not null)
@@ -375,7 +386,15 @@ internal sealed class DirectWriteOverlay : IDisposable
             padded.Top + (padded.Height - canvasHeight) * 0.5f,
             padded.Left + (padded.Width + canvasWidth) * 0.5f,
             padded.Top + (padded.Height + canvasHeight) * 0.5f);
-        renderTarget.FillRectangle(canvas, panelBrush);
+        if (element.PreviewBlitsOutputBuffer)
+        {
+            DrawOutputSnapshot(canvas);
+        }
+        else
+        {
+            renderTarget.FillRectangle(canvas, panelBrush);
+        }
+
         renderTarget.DrawRectangle(canvas, outlineBrush, 1.0f);
 
         var items = element.ReadPreviewItems?.Invoke() ?? [];
@@ -396,6 +415,46 @@ internal sealed class DirectWriteOverlay : IDisposable
             renderTarget.DrawRectangle(itemBounds, brush, item.Selected ? 2.0f : 1.0f);
             renderTarget.DrawText(item.Label, smallFormat, RectFromEdges(itemBounds.Left + 6.0f, itemBounds.Top + 3.0f, itemBounds.Right - 6.0f, itemBounds.Bottom), primaryTextBrush, DrawTextOptions.Clip);
         }
+    }
+
+    private void CaptureOutputSnapshot()
+    {
+        try
+        {
+            outputSnapshot.CopyFromRenderTarget(renderTarget);
+        }
+        catch
+        {
+            // The overlay must never kill the frame if the swapchain surface is not copyable.
+        }
+    }
+
+    private void DrawOutputSnapshot(Rect canvas)
+    {
+        if (canvas.Width <= 1.0f || canvas.Height <= 1.0f)
+        {
+            return;
+        }
+
+        var sourceWidth = (float)Math.Max(1, width);
+        var sourceHeight = (float)Math.Max(1, height);
+        var sourceAspect = sourceWidth / sourceHeight;
+        var targetAspect = canvas.Width / Math.Max(1.0f, canvas.Height);
+        if (sourceAspect > targetAspect)
+        {
+            sourceWidth = sourceHeight * targetAspect;
+        }
+        else
+        {
+            sourceHeight = sourceWidth / targetAspect;
+        }
+
+        var source = new Rect(
+            (width - sourceWidth) * 0.5f,
+            (height - sourceHeight) * 0.5f,
+            sourceWidth,
+            sourceHeight);
+        renderTarget.DrawBitmap(outputSnapshot, canvas, 1.0f, BitmapInterpolationMode.Linear, source);
     }
 
     private ID2D1SolidColorBrush ToneBrush(string tone) =>
@@ -479,6 +538,7 @@ internal sealed class DirectWriteOverlay : IDisposable
         panelBrush.Dispose();
         quietTextBrush.Dispose();
         primaryTextBrush.Dispose();
+        outputSnapshot.Dispose();
         renderTarget.Dispose();
         directWriteFactory.Dispose();
         direct2DFactory.Dispose();

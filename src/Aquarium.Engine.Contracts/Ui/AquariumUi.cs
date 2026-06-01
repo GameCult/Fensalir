@@ -98,6 +98,25 @@ public sealed record AquariumUiLayout(
 
 public sealed record AquariumUiStyle(string Variant = "default", string Tone = "neutral");
 
+public sealed record AquariumUiBinding(
+    string DocumentSchema,
+    string DocumentId,
+    string Path,
+    string ValueKind,
+    string Access = "read",
+    string Authority = "",
+    string? CommandId = null)
+{
+    public static AquariumUiBinding Read(string documentSchema, string documentId, string path, string valueKind, string authority = "")
+        => new(documentSchema, documentId, path, valueKind, "read", authority);
+
+    public static AquariumUiBinding ReadWrite(string documentSchema, string documentId, string path, string valueKind, string authority = "")
+        => new(documentSchema, documentId, path, valueKind, "read-write", authority);
+
+    public static AquariumUiBinding Command(string documentSchema, string documentId, string path, string authority, string commandId)
+        => new(documentSchema, documentId, path, "command", "command", authority, commandId);
+}
+
 public sealed record AquariumUiPreviewItem(
     string Id,
     string Label,
@@ -135,6 +154,7 @@ public sealed record AquariumUiElement(
     string? Role = null,
     AquariumUiLayout? Layout = null,
     AquariumUiStyle? Style = null,
+    AquariumUiBinding? Binding = null,
     Func<string>? ReadText = null,
     Func<double>? ReadMetric = null,
     Func<bool>? ReadToggle = null,
@@ -200,45 +220,45 @@ public sealed class AquariumUiSurfaceBuilder(List<AquariumUiElement> children)
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Text(string id, string text, string role = "body", float weight = 1.0f, Func<bool>? isVisible = null)
+    public AquariumUiSurfaceBuilder Text(string id, string text, string role = "body", float weight = 1.0f, Func<bool>? isVisible = null, AquariumUiBinding? binding = null)
     {
-        children.Add(new AquariumUiElement(id, "text", text, role, IsVisible: isVisible, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(id, "text", text, role, Binding: binding, IsVisible: isVisible, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Text(string id, Func<string> read, string role = "body", float weight = 1.0f, Func<bool>? isVisible = null)
+    public AquariumUiSurfaceBuilder Text(string id, Func<string> read, string role = "body", float weight = 1.0f, Func<bool>? isVisible = null, AquariumUiBinding? binding = null)
     {
-        children.Add(new AquariumUiElement(id, "text", Role: role, ReadText: read, IsVisible: isVisible, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(id, "text", Role: role, Binding: binding, ReadText: read, IsVisible: isVisible, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Metric(string id, string label, Func<double> read, string tone = "neutral", float weight = 1.0f)
+    public AquariumUiSurfaceBuilder Metric(string id, string label, Func<double> read, string tone = "neutral", float weight = 1.0f, AquariumUiBinding? binding = null)
     {
-        children.Add(new AquariumUiElement(id, "metric", label, Style: new AquariumUiStyle("compact", tone), ReadMetric: read, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(id, "metric", label, Style: new AquariumUiStyle("compact", tone), Binding: binding, ReadMetric: read, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Toggle(string id, string label, Func<bool> read, Action<bool> write, float weight = 1.0f)
+    public AquariumUiSurfaceBuilder Toggle(string id, string label, Func<bool> read, Action<bool> write, float weight = 1.0f, AquariumUiBinding? binding = null)
     {
-        children.Add(new AquariumUiElement(id, "toggle", label, ReadToggle: read, WriteToggle: write, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(id, "toggle", label, Binding: binding, ReadToggle: read, WriteToggle: write, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Slider(string id, string label, Func<float> read, Action<float> write, float min, float max, string format = "0.###", float weight = 1.0f)
+    public AquariumUiSurfaceBuilder Slider(string id, string label, Func<float> read, Action<float> write, float min, float max, string format = "0.###", float weight = 1.0f, AquariumUiBinding? binding = null)
     {
-        children.Add(new AquariumUiElement(id, "slider", label, ReadFloat: read, WriteFloat: write, Min: min, Max: max, Format: format, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(id, "slider", label, Binding: binding, ReadFloat: read, WriteFloat: write, Min: min, Max: max, Format: format, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Options(string id, string label, Func<int> read, Action<int> write, IReadOnlyList<AquariumUiOption> options, float weight = 1.0f)
+    public AquariumUiSurfaceBuilder Options(string id, string label, Func<int> read, Action<int> write, IReadOnlyList<AquariumUiOption> options, float weight = 1.0f, AquariumUiBinding? binding = null)
     {
-        children.Add(new AquariumUiElement(id, "select", label, ReadOption: read, WriteOption: write, Options: options, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(id, "select", label, Binding: binding, ReadOption: read, WriteOption: write, Options: options, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Button(string id, string label, Action invoke, float weight = 1.0f, Func<bool>? isVisible = null)
+    public AquariumUiSurfaceBuilder Button(string id, string label, Action invoke, float weight = 1.0f, Func<bool>? isVisible = null, AquariumUiBinding? binding = null)
     {
-        children.Add(new AquariumUiElement(id, "button", label, Invoke: invoke, IsVisible: isVisible, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(id, "button", label, Binding: binding, Invoke: invoke, IsVisible: isVisible, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 
@@ -250,7 +270,8 @@ public sealed class AquariumUiSurfaceBuilder(List<AquariumUiElement> children)
         bool blitOutputBuffer = false,
         Action<AquariumUiPreviewInteraction>? handleInteraction = null,
         Func<AquariumUiPreviewState>? readState = null,
-        Func<IReadOnlyList<AquariumUiPreviewGuide>>? readGuides = null)
+        Func<IReadOnlyList<AquariumUiPreviewGuide>>? readGuides = null,
+        AquariumUiBinding? binding = null)
     {
         children.Add(new AquariumUiElement(
             id,
@@ -259,6 +280,7 @@ public sealed class AquariumUiSurfaceBuilder(List<AquariumUiElement> children)
             ReadPreviewItems: readItems,
             ReadPreviewState: readState,
             ReadPreviewGuides: readGuides,
+            Binding: binding,
             PreviewBlitsOutputBuffer: blitOutputBuffer,
             HandlePreviewInteraction: handleInteraction,
             Weight: Math.Max(0.001f, weight)));

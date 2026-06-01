@@ -92,7 +92,9 @@ invariants:
   - Eve is the portable retained-dashboard authority. The C# Aquarium/CultUI
     contract is the reference API shape for those documents; Fensalir Direct2D
     and D3D12 hit testing lower that document locally, but must not become the
-    owner of dashboard semantics or client policy.
+    owner of dashboard semantics or client policy. `AquariumUiBinding` names
+    the Verse-backed CultCache/CultMesh field behind a UI element; local
+    callbacks remain lowering actuators, not a second state authority.
   - Final composition reads the resolved HDR field texture produced by the
     shared reservoir history update pass. TubeField render lowerings inject
     visibility proposals into the shared field reservoir; they must not regain
@@ -135,6 +137,9 @@ invariants:
     CultMesh UI documents. The adapter should lower those documents into
     `AquariumUiDocument` and route commands back through Eve/CultNet; provider
     repos still own dashboard state, accepted commands, and meaning. CultUI
+    bindings carry document schema/id, path, value kind, access, authority, and
+    optional command id so provider state can move into CultCache without
+    changing the native renderer contract.
     preview elements may expose reusable item-body/corner-handle gestures in
     normalized preview coordinates, but the client remains the owner of what
     those gestures do. The preview primitive also carries hover/active state,

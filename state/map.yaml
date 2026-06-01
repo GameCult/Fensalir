@@ -130,7 +130,10 @@ invariants:
   - Fensalir's DirectWrite/Direct2D overlay is an Eve client surface for shared
     CultMesh UI documents. The adapter should lower those documents into
     `AquariumUiDocument` and route commands back through Eve/CultNet; provider
-    repos still own dashboard state, accepted commands, and meaning.
+    repos still own dashboard state, accepted commands, and meaning. CultUI
+    preview elements may expose reusable item-body/corner-handle gestures in
+    normalized preview coordinates, but the client remains the owner of what
+    those gestures do.
   - Planetary ocean/atmosphere flow is an engine field organ when reduced to
     reusable stochastic advection machinery. Fensalir owns cube-sphere flow
     addressing, dataset provenance, model contracts, stochastic advection

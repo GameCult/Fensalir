@@ -91,6 +91,15 @@ public sealed record AquariumUiPreviewItem(
     bool Selected = false,
     string Tone = "neutral");
 
+public readonly record struct AquariumUiPreviewInteraction(
+    string ItemId,
+    string Handle,
+    string Phase,
+    float X,
+    float Y,
+    float DeltaX,
+    float DeltaY);
+
 public sealed record AquariumUiElement(
     string Id,
     string Kind,
@@ -112,6 +121,7 @@ public sealed record AquariumUiElement(
     IReadOnlyList<AquariumUiOption>? Options = null,
     Func<IReadOnlyList<AquariumUiPreviewItem>>? ReadPreviewItems = null,
     bool PreviewBlitsOutputBuffer = false,
+    Action<AquariumUiPreviewInteraction>? HandlePreviewInteraction = null,
     Action? Invoke = null,
     Func<bool>? IsVisible = null,
     float Weight = 1.0f,
@@ -201,9 +211,22 @@ public sealed class AquariumUiSurfaceBuilder(List<AquariumUiElement> children)
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Preview(string id, string label, Func<IReadOnlyList<AquariumUiPreviewItem>> readItems, float weight = 1.0f, bool blitOutputBuffer = false)
+    public AquariumUiSurfaceBuilder Preview(
+        string id,
+        string label,
+        Func<IReadOnlyList<AquariumUiPreviewItem>> readItems,
+        float weight = 1.0f,
+        bool blitOutputBuffer = false,
+        Action<AquariumUiPreviewInteraction>? handleInteraction = null)
     {
-        children.Add(new AquariumUiElement(id, "preview", label, ReadPreviewItems: readItems, PreviewBlitsOutputBuffer: blitOutputBuffer, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(
+            id,
+            "preview",
+            label,
+            ReadPreviewItems: readItems,
+            PreviewBlitsOutputBuffer: blitOutputBuffer,
+            HandlePreviewInteraction: handleInteraction,
+            Weight: Math.Max(0.001f, weight)));
         return this;
     }
 }

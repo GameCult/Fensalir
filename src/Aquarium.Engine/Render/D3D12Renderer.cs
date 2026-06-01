@@ -218,6 +218,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private IReadOnlyList<DebugUi> clientUiPanels = [];
     private IReadOnlyList<AquariumUiSurface> clientUiSurfaces = [];
     private AquariumUiDocument? currentClientUi;
+    private AquariumUiPreviewDrag? activePreviewDrag;
+    private bool clientUiSurfaceWantsMouse;
     private int activeDebugTab;
     private string[] debugTabTitles = ["Aquarium", "Terminal", "Synth"];
     private string terminalInput = "help";
@@ -560,7 +562,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     public bool HasPresentedReadyFrame => hasPresentedReadyFrame;
 
-    public bool CapturesInput => debugUi.WantsKeyboard || debugUi.WantsMouse || clientUiPanels.Any(panel => panel.WantsKeyboard || panel.WantsMouse);
+    public bool CapturesInput => debugUi.WantsKeyboard || debugUi.WantsMouse || clientUiSurfaceWantsMouse || clientUiPanels.Any(panel => panel.WantsKeyboard || panel.WantsMouse);
 
     public AquariumSynthDocument DebugSynth => new AquariumSynthDocument
     {
@@ -599,7 +601,303 @@ public sealed class D3D12Renderer : IAquariumRenderer
         {
             panel.Update(input);
         }
+
+        UpdateSurfaceInteractions(input);
     }
+
+    private void UpdateSurfaceInteractions(InputState input)
+    {
+        clientUiSurfaceWantsMouse = false;
+        if (activePreviewDrag is { } active)
+        {
+            clientUiSurfaceWantsMouse = true;
+            if (!input.LeftMouseDown)
+            {
+                activePreviewDrag = null;
+                return;
+            }
+
+            var x = Math.Clamp((input.MousePosition.X - active.Canvas.Left) / Math.Max(1.0f, active.Canvas.Width), 0.0f, 1.0f);
+            var y = Math.Clamp((input.MousePosition.Y - active.Canvas.Top) / Math.Max(1.0f, active.Canvas.Height), 0.0f, 1.0f);
+            active.Element.HandlePreviewInteraction?.Invoke(new AquariumUiPreviewInteraction(
+                active.ItemId,
+                active.Handle,
+                "drag",
+                x,
+                y,
+                input.MouseDelta.X / Math.Max(1.0f, active.Canvas.Width),
+                input.MouseDelta.Y / Math.Max(1.0f, active.Canvas.Height)));
+            return;
+        }
+
+        if (TryHitPreview(input.MousePosition, out var hit))
+        {
+            clientUiSurfaceWantsMouse = true;
+            if (input.IsMousePressed(MouseButton.Left))
+            {
+                activePreviewDrag = new AquariumUiPreviewDrag(hit.Element, hit.ItemId, hit.Handle, hit.Canvas);
+                hit.Element.HandlePreviewInteraction?.Invoke(new AquariumUiPreviewInteraction(
+                    hit.ItemId,
+                    hit.Handle,
+                    "begin",
+                    hit.X,
+                    hit.Y,
+                    0.0f,
+                    0.0f));
+            }
+        }
+    }
+
+    private bool TryHitPreview(Vector2 point, out AquariumUiPreviewHit hit)
+    {
+        for (var surfaceIndex = clientUiSurfaces.Count - 1; surfaceIndex >= 0; surfaceIndex--)
+        {
+            var surface = clientUiSurfaces[surfaceIndex];
+            var surfaceBounds = SurfaceBounds(surface);
+            var hasTitle = !string.IsNullOrWhiteSpace(surface.Title);
+            var contentTop = hasTitle ? surfaceBounds.Top + 42.0f : surfaceBounds.Top + 8.0f;
+            var content = RectFromEdges(surfaceBounds.Left + 8.0f, contentTop, surfaceBounds.Right - 8.0f, surfaceBounds.Bottom - 8.0f);
+            if (TryHitPreviewChildren(surface.Root.Children ?? [], content, surface.Root.Layout ?? AquariumUiLayout.Vertical(), point, out hit))
+            {
+                return true;
+            }
+        }
+
+        hit = default;
+        return false;
+    }
+
+    private static bool TryHitPreviewChildren(IReadOnlyList<AquariumUiElement> elements, Rect bounds, AquariumUiLayout layout, Vector2 point, out AquariumUiPreviewHit hit)
+    {
+        var visible = elements.Where(static element => element.Visible).ToArray();
+        if (visible.Length == 0)
+        {
+            hit = default;
+            return false;
+        }
+
+        var content = RectFromEdges(
+            bounds.Left + layout.Padding,
+            bounds.Top + layout.Padding,
+            bounds.Right - layout.Padding,
+            bounds.Bottom - layout.Padding);
+        var totalGap = layout.Gap * Math.Max(0, visible.Length - 1);
+        var horizontal = string.Equals(layout.Direction, "horizontal", StringComparison.Ordinal);
+        var cursor = horizontal ? content.Left : content.Top;
+        var available = Math.Max(0.0f, (horizontal ? content.Width : content.Height) - totalGap);
+        var preferred = visible.Select(element => PreferredUiExtent(element, horizontal)).ToArray();
+        var preferredTotal = preferred.Sum(static value => value ?? 0.0f);
+        var preferredScale = preferredTotal > available && preferredTotal > 0.0f ? available / preferredTotal : 1.0f;
+        var flexibleWeight = Math.Max(0.001f, visible.Where((_, index) => preferred[index] is null).Sum(static element => Math.Max(0.001f, element.Weight)));
+        var flexibleAvailable = Math.Max(0.0f, available - preferredTotal * preferredScale);
+        for (var index = 0; index < visible.Length; index++)
+        {
+            var element = visible[index];
+            var extent = preferred[index] is { } fixedExtent
+                ? fixedExtent * preferredScale
+                : flexibleAvailable * Math.Max(0.001f, element.Weight) / flexibleWeight;
+            var childBounds = horizontal
+                ? RectFromEdges(cursor, content.Top, Math.Min(content.Right, cursor + extent), content.Bottom)
+                : RectFromEdges(content.Left, cursor, content.Right, Math.Min(content.Bottom, cursor + extent));
+            cursor += extent + layout.Gap;
+            if (!ContainsRect(childBounds, point))
+            {
+                continue;
+            }
+
+            if (TryHitPreviewElement(element, childBounds, point, out hit))
+            {
+                return true;
+            }
+        }
+
+        hit = default;
+        return false;
+    }
+
+    private static bool TryHitPreviewElement(AquariumUiElement element, Rect bounds, Vector2 point, out AquariumUiPreviewHit hit)
+    {
+        switch (element.Kind)
+        {
+            case "group":
+                return TryHitPreviewChildren(element.Children ?? [], bounds, element.Layout ?? AquariumUiLayout.Vertical(), point, out hit);
+            case "pane":
+                return TryHitPreviewChildren(element.Children ?? [], RectFromEdges(bounds.Left + 6.0f, bounds.Top + 32.0f, bounds.Right - 6.0f, bounds.Bottom - 6.0f), element.Layout ?? AquariumUiLayout.Vertical(), point, out hit);
+            case "card":
+                return TryHitPreviewChildren(element.Children ?? [], bounds, element.Layout ?? AquariumUiLayout.Vertical(4.0f, 8.0f), point, out hit);
+            case "preview":
+                return TryHitPreviewElementCanvas(element, bounds, point, out hit);
+            default:
+                hit = default;
+                return false;
+        }
+    }
+
+    private static bool TryHitPreviewElementCanvas(AquariumUiElement element, Rect bounds, Vector2 point, out AquariumUiPreviewHit hit)
+    {
+        hit = default;
+        if (element.HandlePreviewInteraction is null || !TryPreviewCanvas(bounds, !string.IsNullOrWhiteSpace(element.Text), out var canvas) || !ContainsRect(canvas, point))
+        {
+            return false;
+        }
+
+        var items = element.ReadPreviewItems?.Invoke() ?? [];
+        for (var index = items.Count - 1; index >= 0; index--)
+        {
+            var item = items[index];
+            var itemBounds = RectFromEdges(
+                canvas.Left + Math.Clamp(item.X, 0.0f, 1.0f) * canvas.Width,
+                canvas.Top + Math.Clamp(item.Y, 0.0f, 1.0f) * canvas.Height,
+                canvas.Left + Math.Clamp(item.X + item.Width, 0.0f, 1.0f) * canvas.Width,
+                canvas.Top + Math.Clamp(item.Y + item.Height, 0.0f, 1.0f) * canvas.Height);
+            if (!ContainsRect(itemBounds, point))
+            {
+                continue;
+            }
+
+            var handle = HitPreviewHandle(itemBounds, point);
+            hit = new AquariumUiPreviewHit(
+                element,
+                item.Id,
+                handle,
+                canvas,
+                Math.Clamp((point.X - canvas.Left) / Math.Max(1.0f, canvas.Width), 0.0f, 1.0f),
+                Math.Clamp((point.Y - canvas.Top) / Math.Max(1.0f, canvas.Height), 0.0f, 1.0f));
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryPreviewCanvas(Rect bounds, bool hasLabel, out Rect canvas)
+    {
+        var padded = hasLabel
+            ? RectFromEdges(bounds.Left + 10.0f, bounds.Top + 30.0f, bounds.Right - 10.0f, bounds.Bottom - 10.0f)
+            : RectFromEdges(bounds.Left + 2.0f, bounds.Top + 2.0f, bounds.Right - 2.0f, bounds.Bottom - 2.0f);
+        if (padded.Width <= 1.0f || padded.Height <= 1.0f)
+        {
+            canvas = default;
+            return false;
+        }
+
+        const float targetAspect = 16.0f / 9.0f;
+        var canvasWidth = padded.Width;
+        var canvasHeight = canvasWidth / targetAspect;
+        if (canvasHeight > padded.Height)
+        {
+            canvasHeight = padded.Height;
+            canvasWidth = canvasHeight * targetAspect;
+        }
+
+        canvas = RectFromEdges(
+            padded.Left + (padded.Width - canvasWidth) * 0.5f,
+            padded.Top + (padded.Height - canvasHeight) * 0.5f,
+            padded.Left + (padded.Width + canvasWidth) * 0.5f,
+            padded.Top + (padded.Height + canvasHeight) * 0.5f);
+        return true;
+    }
+
+    private Rect SurfaceBounds(AquariumUiSurface surface) =>
+        RectFromEdges(
+            Math.Clamp(surface.Bounds.Left, 8.0f, Math.Max(8.0f, width - 80.0f)),
+            Math.Clamp(surface.Bounds.Top, 8.0f, Math.Max(8.0f, height - 48.0f)),
+            Math.Clamp(surface.Bounds.Left + surface.Bounds.Width, 88.0f, width - 8.0f),
+            Math.Clamp(surface.Bounds.Top + surface.Bounds.Height, 56.0f, height - 8.0f));
+
+    private static string HitPreviewHandle(Rect itemBounds, Vector2 point)
+    {
+        const float radius = 10.0f;
+        if (DistanceSquared(point, itemBounds.Left, itemBounds.Top) <= radius * radius)
+        {
+            return "nw";
+        }
+
+        if (DistanceSquared(point, itemBounds.Right, itemBounds.Top) <= radius * radius)
+        {
+            return "ne";
+        }
+
+        if (DistanceSquared(point, itemBounds.Left, itemBounds.Bottom) <= radius * radius)
+        {
+            return "sw";
+        }
+
+        if (DistanceSquared(point, itemBounds.Right, itemBounds.Bottom) <= radius * radius)
+        {
+            return "se";
+        }
+
+        return "move";
+    }
+
+    private static float? PreferredUiExtent(AquariumUiElement element, bool horizontal)
+    {
+        if (horizontal)
+        {
+            return null;
+        }
+
+        var weight = Math.Max(0.001f, element.Weight);
+        return element.Kind switch
+        {
+            "group" or "pane" or "card" when HasFlexibleUiChild(element) => null,
+            "group" or "pane" or "card" => PreferredUiContainerExtent(element) * weight,
+            "text" when element.Role is "mono" => 18.0f * weight,
+            "text" when element.Role is "strong" or "title" => 22.0f * weight,
+            "text" => 18.0f * weight,
+            "toggle" or "select" or "slider" => 24.0f * weight,
+            "button" => 30.0f * weight,
+            "metric" => 36.0f * weight,
+            _ => null,
+        };
+    }
+
+    private static bool HasFlexibleUiChild(AquariumUiElement element)
+    {
+        var children = element.Children?.Where(static child => child.Visible).ToArray() ?? [];
+        return children.Any(static child => PreferredUiExtent(child, horizontal: false) is null);
+    }
+
+    private static float PreferredUiContainerExtent(AquariumUiElement element)
+    {
+        var layout = element.Layout ?? AquariumUiLayout.Vertical();
+        var children = element.Children?.Where(static child => child.Visible).ToArray() ?? [];
+        if (children.Length == 0)
+        {
+            return element.Kind == "pane" ? 72.0f : 24.0f;
+        }
+
+        var horizontal = string.Equals(layout.Direction, "horizontal", StringComparison.Ordinal);
+        var childExtents = children.Select(static child => PreferredUiExtent(child, horizontal: false) ?? 48.0f * Math.Max(0.001f, child.Weight)).ToArray();
+        var contentExtent = horizontal
+            ? childExtents.Max()
+            : childExtents.Sum() + layout.Gap * Math.Max(0, childExtents.Length - 1);
+        contentExtent += layout.Padding * 2.0f;
+
+        return element.Kind switch
+        {
+            "pane" => contentExtent + 38.0f,
+            "card" => contentExtent,
+            _ => contentExtent,
+        };
+    }
+
+    private static bool ContainsRect(Rect rect, Vector2 point) =>
+        point.X >= rect.Left && point.X <= rect.Right && point.Y >= rect.Top && point.Y <= rect.Bottom;
+
+    private static float DistanceSquared(Vector2 point, float x, float y)
+    {
+        var dx = point.X - x;
+        var dy = point.Y - y;
+        return dx * dx + dy * dy;
+    }
+
+    private static Rect RectFromEdges(float left, float top, float right, float bottom) =>
+        new(left, top, Math.Max(0.0f, right - left), Math.Max(0.0f, bottom - top));
+
+    private readonly record struct AquariumUiPreviewHit(AquariumUiElement Element, string ItemId, string Handle, Rect Canvas, float X, float Y);
+
+    private readonly record struct AquariumUiPreviewDrag(AquariumUiElement Element, string ItemId, string Handle, Rect Canvas);
 
     public void CycleRenderDebugMode()
     {

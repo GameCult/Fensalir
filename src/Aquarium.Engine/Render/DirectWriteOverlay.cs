@@ -414,7 +414,21 @@ internal sealed class DirectWriteOverlay : IDisposable
             renderTarget.FillRectangle(itemBounds, item.Selected ? hoverRowBrush : rowBrush);
             renderTarget.DrawRectangle(itemBounds, brush, item.Selected ? 2.0f : 1.0f);
             renderTarget.DrawText(item.Label, smallFormat, RectFromEdges(itemBounds.Left + 6.0f, itemBounds.Top + 3.0f, itemBounds.Right - 6.0f, itemBounds.Bottom), primaryTextBrush, DrawTextOptions.Clip);
+            if (item.Selected && element.HandlePreviewInteraction is not null)
+            {
+                DrawPreviewHandle(itemBounds.Left, itemBounds.Top);
+                DrawPreviewHandle(itemBounds.Right, itemBounds.Top);
+                DrawPreviewHandle(itemBounds.Left, itemBounds.Bottom);
+                DrawPreviewHandle(itemBounds.Right, itemBounds.Bottom);
+            }
         }
+    }
+
+    private void DrawPreviewHandle(float x, float y)
+    {
+        var handle = RectFromEdges(x - 4.0f, y - 4.0f, x + 4.0f, y + 4.0f);
+        renderTarget.FillRectangle(handle, accentActiveBrush);
+        renderTarget.DrawRectangle(handle, panelBrush, 1.0f);
     }
 
     private void CaptureOutputSnapshot()

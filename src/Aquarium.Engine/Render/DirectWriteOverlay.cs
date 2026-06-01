@@ -194,11 +194,12 @@ internal sealed class DirectWriteOverlay : IDisposable
 
     private void DrawSurface(AquariumUiSurface surface)
     {
+        var edgePadding = surface.ContentPadding <= 0.0f ? 0.0f : 8.0f;
         var bounds = RectFromEdges(
-            Math.Clamp(surface.Bounds.Left, 8.0f, Math.Max(8.0f, width - 80.0f)),
-            Math.Clamp(surface.Bounds.Top, 8.0f, Math.Max(8.0f, height - 48.0f)),
-            Math.Clamp(surface.Bounds.Left + surface.Bounds.Width, 88.0f, width - 8.0f),
-            Math.Clamp(surface.Bounds.Top + surface.Bounds.Height, 56.0f, height - 8.0f));
+            Math.Clamp(surface.Bounds.Left, edgePadding, Math.Max(edgePadding, width - 80.0f)),
+            Math.Clamp(surface.Bounds.Top, edgePadding, Math.Max(edgePadding, height - 48.0f)),
+            Math.Clamp(surface.Bounds.Left + surface.Bounds.Width, 80.0f + edgePadding, width - edgePadding),
+            Math.Clamp(surface.Bounds.Top + surface.Bounds.Height, 48.0f + edgePadding, height - edgePadding));
         renderTarget.FillRectangle(bounds, panelBrush);
         renderTarget.DrawRectangle(bounds, outlineBrush, 1.0f);
         var hasTitle = !string.IsNullOrWhiteSpace(surface.Title);
@@ -207,8 +208,8 @@ internal sealed class DirectWriteOverlay : IDisposable
             DrawHeader(surface.Title, titleFormat, RectFromEdges(bounds.Left + 12.0f, bounds.Top + 8.0f, bounds.Right - 12.0f, bounds.Top + 34.0f), primaryTextBrush);
         }
 
-        var contentTop = hasTitle ? bounds.Top + 42.0f : bounds.Top + 8.0f;
-        var content = RectFromEdges(bounds.Left + 8.0f, contentTop, bounds.Right - 8.0f, bounds.Bottom - 8.0f);
+        var contentTop = hasTitle ? bounds.Top + 42.0f : bounds.Top + surface.ContentPadding;
+        var content = RectFromEdges(bounds.Left + surface.ContentPadding, contentTop, bounds.Right - surface.ContentPadding, bounds.Bottom - surface.ContentPadding);
         DrawSurfaceChildren(surface.Root.Children ?? [], content, surface.Root.Layout ?? AquariumUiLayout.Vertical());
     }
 
@@ -256,8 +257,12 @@ internal sealed class DirectWriteOverlay : IDisposable
                 DrawSurfaceChildren(element.Children ?? [], bounds, element.Layout ?? AquariumUiLayout.Vertical());
                 break;
             case "pane":
-                DrawSurfaceFrame(bounds, element.Text ?? element.Id, element.Style?.Tone ?? "neutral", drawTitle: true);
-                DrawSurfaceChildren(element.Children ?? [], RectFromEdges(bounds.Left + 6.0f, bounds.Top + 32.0f, bounds.Right - 6.0f, bounds.Bottom - 6.0f), element.Layout ?? AquariumUiLayout.Vertical());
+                var hasPaneTitle = !string.IsNullOrWhiteSpace(element.Text);
+                DrawSurfaceFrame(bounds, element.Text, element.Style?.Tone ?? "neutral", drawTitle: hasPaneTitle);
+                var paneContent = hasPaneTitle
+                    ? RectFromEdges(bounds.Left + 6.0f, bounds.Top + 32.0f, bounds.Right - 6.0f, bounds.Bottom - 6.0f)
+                    : bounds;
+                DrawSurfaceChildren(element.Children ?? [], paneContent, element.Layout ?? AquariumUiLayout.Vertical());
                 break;
             case "card":
                 DrawSurfaceFrame(bounds, null, element.Style?.Tone ?? "neutral", drawTitle: false);
@@ -512,6 +517,11 @@ internal sealed class DirectWriteOverlay : IDisposable
 
     private static float? PreferredExtent(AquariumUiElement element, bool horizontal)
     {
+        if (element.FixedExtent is { } fixedExtent)
+        {
+            return Math.Max(0.0f, fixedExtent);
+        }
+
         if (horizontal)
         {
             return null;
@@ -556,7 +566,8 @@ internal sealed class DirectWriteOverlay : IDisposable
 
         return element.Kind switch
         {
-            "pane" => contentExtent + 38.0f,
+            "pane" when !string.IsNullOrWhiteSpace(element.Text) => contentExtent + 38.0f,
+            "pane" => contentExtent,
             "card" => contentExtent,
             _ => contentExtent,
         };

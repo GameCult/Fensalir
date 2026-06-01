@@ -89,6 +89,10 @@ invariants:
     direct SDF proxies, meshes, volumes, fractal probes, and Mimir sensor
     observations must publish bounded Form/Appearance/Transport field claims
     before they can participate in reusable field evidence.
+  - Eve is the portable retained-dashboard authority. The C# Aquarium/CultUI
+    contract is the reference API shape for those documents; Fensalir Direct2D
+    and D3D12 hit testing lower that document locally, but must not become the
+    owner of dashboard semantics or client policy.
   - Final composition reads the resolved HDR field texture produced by the
     shared reservoir history update pass. TubeField render lowerings inject
     visibility proposals into the shared field reservoir; they must not regain

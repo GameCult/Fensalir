@@ -671,8 +671,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             var surface = clientUiSurfaces[surfaceIndex];
             var surfaceBounds = SurfaceBounds(surface);
             var hasTitle = !string.IsNullOrWhiteSpace(surface.Title);
-            var contentTop = hasTitle ? surfaceBounds.Top + 42.0f : surfaceBounds.Top + 8.0f;
-            var content = RectFromEdges(surfaceBounds.Left + 8.0f, contentTop, surfaceBounds.Right - 8.0f, surfaceBounds.Bottom - 8.0f);
+            var contentTop = hasTitle ? surfaceBounds.Top + 42.0f : surfaceBounds.Top + surface.ContentPadding;
+            var content = RectFromEdges(surfaceBounds.Left + surface.ContentPadding, contentTop, surfaceBounds.Right - surface.ContentPadding, surfaceBounds.Bottom - surface.ContentPadding);
             if (TryHitPreviewChildren(surface.Root.Children ?? [], content, surface.Root.Layout ?? AquariumUiLayout.Vertical(), point, out hit))
             {
                 return true;
@@ -738,7 +738,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
             case "group":
                 return TryHitPreviewChildren(element.Children ?? [], bounds, element.Layout ?? AquariumUiLayout.Vertical(), point, out hit);
             case "pane":
-                return TryHitPreviewChildren(element.Children ?? [], RectFromEdges(bounds.Left + 6.0f, bounds.Top + 32.0f, bounds.Right - 6.0f, bounds.Bottom - 6.0f), element.Layout ?? AquariumUiLayout.Vertical(), point, out hit);
+                var paneContent = !string.IsNullOrWhiteSpace(element.Text)
+                    ? RectFromEdges(bounds.Left + 6.0f, bounds.Top + 32.0f, bounds.Right - 6.0f, bounds.Bottom - 6.0f)
+                    : bounds;
+                return TryHitPreviewChildren(element.Children ?? [], paneContent, element.Layout ?? AquariumUiLayout.Vertical(), point, out hit);
             case "card":
                 return TryHitPreviewChildren(element.Children ?? [], bounds, element.Layout ?? AquariumUiLayout.Vertical(4.0f, 8.0f), point, out hit);
             case "preview":
@@ -820,12 +823,15 @@ public sealed class D3D12Renderer : IAquariumRenderer
         return true;
     }
 
-    private Rect SurfaceBounds(AquariumUiSurface surface) =>
-        RectFromEdges(
-            Math.Clamp(surface.Bounds.Left, 8.0f, Math.Max(8.0f, width - 80.0f)),
-            Math.Clamp(surface.Bounds.Top, 8.0f, Math.Max(8.0f, height - 48.0f)),
-            Math.Clamp(surface.Bounds.Left + surface.Bounds.Width, 88.0f, width - 8.0f),
-            Math.Clamp(surface.Bounds.Top + surface.Bounds.Height, 56.0f, height - 8.0f));
+    private Rect SurfaceBounds(AquariumUiSurface surface)
+    {
+        var edgePadding = surface.ContentPadding <= 0.0f ? 0.0f : 8.0f;
+        return RectFromEdges(
+            Math.Clamp(surface.Bounds.Left, edgePadding, Math.Max(edgePadding, width - 80.0f)),
+            Math.Clamp(surface.Bounds.Top, edgePadding, Math.Max(edgePadding, height - 48.0f)),
+            Math.Clamp(surface.Bounds.Left + surface.Bounds.Width, 80.0f + edgePadding, width - edgePadding),
+            Math.Clamp(surface.Bounds.Top + surface.Bounds.Height, 48.0f + edgePadding, height - edgePadding));
+    }
 
     private static string HitPreviewHandle(Rect itemBounds, Vector2 point)
     {
@@ -855,6 +861,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private static float? PreferredUiExtent(AquariumUiElement element, bool horizontal)
     {
+        if (element.FixedExtent is { } fixedExtent)
+        {
+            return Math.Max(0.0f, fixedExtent);
+        }
+
         if (horizontal)
         {
             return null;
@@ -899,7 +910,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
         return element.Kind switch
         {
-            "pane" => contentExtent + 38.0f,
+            "pane" when !string.IsNullOrWhiteSpace(element.Text) => contentExtent + 38.0f,
+            "pane" => contentExtent,
             "card" => contentExtent,
             _ => contentExtent,
         };

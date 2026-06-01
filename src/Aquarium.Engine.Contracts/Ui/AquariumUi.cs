@@ -121,25 +121,25 @@ public sealed record AquariumUiElement(
 
 public sealed class AquariumUiSurfaceBuilder(List<AquariumUiElement> children)
 {
-    public AquariumUiSurfaceBuilder Vertical(string id, Action<AquariumUiSurfaceBuilder> compose, float weight = 1.0f, float gap = 8.0f, float padding = 0.0f)
+    public AquariumUiSurfaceBuilder Vertical(string id, Action<AquariumUiSurfaceBuilder> compose, float weight = 1.0f, float gap = 8.0f, float padding = 0.0f, Func<bool>? isVisible = null)
     {
         var scopeChildren = new List<AquariumUiElement>();
         compose(new AquariumUiSurfaceBuilder(scopeChildren));
-        children.Add(new AquariumUiElement(id, "group", Layout: AquariumUiLayout.Vertical(gap, padding), Weight: Math.Max(0.001f, weight), Children: scopeChildren));
+        children.Add(new AquariumUiElement(id, "group", Layout: AquariumUiLayout.Vertical(gap, padding), IsVisible: isVisible, Weight: Math.Max(0.001f, weight), Children: scopeChildren));
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Horizontal(string id, Action<AquariumUiSurfaceBuilder> compose, float weight = 1.0f, float gap = 8.0f, float padding = 0.0f)
+    public AquariumUiSurfaceBuilder Horizontal(string id, Action<AquariumUiSurfaceBuilder> compose, float weight = 1.0f, float gap = 8.0f, float padding = 0.0f, Func<bool>? isVisible = null)
     {
         var scopeChildren = new List<AquariumUiElement>();
         compose(new AquariumUiSurfaceBuilder(scopeChildren));
-        children.Add(new AquariumUiElement(id, "group", Layout: AquariumUiLayout.Horizontal(gap, padding), Weight: Math.Max(0.001f, weight), Children: scopeChildren));
+        children.Add(new AquariumUiElement(id, "group", Layout: AquariumUiLayout.Horizontal(gap, padding), IsVisible: isVisible, Weight: Math.Max(0.001f, weight), Children: scopeChildren));
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Row(string id, Action<AquariumUiSurfaceBuilder> compose, float weight = 1.0f)
+    public AquariumUiSurfaceBuilder Row(string id, Action<AquariumUiSurfaceBuilder> compose, float weight = 1.0f, Func<bool>? isVisible = null)
     {
-        return Horizontal(id, compose, weight);
+        return Horizontal(id, compose, weight, isVisible: isVisible);
     }
 
     public AquariumUiSurfaceBuilder Pane(string id, string title, Action<AquariumUiSurfaceBuilder> compose, string tone = "neutral", float weight = 1.0f)
@@ -158,15 +158,15 @@ public sealed class AquariumUiSurfaceBuilder(List<AquariumUiElement> children)
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Text(string id, string text, string role = "body", float weight = 1.0f)
+    public AquariumUiSurfaceBuilder Text(string id, string text, string role = "body", float weight = 1.0f, Func<bool>? isVisible = null)
     {
-        children.Add(new AquariumUiElement(id, "text", text, role, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(id, "text", text, role, IsVisible: isVisible, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Text(string id, Func<string> read, string role = "body", float weight = 1.0f)
+    public AquariumUiSurfaceBuilder Text(string id, Func<string> read, string role = "body", float weight = 1.0f, Func<bool>? isVisible = null)
     {
-        children.Add(new AquariumUiElement(id, "text", Role: role, ReadText: read, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(id, "text", Role: role, ReadText: read, IsVisible: isVisible, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 
@@ -194,9 +194,9 @@ public sealed class AquariumUiSurfaceBuilder(List<AquariumUiElement> children)
         return this;
     }
 
-    public AquariumUiSurfaceBuilder Button(string id, string label, Action invoke, float weight = 1.0f)
+    public AquariumUiSurfaceBuilder Button(string id, string label, Action invoke, float weight = 1.0f, Func<bool>? isVisible = null)
     {
-        children.Add(new AquariumUiElement(id, "button", label, Invoke: invoke, Weight: Math.Max(0.001f, weight)));
+        children.Add(new AquariumUiElement(id, "button", label, Invoke: invoke, IsVisible: isVisible, Weight: Math.Max(0.001f, weight)));
         return this;
     }
 

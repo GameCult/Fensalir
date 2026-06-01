@@ -189,8 +189,14 @@ internal sealed class DirectWriteOverlay : IDisposable
             Math.Clamp(surface.Bounds.Top + surface.Bounds.Height, 56.0f, height - 8.0f));
         renderTarget.FillRectangle(bounds, panelBrush);
         renderTarget.DrawRectangle(bounds, outlineBrush, 1.0f);
-        DrawHeader(surface.Title, titleFormat, RectFromEdges(bounds.Left + 12.0f, bounds.Top + 8.0f, bounds.Right - 12.0f, bounds.Top + 34.0f), primaryTextBrush);
-        var content = RectFromEdges(bounds.Left + 8.0f, bounds.Top + 42.0f, bounds.Right - 8.0f, bounds.Bottom - 8.0f);
+        var hasTitle = !string.IsNullOrWhiteSpace(surface.Title);
+        if (hasTitle)
+        {
+            DrawHeader(surface.Title, titleFormat, RectFromEdges(bounds.Left + 12.0f, bounds.Top + 8.0f, bounds.Right - 12.0f, bounds.Top + 34.0f), primaryTextBrush);
+        }
+
+        var contentTop = hasTitle ? bounds.Top + 42.0f : bounds.Top + 8.0f;
+        var content = RectFromEdges(bounds.Left + 8.0f, contentTop, bounds.Right - 8.0f, bounds.Bottom - 8.0f);
         DrawSurfaceChildren(surface.Root.Children ?? [], content, surface.Root.Layout ?? AquariumUiLayout.Vertical());
     }
 

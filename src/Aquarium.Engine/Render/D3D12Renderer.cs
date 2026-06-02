@@ -3046,11 +3046,22 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         ResolveFieldReservoir(context.CommandList, frameResources);
-        var historyUpdated = UpdateReservoirHistory(context.CommandList, frameResources);
+        var historyUpdated = ShouldUseReservoirHistoryPresentation()
+            && UpdateReservoirHistory(context.CommandList, frameResources);
         var presentationSourceTarget = historyUpdated ? reservoirResolvedRenderTarget : sceneRenderTarget;
         var presentationSourceDescriptor = historyUpdated ? frameResources.ReservoirResolvedDescriptor : frameResources.SceneDescriptor;
         RenderBloom(context.CommandList, frameResources, presentationSourceTarget, presentationSourceDescriptor);
         PresentBackBuffer(context, frameResources, presentationSourceTarget, presentationSourceDescriptor);
+    }
+
+    private bool ShouldUseReservoirHistoryPresentation()
+    {
+        return activeFractalReservoirField.HasInput ||
+            activeBufferFieldFrame.UseReservoirLowering ||
+            activeTubeFieldDrawIndexCount > 0 ||
+            temporalGaussianCount > 0 ||
+            gpuFusionSeedCount > 0 ||
+            gpuFusionPointCount > 0;
     }
 
     private void RenderSplineSurfaceClaims(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)

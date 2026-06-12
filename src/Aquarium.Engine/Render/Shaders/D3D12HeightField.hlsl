@@ -33,6 +33,21 @@ cbuffer HeightFieldBrushes : register(b1)
     float4 brushDomain[64];
 };
 
+cbuffer BokushoPageConstants : register(b5)
+{
+    float4 bokushoShape;     // sampleCount, tuftCount, physicsHz, hasInput
+    float4 bokushoMaterial;  // radius, pressure, inkLoad, wetness
+    float4 bokushoDynamics;  // splay, bend, friction, reserved
+    float4 bokushoStrokeP0;
+    float4 bokushoStrokeP1;
+    float4 bokushoStrokeP2;
+    float4 bokushoStrokeP3;
+};
+
+StructuredBuffer<float> BokushoCanvasField : register(t77);
+
+#include "CultMath/CultMath.hlsl"
+
 struct VertexOut
 {
     float4 position : SV_Position;
@@ -62,6 +77,90 @@ float2 viewUv(float2 p)
 float2 viewWorld(float2 uv)
 {
     return viewCenter + (uv * 2.0 - 1.0) * viewRadius;
+}
+
+float2 bokushoStrokePoint(float t)
+{
+    return cultmath_catmullrom(bokushoStrokeP0.xy, bokushoStrokeP1.xy, bokushoStrokeP2.xy, bokushoStrokeP3.xy, t);
+}
+
+float2 bokushoStrokeTangent(float t)
+{
+    float dt = 1.0 / max(bokushoShape.x - 1.0, 1.0);
+    float2 before = bokushoStrokePoint(saturate(t - dt));
+    float2 after = bokushoStrokePoint(saturate(t + dt));
+    return cultmath_normalize(after - before);
+}
+
+float bokushoCanvasSample(float sampleIndex, float tuftIndex)
+{
+    uint sampleCount = max((uint)round(bokushoShape.x), 2u);
+    uint tuftCount = max((uint)round(bokushoShape.y), 1u);
+    uint sample = min((uint)round(sampleIndex), sampleCount - 1u);
+    uint tuft = min((uint)round(tuftIndex), tuftCount - 1u);
+    return saturate(BokushoCanvasField[tuft * sampleCount + sample]);
+}
+
+float bokushoPageHeight(float2 world)
+{
+    if (bokushoShape.w <= 0.0)
+    {
+        return 0.0;
+    }
+
+    float bestDistance = 1.0e20;
+    float bestT = 0.0;
+    [unroll]
+    for (uint scan = 0u; scan < 16u; scan += 1u)
+    {
+        float t = (float)scan / 15.0;
+        float2 center = bokushoStrokePoint(t);
+        float distanceSquared = dot(world - center, world - center);
+        if (distanceSquared < bestDistance)
+        {
+            bestDistance = distanceSquared;
+            bestT = t;
+        }
+    }
+
+    [unroll]
+    for (uint refine = 0u; refine < 3u; refine += 1u)
+    {
+        float span = 1.0 / (15.0 * pow(2.0, (float)refine));
+        float leftT = saturate(bestT - span);
+        float rightT = saturate(bestT + span);
+        float2 left = bokushoStrokePoint(leftT);
+        float2 right = bokushoStrokePoint(rightT);
+        float leftDistance = dot(world - left, world - left);
+        float rightDistance = dot(world - right, world - right);
+        if (leftDistance < bestDistance)
+        {
+            bestDistance = leftDistance;
+            bestT = leftT;
+        }
+
+        if (rightDistance < bestDistance)
+        {
+            bestDistance = rightDistance;
+            bestT = rightT;
+        }
+    }
+
+    float2 center = bokushoStrokePoint(bestT);
+    float2 tangent = bokushoStrokeTangent(bestT);
+    float2 normal = float2(-tangent.y, tangent.x);
+    float lateral = dot(world - center, normal);
+    float radius = max(bokushoMaterial.x, 0.0001);
+    float splay = saturate(bokushoDynamics.x / 2.0);
+    float footprint = radius * (0.42 + splay * 0.74 + saturate(bokushoMaterial.y * 0.5) * 0.18);
+    float tuftT = saturate(lateral / max(footprint, 0.001) * 0.5 + 0.5);
+    float distance = sqrt(bestDistance);
+    float contact = smoothstep(1.0, 0.0, distance / max(footprint * 0.80, 0.001));
+    float sampleIndex = bestT * max(bokushoShape.x - 1.0, 1.0);
+    float tuftIndex = tuftT * max(bokushoShape.y - 1.0, 0.0);
+    float pigment = bokushoCanvasSample(sampleIndex, tuftIndex);
+    float pressure = saturate(bokushoMaterial.y * 0.5);
+    return pigment * contact * (0.10 + pressure * 0.18 + saturate(bokushoMaterial.z * 0.5) * 0.08);
 }
 
 float powerPulse(float distanceValue, float radius, float power)
@@ -98,7 +197,7 @@ float D3D12HeightFieldBasePS(VertexOut input) : SV_Target
     float2 world = viewWorld(saturate(input.uv));
     float slow = sin((world.x * 0.08 + world.y * 0.06) + timeSeconds * 0.27)
         * sin((world.x * -0.04 + world.y * 0.07) - timeSeconds * 0.19) * 0.035;
-    return slow;
+    return slow + bokushoPageHeight(world);
 }
 
 BrushVertexOut D3D12HeightFieldBrushVS(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)

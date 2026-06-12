@@ -136,6 +136,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootBokushoBrushConstants = 0;
     private const int RootBokushoBrushTrace = 1;
     private const int RootBokushoBrushCanvas = 2;
+    private const int RootBokushoPageConstants = 23;
+    private const int RootBokushoPageCanvas = 24;
     private static readonly DebugUi.DebugUiOption[] RenderDebugOptions =
     [
         new(0, "Final"),
@@ -4036,7 +4038,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var tuftCount = Math.Clamp(frame.TuftCount, 1, MaxBokushoBrushTufts);
         var valueCount = checked(sampleCount * tuftCount);
         var constants = new D3D12BokushoBrushConstants(
-            new Vector4(sampleCount, tuftCount, frame.PhysicsHz, 0.0f),
+            new Vector4(sampleCount, tuftCount, frame.PhysicsHz, 1.0f),
             new Vector4(frame.BrushRadius, frame.Pressure, frame.InkLoad, frame.Wetness),
             new Vector4(frame.Splay, frame.Bend, frame.Friction, 0.0f),
             frame.StrokeP0,
@@ -4086,6 +4088,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var tubeConstantsUpload = frameResources.UploadRing.WriteConstant(tubeConstants);
 
         bokushoBrushTraceBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+        bokushoBrushCanvasBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
         tubeFieldVertexBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         tubeFieldIndexBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         tubeFieldStatsBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
@@ -4555,6 +4558,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
             activeCommandList.SetPipelineState(heightFieldBasePipelineState!);
             activeCommandList.SetGraphicsRootSignature(fullscreenRootSignature);
             activeCommandList.SetGraphicsRootDescriptorTable(RootFrameConstants, frameResources.FrameConstantsDescriptor.Gpu);
+            var pageConstants = BuildBokushoPageConstants();
+            var pageConstantsUpload = frameResources.UploadRing.WriteConstant(pageConstants);
+            bokushoBrushCanvasBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+            activeCommandList.SetGraphicsRootConstantBufferView(RootBokushoPageConstants, pageConstantsUpload.GpuVirtualAddress);
+            activeCommandList.SetGraphicsRootShaderResourceView(RootBokushoPageCanvas, bokushoBrushCanvasBuffer.Resource.GPUVirtualAddress);
             activeCommandList.RSSetViewports(viewport);
             activeCommandList.RSSetScissorRects(scissorRect);
             activeCommandList.OMSetRenderTargets(heightFieldRenderTarget.RenderTargetView.Cpu, null);
@@ -4705,6 +4713,33 @@ public sealed class D3D12Renderer : IAquariumRenderer
         {
             temporalGaussians[index] = ToTemporalGaussianPacket(scene.TemporalGaussianField.Gaussians[index]);
         }
+    }
+
+    private D3D12BokushoBrushConstants BuildBokushoPageConstants()
+    {
+        if (!activeBokushoBrushFrame.HasInput)
+        {
+            return new D3D12BokushoBrushConstants(
+                Vector4.Zero,
+                Vector4.Zero,
+                Vector4.Zero,
+                Vector4.Zero,
+                Vector4.Zero,
+                Vector4.Zero,
+                Vector4.Zero);
+        }
+
+        var frame = activeBokushoBrushFrame.Normalized();
+        var sampleCount = Math.Clamp(frame.SampleCount, 2, MaxBokushoBrushSamples);
+        var tuftCount = Math.Clamp(frame.TuftCount, 1, MaxBokushoBrushTufts);
+        return new D3D12BokushoBrushConstants(
+            new Vector4(sampleCount, tuftCount, frame.PhysicsHz, 1.0f),
+            new Vector4(frame.BrushRadius, frame.Pressure, frame.InkLoad, frame.Wetness),
+            new Vector4(frame.Splay, frame.Bend, frame.Friction, 0.0f),
+            frame.StrokeP0,
+            frame.StrokeP1,
+            frame.StrokeP2,
+            frame.StrokeP3);
     }
 
     private void AppendFieldEvidenceGpuSensorInputs()
@@ -5953,6 +5988,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(59, 0), ShaderVisibility.All),
             new RootParameter(new RootDescriptorTable([tubeFieldReplaySourceRange]), ShaderVisibility.All),
             new RootParameter(new RootDescriptorTable([sceneOverdrawRange]), ShaderVisibility.Pixel),
+            new RootParameter(RootParameterType.ConstantBufferView, new RootDescriptor(5, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(77, 0), ShaderVisibility.All),
         };
         var staticSamplers = new[]
         {

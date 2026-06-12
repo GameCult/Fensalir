@@ -89,6 +89,41 @@ public static class BokushoBrushSimulation
         }
     }
 
+    public static float[] ProjectCanvasToPage(
+        AquariumBokushoBrushFrame source,
+        ReadOnlySpan<float> canvas,
+        int width,
+        int height,
+        Vector2 viewCenter,
+        float viewRadius)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(height, 1);
+        var frame = source.Normalized();
+        var sampleCount = Math.Clamp(frame.SampleCount, 2, 4096);
+        var tuftCount = Math.Clamp(frame.TuftCount, 1, 4096);
+        var valueCount = checked(sampleCount * tuftCount);
+        if (canvas.Length < valueCount)
+        {
+            throw new ArgumentException("Canvas buffer is smaller than the brush simulation frame.", nameof(canvas));
+        }
+
+        var page = new float[checked(width * height)];
+        var safeRadius = MathF.Max(viewRadius, 0.001f);
+        for (var y = 0; y < height; y++)
+        {
+            var uvY = height <= 1 ? 0.0f : y / (float)(height - 1);
+            for (var x = 0; x < width; x++)
+            {
+                var uvX = width <= 1 ? 0.0f : x / (float)(width - 1);
+                var world = viewCenter + (new Vector2(uvX, uvY) * 2.0f - Vector2.One) * safeRadius;
+                page[y * width + x] = ProjectCanvasSample(frame, canvas, world);
+            }
+        }
+
+        return page;
+    }
+
     private static Vector2 StrokePoint(AquariumBokushoBrushFrame frame, float t)
     {
         return CatmullRom(
@@ -105,6 +140,61 @@ public static class BokushoBrushSimulation
         var before = StrokePoint(frame, Saturate(t - dt));
         var after = StrokePoint(frame, Saturate(t + dt));
         return Normalize(after - before);
+    }
+
+    private static float ProjectCanvasSample(AquariumBokushoBrushFrame frame, ReadOnlySpan<float> canvas, Vector2 world)
+    {
+        var bestDistance = float.PositiveInfinity;
+        var bestT = 0.0f;
+        for (var scan = 0; scan < 16; scan++)
+        {
+            var t = scan / 15.0f;
+            var center = StrokePoint(frame, t);
+            var distanceSquared = Vector2.DistanceSquared(world, center);
+            if (distanceSquared < bestDistance)
+            {
+                bestDistance = distanceSquared;
+                bestT = t;
+            }
+        }
+
+        for (var refine = 0; refine < 3; refine++)
+        {
+            var span = 1.0f / (15.0f * MathF.Pow(2.0f, refine));
+            var leftT = Saturate(bestT - span);
+            var rightT = Saturate(bestT + span);
+            var leftDistance = Vector2.DistanceSquared(world, StrokePoint(frame, leftT));
+            var rightDistance = Vector2.DistanceSquared(world, StrokePoint(frame, rightT));
+            if (leftDistance < bestDistance)
+            {
+                bestDistance = leftDistance;
+                bestT = leftT;
+            }
+
+            if (rightDistance < bestDistance)
+            {
+                bestDistance = rightDistance;
+                bestT = rightT;
+            }
+        }
+
+        var sampleCount = Math.Clamp(frame.SampleCount, 2, 4096);
+        var tuftCount = Math.Clamp(frame.TuftCount, 1, 4096);
+        var centerPoint = StrokePoint(frame, bestT);
+        var tangent = StrokeTangent(frame, bestT, sampleCount);
+        var normal = new Vector2(-tangent.Y, tangent.X);
+        var lateral = Vector2.Dot(world - centerPoint, normal);
+        var radius = MathF.Max(frame.BrushRadius, 0.0001f);
+        var splay = Saturate(frame.Splay / 2.0f);
+        var footprint = radius * (0.42f + splay * 0.74f + Saturate(frame.Pressure * 0.5f) * 0.18f);
+        var tuftT = Saturate(lateral / MathF.Max(footprint, 0.001f) * 0.5f + 0.5f);
+        var distance = MathF.Sqrt(bestDistance);
+        var contact = SmoothStep(1.0f, 0.0f, distance / MathF.Max(footprint * 0.80f, 0.001f));
+        var sample = Math.Clamp((int)MathF.Round(bestT * MathF.Max(sampleCount - 1.0f, 1.0f)), 0, sampleCount - 1);
+        var tuft = Math.Clamp((int)MathF.Round(tuftT * MathF.Max(tuftCount - 1.0f, 0.0f)), 0, tuftCount - 1);
+        var pigment = Saturate(canvas[tuft * sampleCount + sample]);
+        var pressure = Saturate(frame.Pressure * 0.5f);
+        return pigment * contact * (0.10f + pressure * 0.18f + Saturate(frame.InkLoad * 0.5f) * 0.08f);
     }
 
     private static Vector2 CatmullRom(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float t)
@@ -124,6 +214,12 @@ public static class BokushoBrushSimulation
     }
 
     private static float Lerp(float left, float right, float t) => left + (right - left) * t;
+
+    private static float SmoothStep(float edge0, float edge1, float x)
+    {
+        var t = Saturate((x - edge0) / (edge1 - edge0));
+        return t * t * (3.0f - 2.0f * t);
+    }
 
     private static float Saturate(float value) => Math.Clamp(value, 0.0f, 1.0f);
 }

@@ -72,4 +72,42 @@ public sealed class BokushoBrushSimulationTests
         var edgeCanvas = result.Canvas[result.SampleCount - 1];
         Assert.True(centerCanvas > edgeCanvas);
     }
+
+    [Fact]
+    public void CpuBrushSimulationProjectsDepositedCanvasToPageField()
+    {
+        var frame = new AquariumBokushoBrushFrame
+        {
+            TuftCount = 11,
+            SampleCount = 64,
+            PhysicsHz = 500.0f,
+            BrushRadius = 2.0f,
+            Pressure = 0.92f,
+            InkLoad = 1.36f,
+            Wetness = 0.94f,
+            Splay = 0.82f,
+            Bend = 0.78f,
+            Friction = 0.68f,
+            StrokeP0 = new Vector4(-7.0f, 0.6f, 0.0f, 0.0f),
+            StrokeP1 = new Vector4(-2.6f, -1.8f, 0.0f, 0.0f),
+            StrokeP2 = new Vector4(2.4f, -1.6f, 0.0f, 0.0f),
+            StrokeP3 = new Vector4(7.0f, 0.7f, 0.0f, 0.0f),
+        };
+        var result = BokushoBrushSimulation.Evaluate(frame);
+
+        var page = BokushoBrushSimulation.ProjectCanvasToPage(
+            frame,
+            result.Canvas,
+            width: 96,
+            height: 96,
+            viewCenter: Vector2.Zero,
+            viewRadius: 8.0f);
+
+        var max = page.Max();
+        var offStrokeCorner = page[0];
+
+        Assert.True(max > 0.01f);
+        Assert.True(max > offStrokeCorner * 8.0f);
+        Assert.Contains(page, value => value > 0.0f);
+    }
 }

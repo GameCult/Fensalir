@@ -6,6 +6,7 @@ using Aquarium.Engine.Render.Graph;
 using SharpGen.Runtime;
 using Aquarium.Engine.Render.Ui;
 using Aquarium.Engine.Ui;
+using CultMath;
 using Vortice;
 using Vortice.D3DCompiler;
 using Vortice.Direct3D;
@@ -3436,16 +3437,18 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var p1 = points[segment];
         var p2 = points[Math.Min(points.Count - 1, segment + 1)];
         var p3 = points[Math.Min(points.Count - 1, segment + 2)];
-        var t2 = t * t;
-        var t3 = t2 * t;
-        var position = 0.5f * ((2.0f * p1.Position) +
-            (-p0.Position + p2.Position) * t +
-            (2.0f * p0.Position - 5.0f * p1.Position + 4.0f * p2.Position - p3.Position) * t2 +
-            (-p0.Position + 3.0f * p1.Position - 3.0f * p2.Position + p3.Position) * t3);
-        var color = 0.5f * ((2.0f * p1.Color) +
-            (-p0.Color + p2.Color) * t +
-            (2.0f * p0.Color - 5.0f * p1.Color + 4.0f * p2.Color - p3.Color) * t2 +
-            (-p0.Color + 3.0f * p1.Color - 3.0f * p2.Color + p3.Color) * t3);
+        var position = (Vector3)math.catmullrom(
+            (float3)p0.Position,
+            (float3)p1.Position,
+            (float3)p2.Position,
+            (float3)p3.Position,
+            t);
+        var color = (Vector4)math.catmullrom(
+            (float4)p0.Color,
+            (float4)p1.Color,
+            (float4)p2.Color,
+            (float4)p3.Color,
+            t);
         return new AquariumSplineVertex(position, Vector4.Clamp(color, Vector4.Zero, new Vector4(float.MaxValue, float.MaxValue, float.MaxValue, 1.0f)));
     }
 
@@ -6603,7 +6606,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 if (firstQuote >= 0 && secondQuote > firstQuote)
                 {
                     var includeName = trimmed.Substring(firstQuote + 1, secondQuote - firstQuote - 1);
-                    var includePath = Path.GetFullPath(Path.Combine(directory, includeName));
+                    var includePath = ResolveShaderIncludePath(directory, includeName);
                     expanded.Add($"#line 1 \"{includePath.Replace("\\", "\\\\")}\"");
                     expanded.Add(ExpandShaderIncludes(includePath, stack));
                     expanded.Add($"#line {lineIndex + 2} \"{fullPath.Replace("\\", "\\\\")}\"");
@@ -6616,6 +6619,44 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
         stack.Remove(fullPath);
         return string.Join(Environment.NewLine, expanded);
+    }
+
+    private static string ResolveShaderIncludePath(string directory, string includeName)
+    {
+        var localPath = Path.GetFullPath(Path.Combine(directory, includeName));
+        if (File.Exists(localPath))
+        {
+            return localPath;
+        }
+
+        var normalized = includeName.Replace('\\', '/');
+        const string cultMathPrefix = "CultMath/";
+        if (normalized.StartsWith(cultMathPrefix, StringComparison.Ordinal))
+        {
+            var relative = normalized[cultMathPrefix.Length..].Replace('/', Path.DirectorySeparatorChar);
+            foreach (var start in new[] { directory, AppContext.BaseDirectory })
+            {
+                var current = Path.GetFullPath(start);
+                while (!string.IsNullOrWhiteSpace(current))
+                {
+                    var candidate = Path.Combine(current, "CultMath", "shaders", relative);
+                    if (File.Exists(candidate))
+                    {
+                        return candidate;
+                    }
+
+                    var parent = Path.GetDirectoryName(current);
+                    if (string.IsNullOrWhiteSpace(parent) || string.Equals(parent, current, StringComparison.OrdinalIgnoreCase))
+                    {
+                        break;
+                    }
+
+                    current = parent;
+                }
+            }
+        }
+
+        return localPath;
     }
 
     private readonly record struct D3D12PassContext(

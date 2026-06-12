@@ -24,6 +24,7 @@ struct TubeFieldSegment
     float4 tubeData;
 };
 
+#include "CultMath/CultMath.hlsl"
 #include "D3D12FieldReservoir.hlsli"
 
 cbuffer AquariumFrame : register(b0)
@@ -178,16 +179,6 @@ float NormalizedSampleWithOffset(uint logicalColumn, float x, int rollingOffset)
 }
 
 
-float Catmull(float p0, float p1, float p2, float p3, float t)
-{
-    float t2 = t * t;
-    float t3 = t2 * t;
-    return 0.5 * ((2.0 * p1) +
-        (-p0 + p2) * t +
-        (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 +
-        (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3);
-}
-
 float SampleCurve(uint logicalColumn, float x)
 {
     int i1 = (int)floor(x);
@@ -196,7 +187,7 @@ float SampleCurve(uint logicalColumn, float x)
     float p1 = NormalizedSample(logicalColumn, (float)i1);
     float p2 = NormalizedSample(logicalColumn, (float)(i1 + 1));
     float p3 = NormalizedSample(logicalColumn, (float)(i1 + 2));
-    return saturate(Catmull(p0, p1, p2, p3, t));
+    return saturate(cultmath_catmullrom(p0, p1, p2, p3, t));
 }
 
 float SampleCurveWithOffset(uint logicalColumn, float x, int rollingOffset)
@@ -207,7 +198,7 @@ float SampleCurveWithOffset(uint logicalColumn, float x, int rollingOffset)
     float p1 = NormalizedSampleWithOffset(logicalColumn, (float)i1, rollingOffset);
     float p2 = NormalizedSampleWithOffset(logicalColumn, (float)(i1 + 1), rollingOffset);
     float p3 = NormalizedSampleWithOffset(logicalColumn, (float)(i1 + 2), rollingOffset);
-    return saturate(Catmull(p0, p1, p2, p3, t));
+    return saturate(cultmath_catmullrom(p0, p1, p2, p3, t));
 }
 
 

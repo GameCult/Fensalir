@@ -45,6 +45,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int MaxTubeFieldIndices = MaxTubeFieldSegments * 6;
     private const int MaxTubeFieldDrawBatches = 4_096;
     private const int MaxTubeFieldReplaySources = 16;
+    private const int MaxBokushoBrushTufts = 1024;
+    private const int MaxBokushoBrushSamples = 512;
+    private const int MaxBokushoBrushValues = MaxBokushoBrushTufts * MaxBokushoBrushSamples;
     private const int FieldReservoirSlotsPerPixel = 4;
     private const int FieldReservoirCandidateStrideBytes = 144;
     private const int FieldReservoirHistoryStrideBytes = 144;
@@ -130,6 +133,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootTubeFieldRenderBlueNoise = 4;
     private const int RootTubeFieldRenderReservoirCandidates = 5;
     private const int RootTubeFieldRenderReservoirLocks = 6;
+    private const int RootBokushoBrushConstants = 0;
+    private const int RootBokushoBrushTrace = 1;
+    private const int RootBokushoBrushCanvas = 2;
     private static readonly DebugUi.DebugUiOption[] RenderDebugOptions =
     [
         new(0, "Final"),
@@ -196,6 +202,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly ID3D12RootSignature fractalReservoirRootSignature;
     private readonly ID3D12RootSignature tubeFieldRootSignature;
     private readonly ID3D12RootSignature tubeFieldRenderRootSignature;
+    private readonly ID3D12RootSignature bokushoBrushRootSignature;
     private readonly ID3D12CommandSignature generatedMeshDrawCommandSignature;
     private readonly D3D12BlueNoiseTexture blueNoiseTexture;
     private D3D12FieldTexture2D? tubeFieldFallbackRampTexture;
@@ -216,6 +223,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private ID3D12PipelineState? fractalRadiosityReservoirPipelineState;
     private ID3D12PipelineState? tubeFieldComputePipelineState;
     private ID3D12PipelineState? tubeFieldRenderPipelineState;
+    private ID3D12PipelineState? bokushoBrushPipelineState;
     private ID3D12PipelineState? fieldReservoirResolvePipelineState;
     private ID3D12PipelineState?[] sdfProxyPipelineStates = [];
     private ID3D12PipelineState? bloomPrefilterPipelineState;
@@ -284,6 +292,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly D3D12StructuredBuffer tubeFieldStatsBuffer;
     private readonly D3D12StructuredBuffer tubeFieldDrawArgumentBuffer;
     private readonly D3D12StructuredBuffer tubeFieldReplayManifestBuffer;
+    private readonly D3D12StructuredBuffer bokushoBrushTraceBuffer;
+    private readonly D3D12StructuredBuffer bokushoBrushCanvasBuffer;
     private D3D12StructuredBuffer fieldReservoirCandidateBuffer = null!;
     private D3D12StructuredBuffer fieldReservoirLockBuffer = null!;
     private readonly List<D3D12TubeFieldDrawBatch> tubeFieldDrawBatches = [];
@@ -328,6 +338,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private bool temporalGaussiansGpuGenerated;
     private AquariumFractalReservoirField activeFractalReservoirField = AquariumFractalReservoirField.Empty;
     private AquariumBufferFieldFrame activeBufferFieldFrame = AquariumBufferFieldFrame.Empty;
+    private AquariumBokushoBrushFrame activeBokushoBrushFrame = AquariumBokushoBrushFrame.Empty;
     private AquariumPackedTextureSplineFieldProgram[] activeTextureSplinePrograms = [];
     private float[] activeTextureFieldSamples = [];
     private AquariumSplineFrame activeSplineFrame = AquariumSplineFrame.Empty;
@@ -501,6 +512,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldStatsBuffer = new D3D12StructuredBuffer(device, 4, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Stats Buffer", allowUnorderedAccess: true);
         tubeFieldDrawArgumentBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldDrawBatches * GeneratedMeshDrawArgumentUIntCount, Marshal.SizeOf<uint>(), "Aquarium D3D12 TubeField Indirect Draw Arguments", allowUnorderedAccess: true);
         tubeFieldReplayManifestBuffer = new D3D12StructuredBuffer(device, MaxTubeFieldReplaySources, Marshal.SizeOf<D3D12TubeFieldReplayManifestEntry>(), "Aquarium D3D12 TubeField Replay Manifest");
+        bokushoBrushTraceBuffer = new D3D12StructuredBuffer(device, MaxBokushoBrushValues, sizeof(float), "Aquarium D3D12 Bokusho Brush Trace Field", allowUnorderedAccess: true);
+        bokushoBrushCanvasBuffer = new D3D12StructuredBuffer(device, MaxBokushoBrushValues, sizeof(float), "Aquarium D3D12 Bokusho Brush Canvas Field", allowUnorderedAccess: true);
         CreateFieldReservoirBuffers();
         resourceRegistry.Add("sdf-light-buffer", sdfLightBuffer);
         resourceRegistry.Add("sdf-object-buffer", sdfObjectBuffer);
@@ -515,6 +528,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         resourceRegistry.Add("tube-field-stats-buffer", tubeFieldStatsBuffer);
         resourceRegistry.Add("tube-field-indirect-draw-arguments", tubeFieldDrawArgumentBuffer);
         resourceRegistry.Add("tube-field-replay-manifest", tubeFieldReplayManifestBuffer);
+        resourceRegistry.Add("bokusho-brush-trace-buffer", bokushoBrushTraceBuffer);
+        resourceRegistry.Add("bokusho-brush-canvas-buffer", bokushoBrushCanvasBuffer);
         commandList = device.CreateCommandList<ID3D12GraphicsCommandList>(0, CommandListType.Direct, frames[frameIndex].CommandAllocator, null);
         commandList.Name = "Aquarium D3D12 Graphics Command List";
         commandList.Close();
@@ -550,6 +565,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldRootSignature.Name = "Aquarium D3D12 TubeField Root Signature";
         tubeFieldRenderRootSignature = CreateTubeFieldRenderRootSignature();
         tubeFieldRenderRootSignature.Name = "Aquarium D3D12 TubeField Render Root Signature";
+        bokushoBrushRootSignature = CreateBokushoBrushRootSignature();
+        bokushoBrushRootSignature.Name = "Aquarium D3D12 Bokusho Brush Root Signature";
         generatedMeshDrawCommandSignature = CreateGeneratedMeshDrawCommandSignature();
         generatedMeshDrawCommandSignature.Name = "Aquarium D3D12 Generated Mesh Draw Command Signature";
         CaptureShaderWriteTimes();
@@ -1584,6 +1601,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         && fractalRadiosityReservoirPipelineState is not null
         && tubeFieldComputePipelineState is not null
         && tubeFieldRenderPipelineState is not null
+        && bokushoBrushPipelineState is not null
         && fieldReservoirResolvePipelineState is not null
         && sdfProxyPipelineStates.All(pipeline => pipeline is not null)
         && bloomPrefilterPipelineState is not null
@@ -1627,6 +1645,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fractalReservoirRootSignature.Dispose();
         tubeFieldRootSignature.Dispose();
         tubeFieldRenderRootSignature.Dispose();
+        bokushoBrushRootSignature.Dispose();
         generatedMeshDrawCommandSignature.Dispose();
         blueNoiseTexture.Dispose();
         tubeFieldFallbackRampTexture?.Dispose();
@@ -1641,6 +1660,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldStatsBuffer.Dispose();
         tubeFieldDrawArgumentBuffer.Dispose();
         tubeFieldReplayManifestBuffer.Dispose();
+        bokushoBrushCanvasBuffer.Dispose();
+        bokushoBrushTraceBuffer.Dispose();
         tubeFieldSegmentBuffer.Dispose();
         tubeFieldIndexBuffer.Dispose();
         tubeFieldVertexBuffer.Dispose();
@@ -2305,6 +2326,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Step("tube-field-render");
         var tubeFieldRender = CreateTubeFieldRenderPipelineState(paths.TubeField);
         tubeFieldRender.Name = "Aquarium D3D12 TubeField Render Pipeline";
+        Step("bokusho-brush");
+        var bokushoBrush = CreateBokushoBrushPipelineState(paths.BokushoBrush);
+        bokushoBrush.Name = "Aquarium D3D12 Bokusho Brush Compute Pipeline";
         Step("field-reservoir-resolve");
         var fieldReservoirResolve = CreateFieldReservoirResolvePipelineState(paths.Post);
         fieldReservoirResolve.Name = "Aquarium D3D12 Field Reservoir Resolve Pipeline";
@@ -2361,6 +2385,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             fractalRadiosityReservoir,
             tubeFieldCompute,
             tubeFieldRender,
+            bokushoBrush,
             fieldReservoirResolve,
             sdfProxies,
             bloomPrefilter,
@@ -3838,7 +3863,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeFieldResourceUploadCount = 0;
         activeFieldResourceUploadSkippedCount = 0;
         tubeFieldDrawBatches.Clear();
-        if (tubeFieldComputePipelineState is null || activeFieldEvidenceFrame.TubeSplineLowerings.Count == 0)
+        if (tubeFieldComputePipelineState is null)
         {
             return;
         }
@@ -3849,14 +3874,23 @@ public sealed class D3D12Renderer : IAquariumRenderer
         {
             UploadFieldResourceData(activeCommandList, frameResources);
 
+            var segmentBase = 0;
+            DispatchBokushoBrushField(activeCommandList, frameResources, ref segmentBase);
+
+            if (activeFieldEvidenceFrame.TubeSplineLowerings.Count == 0)
+            {
+                activeTubeFieldDrawIndexCount = activeTubeFieldDispatchedSegments * 6;
+                return;
+            }
+
             var plannedTubeFieldClaims = PlannedTubeFieldClaimKeys();
             if (plannedTubeFieldClaims.Count == 0)
             {
                 activeTubeFieldUnplannedLowerings = activeFieldEvidenceFrame.TubeSplineLowerings.Count;
+                activeTubeFieldDrawIndexCount = activeTubeFieldDispatchedSegments * 6;
                 return;
             }
 
-            var segmentBase = 0;
             foreach (var lowering in activeFieldEvidenceFrame.TubeSplineLowerings)
             {
                 if (!plannedTubeFieldClaims.Contains(lowering.ClaimKey))
@@ -3985,6 +4019,109 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         return planned;
+    }
+
+    private void DispatchBokushoBrushField(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources, ref int segmentBase)
+    {
+        if (!activeBokushoBrushFrame.HasInput ||
+            bokushoBrushPipelineState is null ||
+            tubeFieldComputePipelineState is null ||
+            tubeFieldDrawBatches.Count >= MaxTubeFieldDrawBatches)
+        {
+            return;
+        }
+
+        var frame = activeBokushoBrushFrame.Normalized();
+        var sampleCount = Math.Clamp(frame.SampleCount, 2, MaxBokushoBrushSamples);
+        var tuftCount = Math.Clamp(frame.TuftCount, 1, MaxBokushoBrushTufts);
+        var valueCount = checked(sampleCount * tuftCount);
+        var constants = new D3D12BokushoBrushConstants(
+            new Vector4(sampleCount, tuftCount, frame.PhysicsHz, 0.0f),
+            new Vector4(frame.BrushRadius, frame.Pressure, frame.InkLoad, frame.Wetness),
+            new Vector4(frame.Splay, frame.Bend, frame.Friction, 0.0f),
+            frame.StrokeP0,
+            frame.StrokeP1,
+            frame.StrokeP2,
+            frame.StrokeP3);
+        var constantsUpload = frameResources.UploadRing.WriteConstant(constants);
+
+        bokushoBrushTraceBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+        bokushoBrushCanvasBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+        activeCommandList.SetComputeRootSignature(bokushoBrushRootSignature);
+        activeCommandList.SetPipelineState(bokushoBrushPipelineState);
+        activeCommandList.SetComputeRootConstantBufferView(RootBokushoBrushConstants, constantsUpload.GpuVirtualAddress);
+        activeCommandList.SetComputeRootUnorderedAccessView(RootBokushoBrushTrace, bokushoBrushTraceBuffer.Resource.GPUVirtualAddress);
+        activeCommandList.SetComputeRootUnorderedAccessView(RootBokushoBrushCanvas, bokushoBrushCanvasBuffer.Resource.GPUVirtualAddress);
+        activeCommandList.Dispatch((uint)((tuftCount + 127) / 128), 1, 1);
+        activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoBrushTraceBuffer.Resource));
+        activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoBrushCanvasBuffer.Resource));
+
+        var subdivisions = 2;
+        var requestedSegments = checked((sampleCount - 1) * subdivisions * tuftCount);
+        activeTubeFieldRequestedSegments += requestedSegments;
+        var remainingSegments = MaxTubeFieldSegments - segmentBase;
+        if (remainingSegments <= 0)
+        {
+            activeTubeFieldTruncatedSegments += requestedSegments;
+            return;
+        }
+
+        var dispatchSegments = Math.Min(requestedSegments, remainingSegments);
+        activeTubeFieldTruncatedSegments += requestedSegments - dispatchSegments;
+        var startIndex = segmentBase * 6;
+        var fieldId = StableFieldId("bokusho.brush.direct-compute", 5600.0f, 1024);
+        var tubeConstants = new D3D12TubeFieldConstants(
+            new Vector4(sampleCount, tuftCount, sizeof(float), 0.0f),
+            new Vector4(tuftCount, 1.0f, 0.0f, 0.0f),
+            new Vector4(1.0f, 2.8f, 0.0f, 1.0f),
+            new Vector4(0.010f, 0.030f, 0.92f, 0.14f),
+            new Vector4(2.8f, subdivisions, segmentBase, dispatchSegments),
+            new Vector4(tubeFieldDrawBatches.Count * GeneratedMeshDrawArgumentUIntCount, startIndex, fieldId, 0.0f),
+            new Vector3(-7.0f, -2.2f, -0.45f),
+            0.0f,
+            new Vector3(14.0f / Math.Max(1, sampleCount - 1), 0.0f, 0.0f),
+            0.0f,
+            new Vector3(0.0f, 0.0f, 0.9f / Math.Max(1, tuftCount - 1)),
+            0.0f);
+        var tubeConstantsUpload = frameResources.UploadRing.WriteConstant(tubeConstants);
+
+        bokushoBrushTraceBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+        tubeFieldVertexBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+        tubeFieldIndexBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+        tubeFieldStatsBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+        tubeFieldDrawArgumentBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+        tubeFieldSegmentBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+        activeCommandList.SetComputeRootSignature(tubeFieldRootSignature);
+        activeCommandList.SetPipelineState(tubeFieldComputePipelineState);
+        activeCommandList.SetComputeRootConstantBufferView(RootTubeFieldConstants, tubeConstantsUpload.GpuVirtualAddress);
+        activeCommandList.SetComputeRootShaderResourceView(RootTubeFieldSource, bokushoBrushTraceBuffer.Resource.GPUVirtualAddress);
+        activeCommandList.SetComputeRootUnorderedAccessView(RootTubeFieldVertices, tubeFieldVertexBuffer.Resource.GPUVirtualAddress);
+        activeCommandList.SetComputeRootUnorderedAccessView(RootTubeFieldIndices, tubeFieldIndexBuffer.Resource.GPUVirtualAddress);
+        activeCommandList.SetComputeRootUnorderedAccessView(RootTubeFieldStats, tubeFieldStatsBuffer.Resource.GPUVirtualAddress);
+        activeCommandList.SetComputeRootUnorderedAccessView(RootTubeFieldDrawArguments, tubeFieldDrawArgumentBuffer.Resource.GPUVirtualAddress);
+        activeCommandList.SetComputeRootUnorderedAccessView(RootTubeFieldSegments, tubeFieldSegmentBuffer.Resource.GPUVirtualAddress);
+        var ramp = ResolveTubeFieldRamp(activeCommandList, "");
+        ramp.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+        var rampDescriptor = frameResources.TransientShaderDescriptors.Allocate();
+        ramp.CreateShaderResourceView(device, rampDescriptor);
+        activeCommandList.SetComputeRootDescriptorTable(RootTubeFieldRamp, rampDescriptor.Gpu);
+        activeCommandList.Dispatch((uint)((dispatchSegments + 255) / 256), 1, 1);
+        activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldVertexBuffer.Resource));
+        activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldIndexBuffer.Resource));
+        activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldSegmentBuffer.Resource));
+        activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldStatsBuffer.Resource));
+        activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(tubeFieldDrawArgumentBuffer.Resource));
+
+        segmentBase += dispatchSegments;
+        activeTubeFieldDispatchedSegments += dispatchSegments;
+        activeTubeFieldIndirectDrawCount++;
+        tubeFieldDrawBatches.Add(new D3D12TubeFieldDrawBatch(
+            bokushoBrushTraceBuffer,
+            tubeConstants,
+            tubeConstantsUpload.GpuVirtualAddress,
+            "",
+            tubeFieldDrawBatches.Count * GeneratedMeshDrawArgumentBytes));
+        _ = valueCount;
     }
 
     private void EvaluateStereoDepthLowerings()
@@ -4459,6 +4596,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeBufferFieldFrame = scene.BufferFieldFrame.HasInput
             ? scene.BufferFieldFrame
             : AquariumBufferFieldFrame.Empty;
+        activeBokushoBrushFrame = scene.BokushoBrushFrame.HasInput
+            ? scene.BokushoBrushFrame.Normalized()
+            : AquariumBokushoBrushFrame.Empty;
         activeTextureSplinePrograms = PackTextureSplinePrograms(activeBufferFieldFrame);
         activeTextureFieldSamples = FlattenTextureSamples(activeBufferFieldFrame);
         activeSplineFrame = MergeSplineFrames(
@@ -5547,6 +5687,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 fractalRadiosityReservoirPipelineState!,
                 tubeFieldComputePipelineState!,
                 tubeFieldRenderPipelineState!,
+                bokushoBrushPipelineState!,
                 fieldReservoirResolvePipelineState!,
                 sdfProxyPipelineStates.Select(pipeline => pipeline!).ToArray(),
                 bloomPrefilterPipelineState!,
@@ -5577,6 +5718,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fractalRadiosityReservoirPipelineState = pipelines.FractalRadiosityReservoir;
         tubeFieldComputePipelineState = pipelines.TubeFieldCompute;
         tubeFieldRenderPipelineState = pipelines.TubeFieldRender;
+        bokushoBrushPipelineState = pipelines.BokushoBrush;
         fieldReservoirResolvePipelineState = pipelines.FieldReservoirResolve;
         for (var index = 0; index < sdfProxyPipelineStates.Length; index++)
         {
@@ -5609,6 +5751,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fractalRadiosityReservoirPipelineState = null;
         tubeFieldComputePipelineState = null;
         tubeFieldRenderPipelineState = null;
+        bokushoBrushPipelineState = null;
         Array.Clear(sdfProxyPipelineStates);
         bloomPrefilterPipelineState = null;
         bloomDownsamplePipelineState = null;
@@ -6029,6 +6172,21 @@ public sealed class D3D12Renderer : IAquariumRenderer
         return device.CreateRootSignature(0, in description, RootSignatureVersion.Version1);
     }
 
+    private ID3D12RootSignature CreateBokushoBrushRootSignature()
+    {
+        var rootParameters = new[]
+        {
+            new RootParameter(RootParameterType.ConstantBufferView, new RootDescriptor(4, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(20, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(21, 0), ShaderVisibility.All),
+        };
+        var description = new RootSignatureDescription(
+            RootSignatureFlags.None,
+            rootParameters,
+            []);
+        return device.CreateRootSignature(0, in description, RootSignatureVersion.Version1);
+    }
+
     private ID3D12CommandSignature CreateGeneratedMeshDrawCommandSignature()
     {
         var arguments = new[]
@@ -6304,6 +6462,17 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var description = new ComputePipelineStateDescription
         {
             RootSignature = tubeFieldRootSignature,
+            ComputeShader = computeShader,
+        };
+        return device.CreateComputePipelineState(description);
+    }
+
+    private ID3D12PipelineState CreateBokushoBrushPipelineState(string path)
+    {
+        var computeShader = CompileShader(path, "D3D12BokushoBrushCS", "cs_5_0");
+        var description = new ComputePipelineStateDescription
+        {
+            RootSignature = bokushoBrushRootSignature,
             ComputeShader = computeShader,
         };
         return device.CreateComputePipelineState(description);
@@ -6740,6 +6909,16 @@ public sealed class D3D12Renderer : IAquariumRenderer
         string RampResourceKey,
         int DrawArgumentOffsetBytes);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct D3D12BokushoBrushConstants(
+        Vector4 Shape,
+        Vector4 Brush,
+        Vector4 Dynamics,
+        Vector4 StrokeP0,
+        Vector4 StrokeP1,
+        Vector4 StrokeP2,
+        Vector4 StrokeP3);
+
     private readonly record struct D3D12PipelinePrivateGeneratedMesh(
         D3D12StructuredBuffer Vertices,
         D3D12StructuredBuffer Indices,
@@ -6830,6 +7009,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         string StereoDepth,
         string PointCloud,
         string TubeField,
+        string BokushoBrush,
         string FractalReservoir,
         string FractalSplatRender,
         string SdfCommon,
@@ -6840,7 +7020,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         string Post,
         string ReservoirHistoryUpdate)
     {
-        public IReadOnlyList<string> All { get; } = [HeightField, Scene, Spline, TemporalGaussian, GpuSensorFusion, StereoDepth, PointCloud, TubeField, FractalReservoir, FractalSplatRender, SdfCommon, SdfProxy, ..SdfShaders, SdfMath, ..Includes, Post, ReservoirHistoryUpdate];
+        public IReadOnlyList<string> All { get; } = [HeightField, Scene, Spline, TemporalGaussian, GpuSensorFusion, StereoDepth, PointCloud, TubeField, BokushoBrush, FractalReservoir, FractalSplatRender, SdfCommon, SdfProxy, ..SdfShaders, SdfMath, ..Includes, Post, ReservoirHistoryUpdate];
 
         public static D3D12ShaderPaths FromManifest(string root, AquariumShaderManifest manifest)
         {
@@ -6857,6 +7037,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 shaderPath("D3D12StereoDepth.hlsl"),
                 shaderPath("D3D12PointCloud.hlsl"),
                 shaderPath("D3D12TubeField.hlsl"),
+                shaderPath("D3D12BokushoBrush.hlsl"),
                 shaderPath(manifest.FractalReservoirShader),
                 shaderPath(manifest.FractalSplatRenderShader),
                 shaderPath(manifest.SdfCommonInclude),
@@ -6887,6 +7068,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         ID3D12PipelineState FractalRadiosityReservoir,
         ID3D12PipelineState TubeFieldCompute,
         ID3D12PipelineState TubeFieldRender,
+        ID3D12PipelineState BokushoBrush,
         ID3D12PipelineState FieldReservoirResolve,
         IReadOnlyList<ID3D12PipelineState> SdfProxies,
         ID3D12PipelineState BloomPrefilter,
@@ -6905,6 +7087,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             BloomDownsample.Dispose();
             BloomPrefilter.Dispose();
             FieldReservoirResolve.Dispose();
+            BokushoBrush.Dispose();
             FractalRadiosityReservoir.Dispose();
             TubeFieldRender.Dispose();
             TubeFieldCompute.Dispose();

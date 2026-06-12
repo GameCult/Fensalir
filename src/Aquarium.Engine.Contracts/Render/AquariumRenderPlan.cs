@@ -511,7 +511,62 @@ public sealed class AquariumSceneState
 
     public AquariumBufferFieldFrame BufferFieldFrame { get; init; } = AquariumBufferFieldFrame.Empty;
 
+    public AquariumBokushoBrushFrame BokushoBrushFrame { get; init; } = AquariumBokushoBrushFrame.Empty;
+
     public AquariumSplineFrame SplineFrame { get; init; } = AquariumSplineFrame.Empty;
+}
+
+public sealed class AquariumBokushoBrushFrame
+{
+    public static AquariumBokushoBrushFrame Empty { get; } = new();
+
+    public int TuftCount { get; init; }
+
+    public int SampleCount { get; init; }
+
+    public float PhysicsHz { get; init; } = 500.0f;
+
+    public float BrushRadius { get; init; } = 2.2f;
+
+    public float Pressure { get; init; } = 0.72f;
+
+    public float InkLoad { get; init; } = 0.90f;
+
+    public float Wetness { get; init; } = 0.86f;
+
+    public float Splay { get; init; } = 0.72f;
+
+    public float Bend { get; init; } = 0.58f;
+
+    public float Friction { get; init; } = 0.62f;
+
+    public Vector4 StrokeP0 { get; init; } = new(-7.2f, 1.0f, 0.0f, 0.0f);
+
+    public Vector4 StrokeP1 { get; init; } = new(-2.4f, -1.8f, 0.0f, 0.0f);
+
+    public Vector4 StrokeP2 { get; init; } = new(2.4f, -1.6f, 0.0f, 0.0f);
+
+    public Vector4 StrokeP3 { get; init; } = new(7.2f, 0.8f, 0.0f, 0.0f);
+
+    public bool HasInput => TuftCount > 0 && SampleCount > 1 && PhysicsHz > 0.0f;
+
+    public AquariumBokushoBrushFrame Normalized() => new()
+    {
+        TuftCount = Math.Clamp(TuftCount, 1, 4096),
+        SampleCount = Math.Clamp(SampleCount, 2, 4096),
+        PhysicsHz = Math.Clamp(PhysicsHz, 60.0f, 2000.0f),
+        BrushRadius = MathF.Max(0.0001f, BrushRadius),
+        Pressure = Math.Clamp(Pressure, 0.0f, 2.0f),
+        InkLoad = Math.Clamp(InkLoad, 0.0f, 2.0f),
+        Wetness = Math.Clamp(Wetness, 0.0f, 1.6f),
+        Splay = Math.Clamp(Splay, 0.0f, 2.0f),
+        Bend = Math.Clamp(Bend, 0.0f, 2.4f),
+        Friction = Math.Clamp(Friction, 0.0f, 1.0f),
+        StrokeP0 = StrokeP0,
+        StrokeP1 = StrokeP1,
+        StrokeP2 = StrokeP2,
+        StrokeP3 = StrokeP3,
+    };
 }
 
 public sealed class AquariumBufferFieldFrame

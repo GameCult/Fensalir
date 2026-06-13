@@ -395,19 +395,35 @@ public static class BokushoBrushSimulation
             {
                 var tuftIndex = Math.Clamp(centerTuft + tuftDelta, 0, tuftCount - 1);
                 var index = ((strokeIndex * tuftCount) + tuftIndex) * sampleCount + sampleIndex;
+                var previousIndex = ((strokeIndex * tuftCount) + tuftIndex) * sampleCount + Math.Max(sampleIndex - 1, 0);
                 var tip = tips[index];
-                var delta = world - new Vector2(tip.X, tip.Y);
+                var previousTip = tips[previousIndex];
+                var tipPoint = new Vector2(tip.X, tip.Y);
+                var previousTipPoint = new Vector2(previousTip.X, previousTip.Y);
+                var sweep = tipPoint - previousTipPoint;
+                var sweepLengthSquared = sweep.LengthSquared();
+                var sweepT = sweepLengthSquared <= 0.000001f
+                    ? 1.0f
+                    : Saturate(Vector2.Dot(world - previousTipPoint, sweep) / sweepLengthSquared);
+                var contactPoint = previousTipPoint + sweep * sweepT;
+                var sweepDistance = MathF.Sqrt(Vector2.DistanceSquared(world, contactPoint));
+                var sweepContact = SmoothStep(1.0f, 0.0f, sweepDistance / MathF.Max(MathF.Max(tip.Z, previousTip.Z) * 1.04f, 0.001f));
+                var delta = world - contactPoint;
                 var normalDistance = Vector2.Dot(delta, sampleNormal) / MathF.Max(tip.Z, 0.001f);
                 var tangentDistance = Vector2.Dot(delta, sampleTangent) / MathF.Max(tip.W, 0.001f);
                 var ellipse = MathF.Sqrt(normalDistance * normalDistance + tangentDistance * tangentDistance);
-                var tipContact = SmoothStep(1.0f, 0.0f, ellipse);
-                var contribution = canvas[index] * tipContact * (1.0f - MathF.Abs(sampleDelta) * 0.045f);
+                var tipContact = MathF.Max(SmoothStep(1.0f, 0.0f, ellipse), sweepContact * 0.86f);
+                var contribution = canvas[index]
+                    * tipContact
+                    * (0.20f + contact * 0.80f)
+                    * (1.0f - MathF.Abs(sampleDelta) * 0.045f)
+                    * (0.82f + sweepContact * 0.24f);
                 pigmentPeak = MathF.Max(pigmentPeak, contribution);
                 pigmentFlow += contribution;
             }
         }
 
-        return Saturate(pigmentPeak * 0.92f + pigmentFlow * 0.035f) * hold * (0.20f + pressure * 0.28f + Saturate(frame.InkLoad * 0.5f) * 0.12f);
+        return Saturate(pigmentPeak * 1.14f + pigmentFlow * 0.026f) * hold * (0.30f + pressure * 0.38f + Saturate(frame.InkLoad * 0.5f) * 0.18f);
     }
 
     private static float StrokeTaper(float t, float entryTaper, float exitTaper)

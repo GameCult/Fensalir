@@ -305,19 +305,31 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
         {
             uint tuftIndex = min((uint)max((int)centerTuft + tuftDelta, 0), tuftCount - 1u);
             float4 tip = bokushoTipSample(strokeIndex, sampleIndex, tuftIndex);
-            float2 delta = world - tip.xy;
+            uint previousSampleIndex = min((uint)max((int)sampleIndex - 1, 0), sampleCount - 1u);
+            float4 previousTip = bokushoTipSample(strokeIndex, previousSampleIndex, tuftIndex);
+            float2 sweep = tip.xy - previousTip.xy;
+            float sweepLengthSquared = dot(sweep, sweep);
+            float sweepT = sweepLengthSquared <= 0.000001 ? 1.0 : saturate(dot(world - previousTip.xy, sweep) / sweepLengthSquared);
+            float2 contactPoint = previousTip.xy + sweep * sweepT;
+            float sweepDistance = length(world - contactPoint);
+            float sweepContact = smoothstep(1.0, 0.0, sweepDistance / max(max(tip.z, previousTip.z) * 1.04, 0.001));
+            float2 delta = world - contactPoint;
             float normalDistance = dot(delta, sampleNormal) / max(tip.z, 0.001);
             float tangentDistance = dot(delta, sampleTangent) / max(tip.w, 0.001);
             float ellipse = sqrt(normalDistance * normalDistance + tangentDistance * tangentDistance);
-            float tipContact = smoothstep(1.0, 0.0, ellipse);
+            float tipContact = max(smoothstep(1.0, 0.0, ellipse), sweepContact * 0.86);
             float pigment = BokushoCanvasField[((strokeIndex * tuftCount) + tuftIndex) * sampleCount + sampleIndex];
-            float contribution = pigment * tipContact * (1.0 - abs((float)sampleDelta) * 0.045);
+            float contribution = pigment
+                * tipContact
+                * (0.20 + contact * 0.80)
+                * (1.0 - abs((float)sampleDelta) * 0.045)
+                * (0.82 + sweepContact * 0.24);
             pigmentPeak = max(pigmentPeak, contribution);
             pigmentFlow += contribution;
         }
     }
 
-    return saturate(pigmentPeak * 0.92 + pigmentFlow * 0.035) * hold * (0.20 + pressure * 0.28 + saturate(bokushoMaterial.z * 0.5) * 0.12);
+    return saturate(pigmentPeak * 1.14 + pigmentFlow * 0.026) * hold * (0.30 + pressure * 0.38 + saturate(bokushoMaterial.z * 0.5) * 0.18);
 }
 
 float bokushoPageHeight(float2 world)

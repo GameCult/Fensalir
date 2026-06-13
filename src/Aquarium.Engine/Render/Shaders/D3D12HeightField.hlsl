@@ -319,11 +319,13 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
             float tangentDistance = dot(delta, sampleTangent) / max(tip.w, 0.001);
             float ellipse = sqrt(normalDistance * normalDistance + tangentDistance * tangentDistance);
             float tipContact = max(smoothstep(1.0, 0.0, ellipse), sweepContact * 0.86);
+            float longitudinalGate = smoothstep(1.0, 0.0, abs(tangentDistance) * 0.62);
             float pigment = BokushoCanvasField[((strokeIndex * tuftCount) + tuftIndex) * sampleCount + sampleIndex];
             float contribution = pigment
                 * tipContact
                 * (0.03 + contactCore * 0.97)
-                * (1.0 - abs((float)sampleDelta) * 0.045)
+                * (0.18 + longitudinalGate * 0.82)
+                * (1.0 - abs((float)sampleDelta) * 0.070)
                 * (0.82 + sweepContact * 0.24);
             pigmentPeak = max(pigmentPeak, contribution);
             pigmentFlow += contribution;

@@ -422,10 +422,12 @@ public static class BokushoBrushSimulation
                 var tangentDistance = Vector2.Dot(delta, sampleTangent) / MathF.Max(tip.W, 0.001f);
                 var ellipse = MathF.Sqrt(normalDistance * normalDistance + tangentDistance * tangentDistance);
                 var tipContact = MathF.Max(SmoothStep(1.0f, 0.0f, ellipse), sweepContact * 0.86f);
+                var longitudinalGate = SmoothStep(1.0f, 0.0f, MathF.Abs(tangentDistance) * 0.62f);
                 var contribution = canvas[index]
                     * tipContact
                     * (0.03f + contactCore * 0.97f)
-                    * (1.0f - MathF.Abs(sampleDelta) * 0.045f)
+                    * (0.18f + longitudinalGate * 0.82f)
+                    * (1.0f - MathF.Abs(sampleDelta) * 0.070f)
                     * (0.82f + sweepContact * 0.24f);
                 pigmentPeak = MathF.Max(pigmentPeak, contribution);
                 pigmentFlow += contribution;

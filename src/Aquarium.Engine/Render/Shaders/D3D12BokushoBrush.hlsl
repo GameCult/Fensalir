@@ -25,6 +25,7 @@ struct BokushoBrushStroke
 
 RWStructuredBuffer<float> BokushoTraceField : register(u20);
 RWStructuredBuffer<float> BokushoCanvasField : register(u21);
+RWStructuredBuffer<float4> BokushoTipField : register(u22);
 StructuredBuffer<BokushoBrushStroke> BokushoBrushStrokes : register(t78);
 
 float2 StrokePoint(BokushoBrushStroke stroke, float t)
@@ -198,7 +199,7 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         float recovery = saturate(0.06 + stateWet * 0.10 + localPressure * 0.07 + (1.0 - edge) * 0.06 + compliance * 0.07);
         offset = cultmath_lerp(offset, targetOffset, recovery);
 
-        float lag = localTangentRadius * (0.10 + bend * 0.62 + gripHeight * 0.18 + friction * localPressure * 0.30 + edge * 0.16);
+        float lag = localTangentRadius * (0.04 + bend * 0.32 + gripHeight * 0.10 + friction * localPressure * 0.16 + edge * 0.08);
         float2 desiredTip = center + normal * offset - tangent * lag;
         float2 slip = desiredTip - tip;
         float poseContact = 0.90 + compliance * 0.10 + (1.0 - saturate(gripHeight / 2.4)) * 0.10;
@@ -220,5 +221,6 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         float trace = saturate(contact * (0.30 + stateLoad * 0.42 + adhesion * 0.20) + deposition * 1.8);
         BokushoTraceField[index] = trace;
         BokushoCanvasField[index] = localPigment;
+        BokushoTipField[index] = float4(tip, localNormalRadius * (0.70 + localPressure * 0.22 + splay * 0.24), localTangentRadius * (0.84 + drag * 0.34 + bend * 0.18));
     }
 }

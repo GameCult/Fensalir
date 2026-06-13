@@ -58,6 +58,7 @@ struct BokushoBrushStroke
 
 StructuredBuffer<float> BokushoCanvasField : register(t77);
 StructuredBuffer<BokushoBrushStroke> BokushoBrushStrokes : register(t78);
+StructuredBuffer<float4> BokushoTipField : register(t79);
 
 #include "CultMath/CultMath.hlsl"
 
@@ -192,6 +193,14 @@ float bokushoCanvasSample(uint strokeIndex, float sampleIndex, float tuftIndex)
     return saturate(cultmath_lerp(lower, upper, tuftBlend));
 }
 
+float4 bokushoTipSample(uint strokeIndex, uint sampleIndex, uint tuftIndex)
+{
+    uint sampleCount = max((uint)round(bokushoShape.x), 2u);
+    uint tuftCount = max((uint)round(bokushoShape.y), 1u);
+    uint rowOffset = strokeIndex * tuftCount;
+    return BokushoTipField[(rowOffset + min(tuftIndex, tuftCount - 1u)) * sampleCount + min(sampleIndex, sampleCount - 1u)];
+}
+
 float bokushoHashNoiseCell(float2 paperPoint, uint strokeIndex, uint salt)
 {
     int2 cell = int2(floor(paperPoint));
@@ -253,6 +262,8 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
         }
     }
 
+    uint sampleCount = max((uint)round(bokushoShape.x), 2u);
+    uint tuftCount = max((uint)round(bokushoShape.y), 1u);
     float2 center = bokushoStrokePoint(stroke, bestT);
     float2 tangent = bokushoStrokeTangent(stroke, bestT);
     float2 normal = float2(-tangent.y, tangent.x);
@@ -268,16 +279,43 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float tuftT = saturate(lateral / max(footprint, 0.001) * 0.5 + 0.5);
     float distance = sqrt(bestDistance);
     float contact = smoothstep(1.0, 0.0, distance / max(footprint * 0.80, 0.001));
-    float sampleIndex = bestT * max(bokushoShape.x - 1.0, 1.0);
-    float tuftIndex = tuftT * max(bokushoShape.y - 1.0, 0.0);
-    float pigment = bokushoCanvasSample(strokeIndex, sampleIndex, tuftIndex);
     float tooth = bokushoPaperTooth(world, strokeIndex);
     float edge = saturate(distance / max(footprint * 0.80, 0.001));
     float dryBreak = smoothstep(0.18 + tooth * 0.18, 0.92, edge)
         * (1.0 - saturate(bokushoMaterial.w / 1.6))
         * (0.34 + stroke.dynamics.w * 0.12);
     float hold = saturate(0.52 + tooth * 0.42 + pressure * 0.28 - dryBreak);
-    return pigment * contact * hold * (0.10 + pressure * 0.18 + saturate(bokushoMaterial.z * 0.5) * 0.08);
+    uint centerSample = min((uint)round(bestT * (float)(sampleCount - 1u)), sampleCount - 1u);
+    uint centerTuft = min((uint)round(tuftT * (float)max((int)tuftCount - 1, 0)), tuftCount - 1u);
+    float pigmentPeak = 0.0;
+    float pigmentFlow = 0.0;
+
+    [unroll]
+    for (int sampleDelta = -3; sampleDelta <= 3; sampleDelta += 1)
+    {
+        uint sampleIndex = min((uint)max((int)centerSample + sampleDelta, 0), sampleCount - 1u);
+        float sampleT = (float)sampleIndex / max((float)(sampleCount - 1u), 1.0);
+        float2 sampleTangent = bokushoStrokeTangent(stroke, sampleT);
+        float2 sampleNormal = float2(-sampleTangent.y, sampleTangent.x);
+
+        [unroll]
+        for (int tuftDelta = -4; tuftDelta <= 4; tuftDelta += 1)
+        {
+            uint tuftIndex = min((uint)max((int)centerTuft + tuftDelta, 0), tuftCount - 1u);
+            float4 tip = bokushoTipSample(strokeIndex, sampleIndex, tuftIndex);
+            float2 delta = world - tip.xy;
+            float normalDistance = dot(delta, sampleNormal) / max(tip.z, 0.001);
+            float tangentDistance = dot(delta, sampleTangent) / max(tip.w, 0.001);
+            float ellipse = sqrt(normalDistance * normalDistance + tangentDistance * tangentDistance);
+            float tipContact = smoothstep(1.0, 0.0, ellipse);
+            float pigment = BokushoCanvasField[((strokeIndex * tuftCount) + tuftIndex) * sampleCount + sampleIndex];
+            float contribution = pigment * tipContact * (1.0 - abs((float)sampleDelta) * 0.045);
+            pigmentPeak = max(pigmentPeak, contribution);
+            pigmentFlow += contribution;
+        }
+    }
+
+    return saturate(pigmentPeak * 0.92 + pigmentFlow * 0.035) * hold * (0.20 + pressure * 0.28 + saturate(bokushoMaterial.z * 0.5) * 0.12);
 }
 
 float bokushoPageHeight(float2 world)

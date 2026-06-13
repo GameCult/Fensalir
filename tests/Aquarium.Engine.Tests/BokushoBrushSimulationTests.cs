@@ -362,6 +362,21 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushSourceStrokeIdPreventsAccidentalSegmentReplay()
+    {
+        var shared = SourceIdentityFrame(sameSourceId: true);
+        var split = SourceIdentityFrame(sameSourceId: false);
+
+        var sharedResult = BokushoBrushSimulation.Evaluate(shared);
+        var splitResult = BokushoBrushSimulation.Evaluate(split);
+        var secondStrokeOffset = sharedResult.SampleCount * sharedResult.TuftCount;
+        var sharedSecond = sharedResult.Canvas.Skip(secondStrokeOffset).Sum();
+        var splitSecond = splitResult.Canvas.Skip(secondStrokeOffset).Sum();
+
+        Assert.True(MathF.Abs(sharedSecond - splitSecond) > 0.05f);
+    }
+
+    [Fact]
     public void CpuBrushGeometryEnrichesCurvedStrokePressureAndWidth()
     {
         var straight = GestureFrame(curved: false);
@@ -534,6 +549,55 @@ public sealed class BokushoBrushSimulationTests
                     ExitTaper = 0.22f,
                     PigmentScale = 1.0f,
                     SplitScale = 1.8f,
+                },
+            ],
+        };
+    }
+
+    private static AquariumBokushoBrushFrame SourceIdentityFrame(bool sameSourceId)
+    {
+        var secondId = sameSourceId ? 7 : 8;
+        return new AquariumBokushoBrushFrame
+        {
+            TuftCount = 9,
+            SampleCount = 48,
+            PhysicsHz = 500.0f,
+            BrushRadius = 1.35f,
+            Pressure = 0.92f,
+            InkLoad = 1.28f,
+            Wetness = 1.02f,
+            Splay = 0.82f,
+            Bend = 0.74f,
+            Friction = 0.68f,
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-3.0f, 0.2f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-2.0f, 0.0f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(-0.6f, 0.0f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(0.0f, 0.1f, 0.0f, 0.0f),
+                    RadiusScale = 0.90f,
+                    PressureScale = 1.0f,
+                    NormalScale = 0.70f,
+                    TangentScale = 1.08f,
+                    SegmentStart = 0.0f,
+                    SegmentEnd = 0.5f,
+                    SourceStrokeId = 7,
+                },
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-0.1f, 0.1f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(0.0f, 0.0f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(1.8f, 0.0f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(3.0f, -0.2f, 0.0f, 0.0f),
+                    RadiusScale = 1.0f,
+                    PressureScale = 1.0f,
+                    NormalScale = 0.70f,
+                    TangentScale = 1.08f,
+                    SegmentStart = 0.5f,
+                    SegmentEnd = 1.0f,
+                    SourceStrokeId = secondId,
                 },
             ],
         };

@@ -156,9 +156,15 @@ uint StrokeChainStart(uint strokeIndex)
 {
     uint chainStart = strokeIndex;
     float expectedStart = saturate(BokushoBrushStrokes[strokeIndex].p0.z);
+    float sourceStrokeId = BokushoBrushStrokes[strokeIndex].p3.w;
     [loop]
     while (chainStart > 0u && expectedStart > 0.0001)
     {
+        if (sourceStrokeId >= 0.0 && abs(BokushoBrushStrokes[chainStart - 1u].p3.w - sourceStrokeId) > 0.5)
+        {
+            break;
+        }
+
         float previousEnd = saturate(BokushoBrushStrokes[chainStart - 1u].p0.w);
         if (abs(previousEnd - expectedStart) > 0.001)
         {

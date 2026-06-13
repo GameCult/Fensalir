@@ -622,6 +622,8 @@ public sealed class AquariumBokushoBrushStroke
 
     public float SegmentEnd { get; init; } = 1.0f;
 
+    public int SourceStrokeId { get; init; } = -1;
+
     public AquariumBokushoBrushStroke Normalized() => new()
     {
         StrokeP0 = StrokeP0,
@@ -642,6 +644,7 @@ public sealed class AquariumBokushoBrushStroke
         SplitScale = Math.Clamp(SplitScale, 0.0f, 4.0f),
         SegmentStart = Math.Clamp(SegmentStart, 0.0f, 1.0f),
         SegmentEnd = Math.Clamp(SegmentEnd, 0.0f, 1.0f),
+        SourceStrokeId = SourceStrokeId,
     };
 }
 

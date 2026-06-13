@@ -286,6 +286,7 @@ public static class BokushoBrushSimulation
                 SplitScale = 1.0f,
                 SegmentStart = 0.0f,
                 SegmentEnd = 1.0f,
+                SourceStrokeId = 0,
             }.Normalized()
         ];
     }
@@ -293,10 +294,16 @@ public static class BokushoBrushSimulation
     private static int ChainStart(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex)
     {
         var chainStart = strokeIndex;
+        var sourceStrokeId = strokes[strokeIndex].SourceStrokeId;
         var expectedStart = Math.Clamp(strokes[strokeIndex].SegmentStart, 0.0f, 1.0f);
         while (chainStart > 0 && expectedStart > 0.0001f)
         {
             var previous = strokes[chainStart - 1];
+            if (sourceStrokeId >= 0 && previous.SourceStrokeId != sourceStrokeId)
+            {
+                break;
+            }
+
             var previousEnd = Math.Clamp(previous.SegmentEnd, 0.0f, 1.0f);
             if (MathF.Abs(previousEnd - expectedStart) > 0.001f)
             {

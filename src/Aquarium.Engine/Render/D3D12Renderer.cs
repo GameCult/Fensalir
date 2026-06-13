@@ -4815,7 +4815,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new Vector4(stroke.StrokeP0.X, stroke.StrokeP0.Y, stroke.SegmentStart, stroke.SegmentEnd),
             stroke.StrokeP1,
             stroke.StrokeP2,
-            stroke.StrokeP3);
+            new Vector4(stroke.StrokeP3.X, stroke.StrokeP3.Y, stroke.StrokeP3.Z, stroke.SourceStrokeId));
     }
 
     private void AppendFieldEvidenceGpuSensorInputs()

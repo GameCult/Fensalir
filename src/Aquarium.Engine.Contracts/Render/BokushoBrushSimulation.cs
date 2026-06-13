@@ -95,15 +95,16 @@ public static class BokushoBrushSimulation
 
                 for (var replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex++)
                 {
-                    SimulateTuftSegment(strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, tuftCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, wetness, load, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, Span<float>.Empty, Span<float>.Empty, Span<Vector4>.Empty, writeOutput: false);
+                    SimulateTuftSegment(strokes, strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, tuftCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, wetness, load, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, Span<float>.Empty, Span<float>.Empty, Span<Vector4>.Empty, writeOutput: false);
                 }
 
-                SimulateTuftSegment(stroke, strokeIndex, chainStart, tuft, sampleCount, tuftCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, wetness, load, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, trace, canvas, tips, writeOutput: true);
+                SimulateTuftSegment(strokes, stroke, strokeIndex, chainStart, tuft, sampleCount, tuftCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, wetness, load, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, trace, canvas, tips, writeOutput: true);
             }
         }
     }
 
     private static void SimulateTuftSegment(
+        IReadOnlyList<AquariumBokushoBrushStroke> strokes,
         AquariumBokushoBrushStroke stroke,
         int strokeIndex,
         int laneKey,
@@ -185,7 +186,7 @@ public static class BokushoBrushSimulation
             {
                 var index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
                 var pigmentSurvival = 0.62f + cohesion * 0.30f + laneCore * 0.36f - split * 0.08f - dryMemory * 0.12f;
-                var joinBlend = SegmentJoinBlend(stroke, t);
+            var joinBlend = SegmentJoinBlend(strokes, strokeIndex, stroke, t);
                 var pigment = deposition * (8.4f + contact * 2.8f) + contact * stateLoad * stateWet * (0.14f + laneCore * 0.18f) + adhesion * contact * 0.08f;
                 canvas[index] = Saturate(pigment * pigmentSurvival * stroke.PigmentScale * joinBlend);
                 trace[index] = Saturate((contact * (0.24f + stateLoad * 0.36f + adhesion * 0.18f + laneCore * 0.12f) + deposition * 1.9f) * joinBlend);
@@ -462,17 +463,21 @@ public static class BokushoBrushSimulation
         return Saturate(Lerp(start, end, t));
     }
 
-    private static float SegmentJoinBlend(AquariumBokushoBrushStroke stroke, float t)
+    private static float SegmentJoinBlend(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex, AquariumBokushoBrushStroke stroke, float t)
     {
         var blend = 1.0f;
         if (stroke.SegmentStart > 0.0001f)
         {
-            blend *= 0.58f + SmoothStep(0.0f, 0.08f, t) * 0.42f;
+            var sameSourcePrevious = strokeIndex > 0 && stroke.SourceStrokeId >= 0 && strokes[strokeIndex - 1].SourceStrokeId == stroke.SourceStrokeId;
+            var floor = sameSourcePrevious ? 0.76f : 0.58f;
+            blend *= floor + SmoothStep(0.0f, 0.08f, t) * (1.0f - floor);
         }
 
         if (stroke.SegmentEnd < 0.9999f)
         {
-            blend *= 0.58f + (1.0f - SmoothStep(0.92f, 1.0f, t)) * 0.42f;
+            var sameSourceNext = strokeIndex + 1 < strokes.Count && stroke.SourceStrokeId >= 0 && strokes[strokeIndex + 1].SourceStrokeId == stroke.SourceStrokeId;
+            var floor = sameSourceNext ? 0.76f : 0.58f;
+            blend *= floor + (1.0f - SmoothStep(0.92f, 1.0f, t)) * (1.0f - floor);
         }
 
         return Math.Clamp(blend, 0.0f, 1.0f);

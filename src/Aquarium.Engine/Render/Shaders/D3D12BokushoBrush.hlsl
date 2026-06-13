@@ -136,17 +136,22 @@ float LaneHash(uint strokeIndex, uint tuft, uint salt)
     return (float)(value & 0x00FFFFFFu) / 16777215.0;
 }
 
-float SegmentJoinBlend(BokushoBrushStroke stroke, float t)
+float SegmentJoinBlend(uint strokeIndex, BokushoBrushStroke stroke, float t)
 {
     float blend = 1.0;
     if (stroke.p0.z > 0.0001)
     {
-        blend *= 0.58 + smoothstep(0.0, 0.08, t) * 0.42;
+        bool sameSourcePrevious = strokeIndex > 0u && stroke.p3.w >= 0.0 && abs(BokushoBrushStrokes[strokeIndex - 1u].p3.w - stroke.p3.w) <= 0.5;
+        float floorValue = sameSourcePrevious ? 0.76 : 0.58;
+        blend *= floorValue + smoothstep(0.0, 0.08, t) * (1.0 - floorValue);
     }
 
     if (stroke.p0.w < 0.9999)
     {
-        blend *= 0.58 + (1.0 - smoothstep(0.92, 1.0, t)) * 0.42;
+        uint strokeCount = max((uint)round(brushShape.w), 1u);
+        bool sameSourceNext = strokeIndex + 1u < strokeCount && stroke.p3.w >= 0.0 && abs(BokushoBrushStrokes[strokeIndex + 1u].p3.w - stroke.p3.w) <= 0.5;
+        float floorValue = sameSourceNext ? 0.76 : 0.58;
+        blend *= floorValue + (1.0 - smoothstep(0.92, 1.0, t)) * (1.0 - floorValue);
     }
 
     return saturate(blend);
@@ -254,7 +259,7 @@ void SimulateBokushoTuftSegment(
         {
             uint index = ((outputStrokeIndex * tuftCount) + tuft) * sampleCount + sample;
             float pigmentSurvival = 0.62 + cohesion * 0.30 + laneCore * 0.36 - split * 0.08 - dryMemory * 0.12;
-            float joinBlend = SegmentJoinBlend(stroke, t);
+            float joinBlend = SegmentJoinBlend(outputStrokeIndex, stroke, t);
             float pigment = deposition * (8.4 + contact * 2.8) + contact * stateLoad * stateWet * (0.14 + laneCore * 0.18) + adhesion * contact * 0.08;
             float localPigment = saturate(pigment * pigmentSurvival * stroke.dynamics.z * joinBlend);
             float trace = saturate((contact * (0.24 + stateLoad * 0.36 + adhesion * 0.18 + laneCore * 0.12) + deposition * 1.9) * joinBlend);

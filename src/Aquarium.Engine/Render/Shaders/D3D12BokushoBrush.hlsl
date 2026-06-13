@@ -59,83 +59,9 @@ float StrokeTaper(BokushoBrushStroke stroke, float t)
     return 0.018 + contact * 0.982;
 }
 
-float StrokeNormalRadiusShape(float taper)
-{
-    return 0.08 + taper * 0.92;
-}
-
-float StrokeTangentRadiusShape(float taper)
-{
-    return 0.16 + taper * 0.84;
-}
-
-float StrokePressureShape(BokushoBrushStroke stroke, float t)
-{
-    float strokeT = saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
-    float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
-    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
-    float pressIn = smoothstep(0.0, min(entryTaper * 1.6, 0.62), strokeT);
-    float liftOut = 1.0 - smoothstep(max(1.0 - exitTaper * 1.35, 0.20), 1.0, strokeT);
-    float belly = smoothstep(0.10, 0.36, strokeT) * (1.0 - smoothstep(0.66, 0.94, strokeT));
-    float entryLift = 1.0 - smoothstep(0.0, min(entryTaper * 1.15, 0.42), strokeT);
-    float exitLift = smoothstep(max(1.0 - exitTaper * 1.45, 0.18), 1.0, strokeT);
-    return saturate(0.40 + pressIn * liftOut * 0.34 + belly * 0.42 - entryLift * 0.12 - exitLift * 0.18);
-}
-
 float LaneCohesion(float edge, float split, float wetness, float pressure)
 {
     return saturate(0.50 + (1.0 - edge) * 0.38 + wetness * 0.22 + pressure * 0.12 - split * 0.18);
-}
-
-float StrokeSpeed(BokushoBrushStroke stroke, float t, float dt)
-{
-    float2 before = StrokePoint(stroke, saturate(t - dt));
-    float2 after = StrokePoint(stroke, saturate(t + dt));
-    return length(after - before) / max(dt * 2.0, 0.001);
-}
-
-float2 StrokeLocalTangent(BokushoBrushStroke stroke, float t, float dt)
-{
-    float2 before = StrokePoint(stroke, saturate(t - dt));
-    float2 after = StrokePoint(stroke, saturate(t + dt));
-    return cultmath_normalize(after - before);
-}
-
-float StrokeTurn(BokushoBrushStroke stroke, float t, float dt)
-{
-    float2 before = StrokeLocalTangent(stroke, saturate(t - dt), dt);
-    float2 after = StrokeLocalTangent(stroke, saturate(t + dt), dt);
-    return saturate(abs(before.x * after.y - before.y * after.x) * 1.8);
-}
-
-float StrokeGesturePressureShape(BokushoBrushStroke stroke, float t)
-{
-    float dt = 1.0 / max(brushShape.x - 1.0, 1.0);
-    float localSpeed = StrokeSpeed(stroke, t, dt);
-    float expectedSpeed = max(length(stroke.p3.xy - stroke.p0.xy), 0.001);
-    float slowPress = saturate((expectedSpeed * 1.18 - localSpeed) / max(expectedSpeed * 0.80, 0.001));
-    float turnPress = StrokeTurn(stroke, t, dt);
-    float strokeT = saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
-    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
-    float lateLift = smoothstep(max(1.0 - exitTaper * 1.80, 0.48), 1.0, strokeT);
-    return saturate(0.88 + slowPress * 0.30 + turnPress * 0.20 - lateLift * 0.16);
-}
-
-float StrokeGestureWidthShape(BokushoBrushStroke stroke, float t)
-{
-    float dt = 1.0 / max(brushShape.x - 1.0, 1.0);
-    float localSpeed = StrokeSpeed(stroke, t, dt);
-    float expectedSpeed = max(length(stroke.p3.xy - stroke.p0.xy), 0.001);
-    float slowSpread = saturate((expectedSpeed * 1.08 - localSpeed) / max(expectedSpeed * 0.85, 0.001));
-    float turnSpread = StrokeTurn(stroke, t, dt);
-    float strokeT = saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
-    float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
-    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
-    float belly = smoothstep(0.10, 0.42, strokeT) * (1.0 - smoothstep(0.68, 0.97, strokeT));
-    float entryLift = 1.0 - smoothstep(0.0, min(entryTaper * 1.35, 0.44), strokeT);
-    float exitLift = smoothstep(max(1.0 - exitTaper * 1.55, 0.16), 1.0, strokeT);
-    float sourceLift = smoothstep(0.64, 1.0, strokeT) * smoothstep(0.10, 0.42, strokeT);
-    return saturate(0.68 + slowSpread * 0.26 + turnSpread * 0.18 + belly * 0.36 - entryLift * 0.12 - exitLift * 0.34 - sourceLift * 0.10);
 }
 
 float StrokeSegmentSpan(BokushoBrushStroke stroke, uint sampleCount)
@@ -154,27 +80,6 @@ float LaneHash(uint strokeIndex, uint tuft, uint salt)
     value *= 0x846CA68Bu;
     value ^= value >> 16;
     return (float)(value & 0x00FFFFFFu) / 16777215.0;
-}
-
-float SegmentJoinBlend(uint strokeIndex, BokushoBrushStroke stroke, float t)
-{
-    float blend = 1.0;
-    if (stroke.p0.z > 0.0001)
-    {
-        bool sameSourcePrevious = strokeIndex > 0u && stroke.p3.w >= 0.0 && abs(BokushoBrushStrokes[strokeIndex - 1u].p3.w - stroke.p3.w) <= 0.5;
-        float floorValue = sameSourcePrevious ? 0.76 : 0.58;
-        blend *= floorValue + smoothstep(0.0, 0.08, t) * (1.0 - floorValue);
-    }
-
-    if (stroke.p0.w < 0.9999)
-    {
-        uint strokeCount = max((uint)round(brushShape.w), 1u);
-        bool sameSourceNext = strokeIndex + 1u < strokeCount && stroke.p3.w >= 0.0 && abs(BokushoBrushStrokes[strokeIndex + 1u].p3.w - stroke.p3.w) <= 0.5;
-        float floorValue = sameSourceNext ? 0.76 : 0.58;
-        blend *= floorValue + (1.0 - smoothstep(0.92, 1.0, t)) * (1.0 - floorValue);
-    }
-
-    return saturate(blend);
 }
 
 uint StrokeChainStart(uint strokeIndex)
@@ -219,7 +124,6 @@ void SimulateBokushoTuftSegment(
     bool writeOutput)
 {
     float pressure = saturate(brushMaterial.y * stroke.profile.y * 0.5) * 2.0;
-    float wetness = saturate(brushMaterial.w / 1.6);
     float splay = saturate(brushDynamics.x / 2.0);
     float bend = saturate(brushDynamics.y / 2.4);
     float friction = saturate(brushDynamics.z);
@@ -228,7 +132,7 @@ void SimulateBokushoTuftSegment(
     float tangentRadius = max(radius * stroke.profile.w, 0.0001);
     float segmentSpan = StrokeSegmentSpan(stroke, sampleCount);
     float segmentVelocityScale = 1.0 / segmentSpan;
-    float split = saturate((0.20 - LaneHash(laneKey, tuft, 53u)) * 4.0) * saturate((edge - 0.18) * 1.7) * stroke.dynamics.w;
+    float split = saturate((0.28 - LaneHash(laneKey, tuft, 53u)) * 3.0) * saturate((edge - 0.20) * 1.5) * stroke.dynamics.w;
 
     [loop]
     for (uint sample = 0u; sample < sampleCount; sample += 1u)
@@ -238,83 +142,49 @@ void SimulateBokushoTuftSegment(
         float2 tangent = StrokeTangent(stroke, t);
         float2 normal = float2(-tangent.y, tangent.x);
         float taper = StrokeTaper(stroke, t);
-        float normalShape = StrokeNormalRadiusShape(taper);
-        float tangentShape = StrokeTangentRadiusShape(taper);
-        float pressureShape = StrokePressureShape(stroke, t);
-        float gesturePressure = StrokeGesturePressureShape(stroke, t);
-        float gestureWidth = StrokeGestureWidthShape(stroke, t);
-        float localPressure = pressure * taper * pressureShape * gesturePressure;
-        float cohesion = LaneCohesion(edge, split, stateWet, localPressure);
-        float poseSpread = saturate(0.92 + abs(stroke.pose.x) * 0.22 + stroke.pose.w * 0.10 - stroke.pose.z * 0.04);
-        float localNormalRadius = max(normalRadius * normalShape * gestureWidth * poseSpread, 0.0001);
-        float localTangentRadius = max(tangentRadius * tangentShape * (0.86 + gestureWidth * 0.08 + stroke.pose.z * 0.10), 0.0001);
-        float strokeT = saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
-        float turnKey = stroke.p3.w >= 0.0 ? stroke.p3.w : (float)outputStrokeIndex;
-        float turn = sin(strokeT * 6.28318530718 + turnKey * 0.37);
-        float rotatedRest = restOffset + stroke.pose.y * 0.10 * (1.0 - edge);
-        float targetOffset = rotatedRest * localNormalRadius * (0.38 + splay * 0.52 + localPressure * 0.08 - wetness * 0.10) + (turn + stroke.pose.y * 0.22) * localNormalRadius * 0.14 * (1.0 - edge);
-        float recovery = saturate(0.06 + stateWet * 0.10 + localPressure * 0.07 + (1.0 - edge) * 0.06 + stroke.pose.w * 0.07);
+        float localPressure = pressure * taper;
+        float laneCore = smoothstep(0.0, 0.78, 1.0 - edge);
+        float cohesion = saturate(0.28 + stateWet * 0.44 + laneCore * 0.24 + localPressure * 0.10 - split * 0.18);
+        float localNormalRadius = max(normalRadius * (0.18 + taper * 0.82) * (0.72 + splay * 0.34 + localPressure * 0.16 - cohesion * 0.08), 0.0001);
+        float localTangentRadius = max(tangentRadius * (0.24 + taper * 0.76) * (0.86 + bend * 0.18), 0.0001);
+        float targetOffset = (restOffset + stroke.pose.y * 0.12) * localNormalRadius * (0.58 + splay * 0.34 + localPressure * 0.18 - cohesion * 0.20);
+        float recovery = saturate(0.05 + stroke.pose.w * 0.08 + stateWet * 0.08 + localPressure * 0.10);
         offset = cultmath_lerp(offset, targetOffset, recovery);
 
-        float poseLead = stroke.pose.x * 0.42 + stroke.pose.y * 0.22;
-        float dragNormalBias = saturate(0.28 + abs(poseLead) * 0.58 + stroke.pose.w * 0.08);
-        float lag = localTangentRadius * (0.04 + bend * 0.34 + stroke.pose.z * 0.10 + friction * localPressure * 0.18 + edge * 0.08);
-        float2 dragVector = cultmath_normalize(tangent + normal * poseLead * dragNormalBias);
+        float poseLead = stroke.pose.x * 0.36 + stroke.pose.y * 0.16;
+        float lag = localTangentRadius * (0.10 + bend * 0.32 + friction * localPressure * 0.16 + edge * 0.06);
+        float2 dragVector = cultmath_normalize(tangent + normal * poseLead);
         float2 desiredTip = center + normal * offset - dragVector * lag;
         float2 slip = desiredTip - tip;
-        float poseContact = 0.90 + stroke.pose.w * 0.10 + (1.0 - saturate(stroke.pose.z / 2.4)) * 0.10;
-        float contact = saturate(localPressure * poseContact * stateWet * stateLoad * (0.58 + cohesion * 0.40 + (1.0 - edge) * 0.18));
-        float drag = contact * friction * (0.38 + stateWet * 0.22 + edge * 0.18);
-        tip = tip + slip * (1.0 - drag);
-
         float velocity = length(slip) * brushShape.z * segmentVelocityScale / max(radius, 0.001);
-        float tension = saturate(abs(targetOffset - offset) / max(localNormalRadius, 0.001) * 0.38 + velocity * 0.018 + drag * 0.46);
-        float separation = saturate(edge * 0.18 + tension * (0.24 + split * 0.18) + velocity * 0.008 - stateWet * (0.12 + cohesion * 0.10));
-        float adhesion = saturate(stateWet * (0.44 + cohesion * 0.28 + localPressure * 0.20) - separation * 0.16 - tension * 0.07);
-        float laneCore = smoothstep(0.0, 0.74, 1.0 - edge);
-        float edgeComb = saturate(edge * 1.08 + split * 0.26 + separation * 0.34 - cohesion * 0.12);
-        float dryMemory = saturate((1.0 - stateWet) * 0.68 + edgeComb * 0.42 + velocity * 0.004 - localPressure * 0.10);
+        float contact = saturate(localPressure * stateLoad * (0.24 + stateWet * 0.62 + laneCore * 0.18));
+        float drag = contact * friction * (0.28 + stateWet * 0.34);
+        tip = tip + slip * (0.18 + recovery * 0.82) * (1.0 - drag * 0.52);
+
+        float tension = saturate(velocity * 0.014 + abs(targetOffset - offset) / max(localNormalRadius, 0.001) * 0.22 + edge * 0.12);
+        float separation = saturate(split * 0.34 + tension * 0.46 + edge * 0.20 - cohesion * 0.24);
+        float adhesion = saturate(stateWet * (0.36 + cohesion * 0.40) + localPressure * 0.10 - separation * 0.22);
+        float dryMemory = saturate((1.0 - stateWet) * 0.62 + separation * 0.32 + velocity * 0.004);
         float fiberNoise = LaneHash(laneKey + sample * 13u, tuft, 101u);
-        float fiberGate = smoothstep(0.20 + dryMemory * 0.24, 0.96, fiberNoise);
-        float tearNoise = LaneHash(laneKey + sample * 29u, tuft, 211u);
-        float tearReadiness = saturate(edge * 1.10 + separation * 0.64 + split * 0.18 + dryMemory * 0.22 - laneCore * 0.36);
-        float bristleTear = smoothstep(0.50 - separation * 0.16 - dryMemory * 0.10, 0.98, tearNoise) * tearReadiness;
-        float bristleContinuity = 1.0 - bristleTear * (0.42 + dryMemory * 0.24 + edge * 0.16);
-        float depositBody = 0.70 + laneCore * 0.58 - edgeComb * 0.14;
-        float depositIntermittency = (1.0 - fiberGate * dryMemory * (0.48 + edge * 0.24)) * bristleContinuity;
-        float deposition = contact * stateLoad * stateWet * saturate(0.10 + drag * 0.72 + velocity * 0.010) * (0.74 + separation * 0.18 + cohesion * 0.26) * depositBody * depositIntermittency;
-        float releaseNoise = LaneHash(laneKey + sample * 41u, tuft, 307u);
-        float releaseGate = smoothstep(0.38, 0.92, releaseNoise)
-            * bristleTear
-            * dryMemory
-            * edgeComb
-            * (1.0 - laneCore * 0.72);
-        float dryRelease = contact
-            * stateLoad
-            * stateWet
-            * releaseGate
-            * saturate(0.18 + velocity * 0.012 + separation * 0.32)
-            * (0.18 + edge * 0.34);
-        float consumedPigment = deposition + dryRelease * 0.72;
-        stateLoad = max(0.0, stateLoad - consumedPigment * segmentSpan * (0.032 + localPressure * 0.020 - cohesion * 0.008));
-        stateWet = max(0.0, stateWet - consumedPigment * segmentSpan * (0.010 + dryMemory * 0.004 + edgeComb * 0.003));
+        float continuity = 1.0 - smoothstep(0.18 + dryMemory * 0.28, 0.96, fiberNoise) * dryMemory * (0.38 + edge * 0.22);
+        float contactTransfer = contact * stateLoad * (0.12 + stateWet * 0.88) * (0.24 + drag * 0.62 + localPressure * 0.18) * (0.62 + laneCore * 0.48 - separation * 0.18) * continuity;
+        float airborneRelease = (1.0 - contact) * stateLoad * stateWet * saturate(velocity * 0.010 - adhesion * 0.16) * (0.20 + separation * 0.42 + edge * 0.18);
+        float consumedPigment = contactTransfer + airborneRelease;
+        stateLoad = max(0.0, stateLoad - consumedPigment * segmentSpan * (0.028 + localPressure * 0.018));
+        stateWet = max(0.0, stateWet - consumedPigment * segmentSpan * (0.012 + dryMemory * 0.006));
 
         if (writeOutput)
         {
             uint index = ((outputStrokeIndex * tuftCount) + tuft) * sampleCount + sample;
-            float pigmentSurvival = 0.62 + cohesion * 0.30 + laneCore * 0.36 - split * 0.08 - dryMemory * 0.12;
-            float joinBlend = SegmentJoinBlend(outputStrokeIndex, stroke, t);
-            float pigment = deposition * (8.4 + contact * 2.8) + contact * stateLoad * stateWet * (0.14 + laneCore * 0.18) + adhesion * contact * 0.08;
-            float continuousPigment = pigment * pigmentSurvival * stroke.dynamics.z * joinBlend * bristleContinuity;
-            float releasePigment = dryRelease * (18.0 + velocity * 0.022) * stroke.dynamics.z * joinBlend * (0.46 + edgeComb * 0.54);
-            float localPigment = saturate(continuousPigment + releasePigment);
-            float trace = saturate((contact * (0.24 + stateLoad * 0.36 + adhesion * 0.18 + laneCore * 0.12) + deposition * 1.9 + dryRelease * 2.8) * joinBlend * (0.72 + bristleContinuity * 0.28));
+            float pigment = (contactTransfer * (1.8 + localPressure * 0.6) + airborneRelease * (2.8 + velocity * 0.003)) * stroke.dynamics.z;
+            float localPigment = saturate(pigment);
+            float trace = saturate(contact * 0.70 + airborneRelease * 2.0 + stateLoad * 0.18);
             BokushoTraceField[index] = trace;
             BokushoCanvasField[index] = localPigment;
             BokushoTipField[index] = float4(
                 tip,
-                localNormalRadius * (0.54 + laneCore * 0.24 + localPressure * 0.22 + splay * 0.20 - split * 0.04) * (1.0 - bristleTear * (0.34 + edge * 0.16)),
-                localTangentRadius * (0.84 + drag * 0.34 + bend * 0.18) * (1.0 - bristleTear * 0.18));
+                localNormalRadius * (0.72 + laneCore * 0.18 + localPressure * 0.12 - separation * 0.12),
+                localTangentRadius * (0.82 + bend * 0.20 + drag * 0.14));
         }
     }
 }

@@ -117,75 +117,6 @@ float bokushoStrokeTaper(BokushoBrushStroke stroke, float t)
     return 0.018 + contact * 0.982;
 }
 
-float bokushoStrokeNormalRadiusShape(float taper)
-{
-    return 0.08 + taper * 0.92;
-}
-
-float bokushoStrokePressureShape(BokushoBrushStroke stroke, float t)
-{
-    float strokeT = saturate(cultmath_lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
-    float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
-    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
-    float pressIn = smoothstep(0.0, min(entryTaper * 1.6, 0.62), strokeT);
-    float liftOut = 1.0 - smoothstep(max(1.0 - exitTaper * 1.35, 0.20), 1.0, strokeT);
-    float belly = smoothstep(0.10, 0.36, strokeT) * (1.0 - smoothstep(0.66, 0.94, strokeT));
-    float entryLift = 1.0 - smoothstep(0.0, min(entryTaper * 1.15, 0.42), strokeT);
-    float exitLift = smoothstep(max(1.0 - exitTaper * 1.45, 0.18), 1.0, strokeT);
-    return saturate(0.40 + pressIn * liftOut * 0.34 + belly * 0.42 - entryLift * 0.12 - exitLift * 0.18);
-}
-
-float bokushoStrokeSpeed(BokushoBrushStroke stroke, float t)
-{
-    float dt = 1.0 / max(bokushoShape.x - 1.0, 1.0);
-    float2 before = bokushoStrokePoint(stroke, saturate(t - dt));
-    float2 after = bokushoStrokePoint(stroke, saturate(t + dt));
-    return length(after - before) / max(dt * 2.0, 0.001);
-}
-
-float2 bokushoStrokeLocalTangent(BokushoBrushStroke stroke, float t, float dt)
-{
-    float2 before = bokushoStrokePoint(stroke, saturate(t - dt));
-    float2 after = bokushoStrokePoint(stroke, saturate(t + dt));
-    return cultmath_normalize(after - before);
-}
-
-float bokushoStrokeTurn(BokushoBrushStroke stroke, float t)
-{
-    float dt = 1.0 / max(bokushoShape.x - 1.0, 1.0);
-    float2 before = bokushoStrokeLocalTangent(stroke, saturate(t - dt), dt);
-    float2 after = bokushoStrokeLocalTangent(stroke, saturate(t + dt), dt);
-    return saturate(abs(before.x * after.y - before.y * after.x) * 1.8);
-}
-
-float bokushoStrokeGesturePressureShape(BokushoBrushStroke stroke, float t)
-{
-    float localSpeed = bokushoStrokeSpeed(stroke, t);
-    float expectedSpeed = max(length(stroke.p3.xy - stroke.p0.xy), 0.001);
-    float slowPress = saturate((expectedSpeed * 1.18 - localSpeed) / max(expectedSpeed * 0.80, 0.001));
-    float turnPress = bokushoStrokeTurn(stroke, t);
-    float strokeT = saturate(cultmath_lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
-    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
-    float lateLift = smoothstep(max(1.0 - exitTaper * 1.80, 0.48), 1.0, strokeT);
-    return saturate(0.88 + slowPress * 0.30 + turnPress * 0.20 - lateLift * 0.16);
-}
-
-float bokushoStrokeGestureWidthShape(BokushoBrushStroke stroke, float t)
-{
-    float localSpeed = bokushoStrokeSpeed(stroke, t);
-    float expectedSpeed = max(length(stroke.p3.xy - stroke.p0.xy), 0.001);
-    float slowSpread = saturate((expectedSpeed * 1.08 - localSpeed) / max(expectedSpeed * 0.85, 0.001));
-    float turnSpread = bokushoStrokeTurn(stroke, t);
-    float strokeT = saturate(cultmath_lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
-    float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
-    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
-    float belly = smoothstep(0.10, 0.42, strokeT) * (1.0 - smoothstep(0.68, 0.97, strokeT));
-    float entryLift = 1.0 - smoothstep(0.0, min(entryTaper * 1.35, 0.44), strokeT);
-    float exitLift = smoothstep(max(1.0 - exitTaper * 1.55, 0.16), 1.0, strokeT);
-    float sourceLift = smoothstep(0.64, 1.0, strokeT) * smoothstep(0.10, 0.42, strokeT);
-    return saturate(0.68 + slowSpread * 0.26 + turnSpread * 0.18 + belly * 0.36 - entryLift * 0.12 - exitLift * 0.34 - sourceLift * 0.10);
-}
-
 float bokushoCanvasSample(uint strokeIndex, float sampleIndex, float tuftIndex)
 {
     uint sampleCount = max((uint)round(bokushoShape.x), 2u);
@@ -214,54 +145,6 @@ float4 bokushoTipSample(uint strokeIndex, uint sampleIndex, uint tuftIndex)
     uint tuftCount = max((uint)round(bokushoShape.y), 1u);
     uint rowOffset = strokeIndex * tuftCount;
     return BokushoTipField[(rowOffset + min(tuftIndex, tuftCount - 1u)) * sampleCount + min(sampleIndex, sampleCount - 1u)];
-}
-
-float bokushoHashNoiseCell(float2 paperPoint, uint strokeIndex, uint salt)
-{
-    int2 cell = int2(floor(paperPoint));
-    uint x = (uint)cell.x;
-    uint y = (uint)cell.y;
-    uint value = (strokeIndex + 1u) * 0x9E3779B9u ^ x * 0x85EBCA6Bu ^ y * 0xC2B2AE35u ^ salt;
-    value ^= value >> 16;
-    value *= 0x7FEB352Du;
-    value ^= value >> 15;
-    value *= 0x846CA68Bu;
-    value ^= value >> 16;
-    return (float)(value & 0x00FFFFFFu) / 16777215.0;
-}
-
-float bokushoPaperTooth(float2 world, uint strokeIndex)
-{
-    float fine = bokushoHashNoiseCell(world * 22.0, strokeIndex, 0x6A09E667u);
-    float fiber = bokushoHashNoiseCell(float2(world.x * 7.0 + world.y * 0.35, world.y * 2.4), strokeIndex, 0xBB67AE85u);
-    return saturate(fine * 0.58 + fiber * 0.42);
-}
-
-bool bokushoCanBorrowSourceSample(uint strokeIndex, int candidateIndex, uint strokeCount)
-{
-    if (candidateIndex < 0 || (uint)candidateIndex >= strokeCount)
-    {
-        return false;
-    }
-
-    float sourceStrokeId = BokushoBrushStrokes[strokeIndex].p3.w;
-    return sourceStrokeId >= 0.0 && abs(BokushoBrushStrokes[(uint)candidateIndex].p3.w - sourceStrokeId) <= 0.5;
-}
-
-float bokushoInternalSegmentProjectionGate(uint strokeIndex, BokushoBrushStroke stroke, float t, uint strokeCount)
-{
-    float gate = 1.0;
-    if (stroke.p0.z > 0.0001 && bokushoCanBorrowSourceSample(strokeIndex, (int)strokeIndex - 1, strokeCount))
-    {
-        gate *= 0.34 + smoothstep(0.0, 0.16, t) * 0.66;
-    }
-
-    if (stroke.p0.w < 0.9999 && bokushoCanBorrowSourceSample(strokeIndex, (int)strokeIndex + 1, strokeCount))
-    {
-        gate *= 0.34 + (1.0 - smoothstep(0.84, 1.0, t)) * 0.66;
-    }
-
-    return gate;
 }
 
 float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint strokeIndex)
@@ -306,32 +189,20 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
 
     uint sampleCount = max((uint)round(bokushoShape.x), 2u);
     uint tuftCount = max((uint)round(bokushoShape.y), 1u);
-    uint strokeCount = min(max((uint)round(bokushoShape.w), 0u), 64u);
     float2 center = bokushoStrokePoint(stroke, bestT);
     float2 tangent = bokushoStrokeTangent(stroke, bestT);
     float2 normal = float2(-tangent.y, tangent.x);
-    float projectionGate = bokushoInternalSegmentProjectionGate(strokeIndex, stroke, bestT, strokeCount);
     float lateral = dot(world - center, normal);
     float taper = bokushoStrokeTaper(stroke, bestT);
-    float gestureWidth = bokushoStrokeGestureWidthShape(stroke, bestT);
-    float poseSpread = saturate(0.92 + abs(stroke.pose.x) * 0.22 + stroke.pose.w * 0.10 - stroke.pose.z * 0.04);
-    float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * bokushoStrokeNormalRadiusShape(taper) * gestureWidth * poseSpread, 0.0001);
+    float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * (0.18 + taper * 0.82), 0.0001);
     float splay = saturate(bokushoDynamics.x / 2.0);
-    float poseContact = 0.90 + stroke.pose.w * 0.10 + (1.0 - saturate(stroke.pose.z / 2.4)) * 0.10;
-    float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper * bokushoStrokePressureShape(stroke, bestT) * bokushoStrokeGesturePressureShape(stroke, bestT) * poseContact;
+    float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper;
     float wetSpread = 0.86 + saturate(bokushoMaterial.w / 1.6) * 0.18;
-    float footprint = radius * wetSpread * (0.62 + splay * 0.88 + pressure * 0.34 + gestureWidth * 0.20);
+    float footprint = radius * wetSpread * (0.72 + splay * 0.44 + pressure * 0.22);
     float tuftT = saturate(lateral / max(footprint, 0.001) * 0.5 + 0.5);
     float distance = sqrt(bestDistance);
     float contact = smoothstep(1.0, 0.0, distance / max(footprint * 0.96, 0.001));
     float contactCore = contact * contact * (3.0 - 2.0 * contact);
-    uint paperKey = stroke.p3.w >= 0.0 ? (uint)round(stroke.p3.w) : strokeIndex;
-    float tooth = bokushoPaperTooth(world, paperKey);
-    float edge = saturate(distance / max(footprint * 0.96, 0.001));
-    float dryBreak = smoothstep(0.18 + tooth * 0.18, 0.92, edge)
-        * (1.0 - saturate(bokushoMaterial.w / 1.6))
-        * (0.34 + stroke.dynamics.w * 0.12);
-    float hold = saturate(0.52 + tooth * 0.42 + pressure * 0.28 - dryBreak);
     uint centerSample = min((uint)round(bestT * (float)(sampleCount - 1u)), sampleCount - 1u);
     uint centerTuft = min((uint)round(tuftT * (float)max((int)tuftCount - 1, 0)), tuftCount - 1u);
     float pigmentPeak = 0.0;
@@ -343,34 +214,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
         int rawSampleIndex = (int)centerSample + sampleDelta;
         uint sampleStrokeIndex = strokeIndex;
         BokushoBrushStroke sampleStroke = stroke;
-        int resolvedSampleIndex = rawSampleIndex;
-        if (rawSampleIndex < 0)
-        {
-            if (bokushoCanBorrowSourceSample(strokeIndex, (int)strokeIndex - 1, strokeCount))
-            {
-                sampleStrokeIndex = strokeIndex - 1u;
-                sampleStroke = BokushoBrushStrokes[sampleStrokeIndex];
-                resolvedSampleIndex = (int)sampleCount + rawSampleIndex;
-            }
-            else
-            {
-                resolvedSampleIndex = 0;
-            }
-        }
-        else if (rawSampleIndex >= (int)sampleCount)
-        {
-            if (bokushoCanBorrowSourceSample(strokeIndex, (int)strokeIndex + 1, strokeCount))
-            {
-                sampleStrokeIndex = strokeIndex + 1u;
-                sampleStroke = BokushoBrushStrokes[sampleStrokeIndex];
-                resolvedSampleIndex = rawSampleIndex - (int)sampleCount;
-            }
-            else
-            {
-                resolvedSampleIndex = (int)sampleCount - 1;
-            }
-        }
-
+        int resolvedSampleIndex = clamp(rawSampleIndex, 0, (int)sampleCount - 1);
         uint sampleIndex = min((uint)max(resolvedSampleIndex, 0), sampleCount - 1u);
         float sampleT = (float)sampleIndex / max((float)(sampleCount - 1u), 1.0);
         float2 sampleTangent = bokushoStrokeTangent(sampleStroke, sampleT);
@@ -382,20 +226,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
             uint tuftIndex = min((uint)max((int)centerTuft + tuftDelta, 0), tuftCount - 1u);
             float4 tip = bokushoTipSample(sampleStrokeIndex, sampleIndex, tuftIndex);
             uint previousStrokeIndex = sampleStrokeIndex;
-            int previousSampleIndexValue = (int)sampleIndex - 1;
-            if (previousSampleIndexValue < 0)
-            {
-                if (bokushoCanBorrowSourceSample(sampleStrokeIndex, (int)sampleStrokeIndex - 1, strokeCount))
-                {
-                    previousStrokeIndex = sampleStrokeIndex - 1u;
-                    previousSampleIndexValue = (int)sampleCount - 1;
-                }
-                else
-                {
-                    previousSampleIndexValue = 0;
-                }
-            }
-
+            int previousSampleIndexValue = max((int)sampleIndex - 1, 0);
             uint previousSampleIndex = min((uint)max(previousSampleIndexValue, 0), sampleCount - 1u);
             float4 previousTip = bokushoTipSample(previousStrokeIndex, previousSampleIndex, tuftIndex);
             float2 sweep = tip.xy - previousTip.xy;
@@ -423,7 +254,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     }
 
     float decisiveInk = saturate((pigmentPeak - 0.012) * 2.25 + pigmentFlow * 0.002);
-    return decisiveInk * hold * projectionGate * (0.36 + pressure * 0.44 + saturate(bokushoMaterial.z * 0.5) * 0.20);
+    return decisiveInk * (0.44 + pressure * 0.36 + saturate(bokushoMaterial.z * 0.5) * 0.20);
 }
 
 float bokushoPageHeight(float2 world)

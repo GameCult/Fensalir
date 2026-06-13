@@ -694,7 +694,9 @@ public static class BokushoBrushSimulation
         var expectedSpeed = MathF.Max(Vector2.Distance(new Vector2(stroke.StrokeP3.X, stroke.StrokeP3.Y), new Vector2(stroke.StrokeP0.X, stroke.StrokeP0.Y)), 0.001f);
         var slowPress = Saturate((expectedSpeed * 1.18f - localSpeed) / MathF.Max(expectedSpeed * 0.80f, 0.001f));
         var turnPress = StrokeTurn(stroke, t, dt);
-        return Saturate(0.88f + slowPress * 0.30f + turnPress * 0.20f);
+        var strokeT = StrokeProgress(stroke, t);
+        var lateLift = SmoothStep(MathF.Max(1.0f - stroke.ExitTaper * 1.80f, 0.48f), 1.0f, strokeT);
+        return Saturate(0.88f + slowPress * 0.30f + turnPress * 0.20f - lateLift * 0.16f);
     }
 
     private static float StrokeGestureWidthShape(AquariumBokushoBrushStroke stroke, float t, int sampleCount)
@@ -708,7 +710,8 @@ public static class BokushoBrushSimulation
         var belly = SmoothStep(0.10f, 0.42f, strokeT) * (1.0f - SmoothStep(0.68f, 0.97f, strokeT));
         var entryLift = 1.0f - SmoothStep(0.0f, MathF.Min(stroke.EntryTaper * 1.35f, 0.44f), strokeT);
         var exitLift = SmoothStep(MathF.Max(1.0f - stroke.ExitTaper * 1.55f, 0.16f), 1.0f, strokeT);
-        return Saturate(0.68f + slowSpread * 0.26f + turnSpread * 0.18f + belly * 0.36f - entryLift * 0.10f - exitLift * 0.24f);
+        var sourceLift = SmoothStep(0.64f, 1.0f, strokeT) * SmoothStep(0.10f, 0.42f, strokeT);
+        return Saturate(0.68f + slowSpread * 0.26f + turnSpread * 0.18f + belly * 0.36f - entryLift * 0.12f - exitLift * 0.34f - sourceLift * 0.10f);
     }
 
     private static float StrokeSpeed(AquariumBokushoBrushStroke stroke, float t, float dt)

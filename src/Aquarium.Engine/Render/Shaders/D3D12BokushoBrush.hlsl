@@ -115,7 +115,10 @@ float StrokeGesturePressureShape(BokushoBrushStroke stroke, float t)
     float expectedSpeed = max(length(stroke.p3.xy - stroke.p0.xy), 0.001);
     float slowPress = saturate((expectedSpeed * 1.18 - localSpeed) / max(expectedSpeed * 0.80, 0.001));
     float turnPress = StrokeTurn(stroke, t, dt);
-    return saturate(0.88 + slowPress * 0.30 + turnPress * 0.20);
+    float strokeT = saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
+    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
+    float lateLift = smoothstep(max(1.0 - exitTaper * 1.80, 0.48), 1.0, strokeT);
+    return saturate(0.88 + slowPress * 0.30 + turnPress * 0.20 - lateLift * 0.16);
 }
 
 float StrokeGestureWidthShape(BokushoBrushStroke stroke, float t)
@@ -131,7 +134,8 @@ float StrokeGestureWidthShape(BokushoBrushStroke stroke, float t)
     float belly = smoothstep(0.10, 0.42, strokeT) * (1.0 - smoothstep(0.68, 0.97, strokeT));
     float entryLift = 1.0 - smoothstep(0.0, min(entryTaper * 1.35, 0.44), strokeT);
     float exitLift = smoothstep(max(1.0 - exitTaper * 1.55, 0.16), 1.0, strokeT);
-    return saturate(0.68 + slowSpread * 0.26 + turnSpread * 0.18 + belly * 0.36 - entryLift * 0.10 - exitLift * 0.24);
+    float sourceLift = smoothstep(0.64, 1.0, strokeT) * smoothstep(0.10, 0.42, strokeT);
+    return saturate(0.68 + slowSpread * 0.26 + turnSpread * 0.18 + belly * 0.36 - entryLift * 0.12 - exitLift * 0.34 - sourceLift * 0.10);
 }
 
 float StrokeSegmentSpan(BokushoBrushStroke stroke, uint sampleCount)

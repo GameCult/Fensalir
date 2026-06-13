@@ -103,13 +103,33 @@ float2 bokushoStrokeTangent(BokushoBrushStroke stroke, float t)
     return cultmath_normalize(after - before);
 }
 
+float bokushoStrokeTaper(float t)
+{
+    float entry = smoothstep(0.0, 0.10, t);
+    float exit = 1.0 - smoothstep(0.86, 1.0, t);
+    return 0.18 + entry * exit * 0.82;
+}
+
 float bokushoCanvasSample(uint strokeIndex, float sampleIndex, float tuftIndex)
 {
     uint sampleCount = max((uint)round(bokushoShape.x), 2u);
     uint tuftCount = max((uint)round(bokushoShape.y), 1u);
-    uint sample = min((uint)round(sampleIndex), sampleCount - 1u);
-    uint tuft = min((uint)round(tuftIndex), tuftCount - 1u);
-    return saturate(BokushoCanvasField[((strokeIndex * tuftCount) + tuft) * sampleCount + sample]);
+    float clampedSample = clamp(sampleIndex, 0.0, (float)(sampleCount - 1u));
+    float clampedTuft = clamp(tuftIndex, 0.0, (float)(tuftCount - 1u));
+    uint sample0 = min((uint)floor(clampedSample), sampleCount - 1u);
+    uint sample1 = min(sample0 + 1u, sampleCount - 1u);
+    uint tuft0 = min((uint)floor(clampedTuft), tuftCount - 1u);
+    uint tuft1 = min(tuft0 + 1u, tuftCount - 1u);
+    float sampleBlend = saturate(clampedSample - (float)sample0);
+    float tuftBlend = saturate(clampedTuft - (float)tuft0);
+    uint rowOffset = strokeIndex * tuftCount;
+    float p00 = BokushoCanvasField[(rowOffset + tuft0) * sampleCount + sample0];
+    float p10 = BokushoCanvasField[(rowOffset + tuft0) * sampleCount + sample1];
+    float p01 = BokushoCanvasField[(rowOffset + tuft1) * sampleCount + sample0];
+    float p11 = BokushoCanvasField[(rowOffset + tuft1) * sampleCount + sample1];
+    float lower = cultmath_lerp(p00, p10, sampleBlend);
+    float upper = cultmath_lerp(p01, p11, sampleBlend);
+    return saturate(cultmath_lerp(lower, upper, tuftBlend));
 }
 
 float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint strokeIndex)
@@ -156,16 +176,17 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float2 tangent = bokushoStrokeTangent(stroke, bestT);
     float2 normal = float2(-tangent.y, tangent.x);
     float lateral = dot(world - center, normal);
-    float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z, 0.0001);
+    float taper = bokushoStrokeTaper(bestT);
+    float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * (0.34 + taper * 0.66), 0.0001);
     float splay = saturate(bokushoDynamics.x / 2.0);
-    float footprint = radius * (0.42 + splay * 0.74 + saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * 0.18);
+    float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper;
+    float footprint = radius * (0.42 + splay * 0.74 + pressure * 0.18);
     float tuftT = saturate(lateral / max(footprint, 0.001) * 0.5 + 0.5);
     float distance = sqrt(bestDistance);
     float contact = smoothstep(1.0, 0.0, distance / max(footprint * 0.80, 0.001));
     float sampleIndex = bestT * max(bokushoShape.x - 1.0, 1.0);
     float tuftIndex = tuftT * max(bokushoShape.y - 1.0, 0.0);
     float pigment = bokushoCanvasSample(strokeIndex, sampleIndex, tuftIndex);
-    float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5);
     return pigment * contact * (0.10 + pressure * 0.18 + saturate(bokushoMaterial.z * 0.5) * 0.08);
 }
 
@@ -216,7 +237,7 @@ float D3D12HeightFieldBasePS(VertexOut input) : SV_Target
     float2 world = viewWorld(saturate(input.uv));
     float slow = sin((world.x * 0.08 + world.y * 0.06) + timeSeconds * 0.27)
         * sin((world.x * -0.04 + world.y * 0.07) - timeSeconds * 0.19) * 0.035;
-    return slow + bokushoPageHeight(world) * 3.0;
+    return slow + bokushoPageHeight(world) * 5.0;
 }
 
 BrushVertexOut D3D12HeightFieldBrushVS(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)

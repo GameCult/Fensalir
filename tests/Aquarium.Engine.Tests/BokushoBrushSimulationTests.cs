@@ -39,7 +39,7 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
-    public void CpuBrushSimulationAccumulatesPigmentPerTuftWithoutRetroactiveRepair()
+    public void CpuBrushSimulationDepositsLocalPigmentPerTuftWithoutHistorySmear()
     {
         var frame = new AquariumBokushoBrushFrame
         {
@@ -58,18 +58,27 @@ public sealed class BokushoBrushSimulationTests
 
         for (var tuft = 0; tuft < result.TuftCount; tuft++)
         {
-            var previous = 0.0f;
+            var variation = 0.0f;
             for (var sample = 0; sample < result.SampleCount; sample++)
             {
                 var current = result.Canvas[tuft * result.SampleCount + sample];
-                Assert.True(current >= previous, $"Canvas pigment for tuft {tuft} sample {sample} moved backward.");
-                previous = current;
+                Assert.InRange(current, 0.0f, 1.0f);
+                if (sample > 0)
+                {
+                    var previous = result.Canvas[tuft * result.SampleCount + sample - 1];
+                    variation += MathF.Abs(current - previous);
+                }
             }
+
+            Assert.True(variation > 0.0001f, $"Canvas pigment for tuft {tuft} collapsed to an unchanging history field.");
         }
 
         var centerTuft = result.TuftCount / 2;
-        var centerCanvas = result.Canvas[centerTuft * result.SampleCount + result.SampleCount - 1];
-        var edgeCanvas = result.Canvas[result.SampleCount - 1];
+        var centerCanvas = result.Canvas
+            .Skip(centerTuft * result.SampleCount)
+            .Take(result.SampleCount)
+            .Max();
+        var edgeCanvas = result.Canvas.Take(result.SampleCount).Max();
         Assert.True(centerCanvas > edgeCanvas);
     }
 

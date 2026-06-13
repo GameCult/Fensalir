@@ -113,7 +113,8 @@ float bokushoStrokeTaper(BokushoBrushStroke stroke, float t)
     float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
     float entry = smoothstep(0.0, entryTaper, strokeT);
     float exit = 1.0 - smoothstep(1.0 - exitTaper, 1.0, strokeT);
-    return 0.04 + entry * exit * 0.96;
+    float contact = pow(entry * exit, 1.12);
+    return 0.018 + contact * 0.982;
 }
 
 float bokushoStrokeNormalRadiusShape(float taper)
@@ -128,8 +129,10 @@ float bokushoStrokePressureShape(BokushoBrushStroke stroke, float t)
     float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
     float pressIn = smoothstep(0.0, min(entryTaper * 1.6, 0.62), strokeT);
     float liftOut = 1.0 - smoothstep(max(1.0 - exitTaper * 1.35, 0.20), 1.0, strokeT);
-    float belly = smoothstep(0.12, 0.42, strokeT) * (1.0 - smoothstep(0.68, 0.96, strokeT));
-    return saturate(0.54 + pressIn * liftOut * 0.28 + belly * 0.30);
+    float belly = smoothstep(0.10, 0.36, strokeT) * (1.0 - smoothstep(0.66, 0.94, strokeT));
+    float entryLift = 1.0 - smoothstep(0.0, min(entryTaper * 1.15, 0.42), strokeT);
+    float exitLift = smoothstep(max(1.0 - exitTaper * 1.45, 0.18), 1.0, strokeT);
+    return saturate(0.40 + pressIn * liftOut * 0.34 + belly * 0.42 - entryLift * 0.12 - exitLift * 0.18);
 }
 
 float bokushoStrokeSpeed(BokushoBrushStroke stroke, float t)
@@ -170,7 +173,13 @@ float bokushoStrokeGestureWidthShape(BokushoBrushStroke stroke, float t)
     float expectedSpeed = max(length(stroke.p3.xy - stroke.p0.xy), 0.001);
     float slowSpread = saturate((expectedSpeed * 1.08 - localSpeed) / max(expectedSpeed * 0.85, 0.001));
     float turnSpread = bokushoStrokeTurn(stroke, t);
-    return saturate(0.84 + slowSpread * 0.36 + turnSpread * 0.20);
+    float strokeT = saturate(cultmath_lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
+    float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
+    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
+    float belly = smoothstep(0.10, 0.42, strokeT) * (1.0 - smoothstep(0.68, 0.97, strokeT));
+    float entryLift = 1.0 - smoothstep(0.0, min(entryTaper * 1.35, 0.44), strokeT);
+    float exitLift = smoothstep(max(1.0 - exitTaper * 1.55, 0.16), 1.0, strokeT);
+    return saturate(0.68 + slowSpread * 0.26 + turnSpread * 0.18 + belly * 0.36 - entryLift * 0.10 - exitLift * 0.24);
 }
 
 float bokushoCanvasSample(uint strokeIndex, float sampleIndex, float tuftIndex)

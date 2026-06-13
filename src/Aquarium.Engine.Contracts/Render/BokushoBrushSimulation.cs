@@ -536,7 +536,8 @@ public static class BokushoBrushSimulation
     {
         var entry = SmoothStep(0.0f, entryTaper, t);
         var exit = 1.0f - SmoothStep(1.0f - exitTaper, 1.0f, t);
-        return 0.04f + entry * exit * 0.96f;
+        var contact = MathF.Pow(entry * exit, 1.12f);
+        return 0.018f + contact * 0.982f;
     }
 
     private static float StrokeNormalRadiusShape(float taper) => 0.08f + taper * 0.92f;
@@ -574,8 +575,10 @@ public static class BokushoBrushSimulation
     {
         var pressIn = SmoothStep(0.0f, MathF.Min(entryTaper * 1.6f, 0.62f), t);
         var liftOut = 1.0f - SmoothStep(MathF.Max(1.0f - exitTaper * 1.35f, 0.20f), 1.0f, t);
-        var belly = SmoothStep(0.12f, 0.42f, t) * (1.0f - SmoothStep(0.68f, 0.96f, t));
-        return Saturate(0.54f + pressIn * liftOut * 0.28f + belly * 0.30f);
+        var belly = SmoothStep(0.10f, 0.36f, t) * (1.0f - SmoothStep(0.66f, 0.94f, t));
+        var entryLift = 1.0f - SmoothStep(0.0f, MathF.Min(entryTaper * 1.15f, 0.42f), t);
+        var exitLift = SmoothStep(MathF.Max(1.0f - exitTaper * 1.45f, 0.18f), 1.0f, t);
+        return Saturate(0.40f + pressIn * liftOut * 0.34f + belly * 0.42f - entryLift * 0.12f - exitLift * 0.18f);
     }
 
     private static float LaneCohesion(float edge, float split, float wetness, float pressure)
@@ -600,7 +603,11 @@ public static class BokushoBrushSimulation
         var expectedSpeed = MathF.Max(Vector2.Distance(new Vector2(stroke.StrokeP3.X, stroke.StrokeP3.Y), new Vector2(stroke.StrokeP0.X, stroke.StrokeP0.Y)), 0.001f);
         var slowSpread = Saturate((expectedSpeed * 1.08f - localSpeed) / MathF.Max(expectedSpeed * 0.85f, 0.001f));
         var turnSpread = StrokeTurn(stroke, t, dt);
-        return Saturate(0.84f + slowSpread * 0.36f + turnSpread * 0.20f);
+        var strokeT = StrokeProgress(stroke, t);
+        var belly = SmoothStep(0.10f, 0.42f, strokeT) * (1.0f - SmoothStep(0.68f, 0.97f, strokeT));
+        var entryLift = 1.0f - SmoothStep(0.0f, MathF.Min(stroke.EntryTaper * 1.35f, 0.44f), strokeT);
+        var exitLift = SmoothStep(MathF.Max(1.0f - stroke.ExitTaper * 1.55f, 0.16f), 1.0f, strokeT);
+        return Saturate(0.68f + slowSpread * 0.26f + turnSpread * 0.18f + belly * 0.36f - entryLift * 0.10f - exitLift * 0.24f);
     }
 
     private static float StrokeSpeed(AquariumBokushoBrushStroke stroke, float t, float dt)

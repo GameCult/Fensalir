@@ -476,6 +476,25 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushSourceTaperBuildsBellyAndLiftedEnds()
+    {
+        var frame = GestureFrame(curved: false);
+        var result = BokushoBrushSimulation.Evaluate(frame);
+        var centerTuft = result.TuftCount / 2;
+        var entryRadius = TipRadius(result, centerTuft, sample: 1);
+        var bellyRadius = TipRadius(result, centerTuft, sample: result.SampleCount / 2);
+        var exitRadius = TipRadius(result, centerTuft, sample: result.SampleCount - 2);
+        var entryInk = CanvasWindow(result, centerTuft, sample: 2, radius: 2);
+        var bellyInk = CanvasWindow(result, centerTuft, sample: result.SampleCount / 2, radius: 4);
+        var exitInk = CanvasWindow(result, centerTuft, sample: result.SampleCount - 3, radius: 2);
+
+        Assert.True(bellyRadius > entryRadius * 2.0f, $"entry={entryRadius:0.000000}; belly={bellyRadius:0.000000}");
+        Assert.True(bellyRadius > exitRadius * 1.7f, $"exit={exitRadius:0.000000}; belly={bellyRadius:0.000000}");
+        Assert.True(bellyInk > entryInk * 2.0f, $"entry={entryInk:0.000000}; belly={bellyInk:0.000000}");
+        Assert.True(bellyInk > exitInk * 1.5f, $"exit={exitInk:0.000000}; belly={bellyInk:0.000000}");
+    }
+
+    [Fact]
     public void CpuBrushPoseControlsStrokeSpreadAndPigment()
     {
         var neutral = PoseFrame(tilt: 0.0f, rotation: 0.0f, gripHeight: 1.0f, compliance: 1.0f);
@@ -693,6 +712,25 @@ public sealed class BokushoBrushSimulationTests
     private static float StrokeSum(float[] canvas, int sampleCount, int tuftCount, int stroke)
     {
         return canvas.Skip(stroke * sampleCount * tuftCount).Take(sampleCount * tuftCount).Sum();
+    }
+
+    private static float TipRadius(BokushoBrushSimulationResult result, int tuft, int sample, int stroke = 0)
+    {
+        var index = ((stroke * result.TuftCount) + tuft) * result.SampleCount + Math.Clamp(sample, 0, result.SampleCount - 1);
+        return result.Tips[index].Z;
+    }
+
+    private static float CanvasWindow(BokushoBrushSimulationResult result, int tuft, int sample, int radius, int stroke = 0)
+    {
+        var start = Math.Clamp(sample - radius, 0, result.SampleCount - 1);
+        var end = Math.Clamp(sample + radius, 0, result.SampleCount - 1);
+        var total = 0.0f;
+        for (var index = start; index <= end; index++)
+        {
+            total += result.Canvas[((stroke * result.TuftCount) + tuft) * result.SampleCount + index];
+        }
+
+        return total;
     }
 
     private static float NormalizedRoughness(IReadOnlyList<float> samples)

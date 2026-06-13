@@ -365,6 +365,19 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushDryTearsReleaseEdgePigmentIntoCanvas()
+    {
+        var dry = LaneCohesionFrame(wetness: 0.46f, inkLoad: 1.48f, splay: 1.14f);
+
+        var dryResult = BokushoBrushSimulation.Evaluate(dry);
+        var dryEdgeReleases = CountEdgeReleaseSamples(dryResult.Canvas, dryResult.SampleCount, dryResult.TuftCount, threshold: 0.055f);
+        var dryCenter = TuftSum(dryResult.Canvas, dryResult.SampleCount, dryResult.TuftCount / 2);
+
+        Assert.True(dryCenter > 0.30f);
+        Assert.True(dryEdgeReleases > dryResult.SampleCount / 4, $"dry={dryEdgeReleases}");
+    }
+
+    [Fact]
     public void CpuBrushProjectionCreatesDryEdgeIslandsFromTuftState()
     {
         var dry = LaneCohesionFrame(wetness: 0.52f, inkLoad: 1.46f, splay: 1.12f);
@@ -744,6 +757,32 @@ public sealed class BokushoBrushSimulationTests
     private static float TuftSum(float[] canvas, int sampleCount, int tuft)
     {
         return canvas.Skip(tuft * sampleCount).Take(sampleCount).Sum();
+    }
+
+    private static int CountEdgeReleaseSamples(IReadOnlyList<float> canvas, int sampleCount, int tuftCount, float threshold)
+    {
+        var count = 0;
+        for (var tuft = 0; tuft < tuftCount; tuft++)
+        {
+            var laneT = tuftCount <= 1 ? 0.5f : tuft / (float)(tuftCount - 1);
+            if (MathF.Abs(laneT * 2.0f - 1.0f) < 0.55f)
+            {
+                continue;
+            }
+
+            for (var sample = 1; sample < sampleCount - 1; sample++)
+            {
+                var index = tuft * sampleCount + sample;
+                var value = canvas[index];
+                var neighborhood = MathF.Max(canvas[index - 1], canvas[index + 1]);
+                if (value > threshold && value > neighborhood * 1.35f)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
     }
 
     private static float StrokeSum(float[] canvas, int sampleCount, int tuftCount, int stroke)

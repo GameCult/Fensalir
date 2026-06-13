@@ -189,8 +189,21 @@ public static class BokushoBrushSimulation
             var depositBody = 0.70f + laneCore * 0.58f - edgeComb * 0.14f;
             var depositIntermittency = (1.0f - fiberGate * dryMemory * (0.48f + edge * 0.24f)) * bristleContinuity;
             var deposition = contact * stateLoad * stateWet * Saturate(0.10f + drag * 0.72f + velocity * 0.010f) * (0.74f + separation * 0.18f + cohesion * 0.26f) * depositBody * depositIntermittency;
-            stateLoad = MathF.Max(0.0f, stateLoad - deposition * segmentSpan * (0.032f + localPressure * 0.020f - cohesion * 0.008f));
-            stateWet = MathF.Max(0.0f, stateWet - deposition * segmentSpan * (0.010f + dryMemory * 0.004f + edgeComb * 0.003f));
+            var releaseNoise = LaneHash(laneKey + sample * 41, tuft, 307);
+            var releaseGate = SmoothStep(0.38f, 0.92f, releaseNoise)
+                * bristleTear
+                * dryMemory
+                * edgeComb
+                * (1.0f - laneCore * 0.72f);
+            var dryRelease = contact
+                * stateLoad
+                * stateWet
+                * releaseGate
+                * Saturate(0.18f + velocity * 0.012f + separation * 0.32f)
+                * (0.18f + edge * 0.34f);
+            var consumedPigment = deposition + dryRelease * 0.72f;
+            stateLoad = MathF.Max(0.0f, stateLoad - consumedPigment * segmentSpan * (0.032f + localPressure * 0.020f - cohesion * 0.008f));
+            stateWet = MathF.Max(0.0f, stateWet - consumedPigment * segmentSpan * (0.010f + dryMemory * 0.004f + edgeComb * 0.003f));
 
             if (writeOutput)
             {
@@ -198,8 +211,10 @@ public static class BokushoBrushSimulation
                 var pigmentSurvival = 0.62f + cohesion * 0.30f + laneCore * 0.36f - split * 0.08f - dryMemory * 0.12f;
                 var joinBlend = SegmentJoinBlend(strokes, strokeIndex, stroke, t);
                 var pigment = deposition * (8.4f + contact * 2.8f) + contact * stateLoad * stateWet * (0.14f + laneCore * 0.18f) + adhesion * contact * 0.08f;
-                canvas[index] = Saturate(pigment * pigmentSurvival * stroke.PigmentScale * joinBlend * bristleContinuity);
-                trace[index] = Saturate((contact * (0.24f + stateLoad * 0.36f + adhesion * 0.18f + laneCore * 0.12f) + deposition * 1.9f) * joinBlend * (0.72f + bristleContinuity * 0.28f));
+                var continuousPigment = pigment * pigmentSurvival * stroke.PigmentScale * joinBlend * bristleContinuity;
+                var releasePigment = dryRelease * (18.0f + velocity * 0.022f) * stroke.PigmentScale * joinBlend * (0.46f + edgeComb * 0.54f);
+                canvas[index] = Saturate(continuousPigment + releasePigment);
+                trace[index] = Saturate((contact * (0.24f + stateLoad * 0.36f + adhesion * 0.18f + laneCore * 0.12f) + deposition * 1.9f + dryRelease * 2.8f) * joinBlend * (0.72f + bristleContinuity * 0.28f));
                 tips[index] = new Vector4(
                     tip.X,
                     tip.Y,

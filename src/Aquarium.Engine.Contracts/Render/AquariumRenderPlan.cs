@@ -602,6 +602,14 @@ public sealed class AquariumBokushoBrushStroke
 
     public float TangentScale { get; init; } = 1.0f;
 
+    public float ShaftTilt { get; init; }
+
+    public float ShaftRotation { get; init; }
+
+    public float GripHeight { get; init; } = 1.0f;
+
+    public float Compliance { get; init; } = 1.0f;
+
     public float EntryTaper { get; init; } = 0.10f;
 
     public float ExitTaper { get; init; } = 0.14f;
@@ -620,6 +628,10 @@ public sealed class AquariumBokushoBrushStroke
         PressureScale = Math.Clamp(PressureScale, 0.1f, 4.0f),
         NormalScale = Math.Clamp(NormalScale, 0.1f, 4.0f),
         TangentScale = Math.Clamp(TangentScale, 0.1f, 4.0f),
+        ShaftTilt = Math.Clamp(ShaftTilt, -1.5f, 1.5f),
+        ShaftRotation = Math.Clamp(ShaftRotation, -2.0f, 2.0f),
+        GripHeight = Math.Clamp(GripHeight, 0.2f, 2.4f),
+        Compliance = Math.Clamp(Compliance, 0.1f, 2.5f),
         EntryTaper = Math.Clamp(EntryTaper, 0.01f, 0.50f),
         ExitTaper = Math.Clamp(ExitTaper, 0.01f, 0.50f),
         PigmentScale = Math.Clamp(PigmentScale, 0.05f, 4.0f),

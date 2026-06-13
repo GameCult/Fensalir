@@ -358,6 +358,23 @@ public sealed class BokushoBrushSimulationTests
         Assert.True(curvedCoverage > straightCoverage);
     }
 
+    [Fact]
+    public void CpuBrushPoseControlsStrokeSpreadAndPigment()
+    {
+        var neutral = PoseFrame(tilt: 0.0f, rotation: 0.0f, gripHeight: 1.0f, compliance: 1.0f);
+        var expressive = PoseFrame(tilt: 0.85f, rotation: 0.65f, gripHeight: 0.58f, compliance: 1.65f);
+
+        var neutralResult = BokushoBrushSimulation.Evaluate(neutral);
+        var expressiveResult = BokushoBrushSimulation.Evaluate(expressive);
+        var neutralPage = BokushoBrushSimulation.ProjectCanvasToPage(neutral, neutralResult.Canvas, 128, 128, Vector2.Zero, 4.0f);
+        var expressivePage = BokushoBrushSimulation.ProjectCanvasToPage(expressive, expressiveResult.Canvas, 128, 128, Vector2.Zero, 4.0f);
+        var neutralCoverage = neutralPage.Count(value => value > 0.004f);
+        var expressiveCoverage = expressivePage.Count(value => value > 0.004f);
+
+        Assert.True(expressiveResult.Canvas.Sum() > neutralResult.Canvas.Sum() * 1.04f);
+        Assert.True(expressiveCoverage > neutralCoverage);
+    }
+
     private static AquariumBokushoBrushFrame StrokeDynamicsFrame(float pigmentScale, float entryTaper)
     {
         return new AquariumBokushoBrushFrame
@@ -423,6 +440,45 @@ public sealed class BokushoBrushSimulationTests
                     ExitTaper = 0.24f,
                     PigmentScale = 1.0f,
                     SplitScale = 1.1f,
+                },
+            ],
+        };
+    }
+
+    private static AquariumBokushoBrushFrame PoseFrame(float tilt, float rotation, float gripHeight, float compliance)
+    {
+        return new AquariumBokushoBrushFrame
+        {
+            TuftCount = 15,
+            SampleCount = 84,
+            PhysicsHz = 500.0f,
+            BrushRadius = 1.16f,
+            Pressure = 0.86f,
+            InkLoad = 1.24f,
+            Wetness = 1.08f,
+            Splay = 0.84f,
+            Bend = 0.76f,
+            Friction = 0.68f,
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-2.8f, 0.4f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-1.2f, -0.7f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(1.6f, 0.5f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(2.8f, -0.3f, 0.0f, 0.0f),
+                    RadiusScale = 0.90f,
+                    PressureScale = 1.0f,
+                    NormalScale = 0.66f,
+                    TangentScale = 1.18f,
+                    ShaftTilt = tilt,
+                    ShaftRotation = rotation,
+                    GripHeight = gripHeight,
+                    Compliance = compliance,
+                    EntryTaper = 0.08f,
+                    ExitTaper = 0.24f,
+                    PigmentScale = 1.0f,
+                    SplitScale = 1.25f,
                 },
             ],
         };

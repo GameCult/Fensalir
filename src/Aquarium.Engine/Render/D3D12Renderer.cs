@@ -4786,6 +4786,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new D3D12BokushoBrushStrokePacket(
                 new Vector4(frame.RadiusScale, frame.PressureScale, frame.NormalScale, frame.TangentScale),
                 new Vector4(0.10f, 0.14f, 1.0f, 1.0f),
+                new Vector4(0.0f, 0.0f, 1.0f, 1.0f),
                 frame.StrokeP0,
                 frame.StrokeP1,
                 frame.StrokeP2,
@@ -4798,6 +4799,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         return new D3D12BokushoBrushStrokePacket(
             new Vector4(stroke.RadiusScale, stroke.PressureScale, stroke.NormalScale, stroke.TangentScale),
             new Vector4(stroke.EntryTaper, stroke.ExitTaper, stroke.PigmentScale, stroke.SplitScale),
+            new Vector4(stroke.ShaftTilt, stroke.ShaftRotation, stroke.GripHeight, stroke.Compliance),
             stroke.StrokeP0,
             stroke.StrokeP1,
             stroke.StrokeP2,
@@ -7025,6 +7027,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly record struct D3D12BokushoBrushStrokePacket(
         Vector4 Profile,
         Vector4 Dynamics,
+        Vector4 Pose,
         Vector4 StrokeP0,
         Vector4 StrokeP1,
         Vector4 StrokeP2,

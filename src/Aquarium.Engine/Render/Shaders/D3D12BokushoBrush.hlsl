@@ -16,6 +16,7 @@ struct BokushoBrushStroke
 {
     float4 profile;
     float4 dynamics;
+    float4 pose;
     float4 p0;
     float4 p1;
     float4 p2;
@@ -163,8 +164,13 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float radius = max(brushMaterial.x * stroke.profile.x, 0.0001);
     float normalRadius = max(radius * stroke.profile.z, 0.0001);
     float tangentRadius = max(radius * stroke.profile.w, 0.0001);
+    float poseTilt = stroke.pose.x;
+    float poseRotation = stroke.pose.y;
+    float gripHeight = stroke.pose.z;
+    float compliance = stroke.pose.w;
     float2 tip = StrokePoint(stroke, 0.0);
-    float offset = restOffset * normalRadius * (0.42 + splay * 0.38) + (laneHash - 0.5) * normalRadius * 0.05;
+    float poseBias = poseTilt * 0.18 + poseRotation * 0.08;
+    float offset = (restOffset + poseBias * (1.0 - edge * 0.35)) * normalRadius * (0.42 + splay * 0.38) + (laneHash - 0.5) * normalRadius * 0.05;
     float stateLoad = load * (0.62 + initialCohesion * 0.46) * (1.0 - edge * 0.18) * laneLoad * (1.0 - split * 0.36);
     float stateWet = wetness * (0.74 + initialCohesion * 0.24 - split * 0.08);
 
@@ -183,17 +189,20 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         float gestureWidth = StrokeGestureWidthShape(stroke, t);
         float localPressure = pressure * taper * pressureShape * gesturePressure;
         float cohesion = LaneCohesion(edge, split, stateWet, localPressure);
-        float localNormalRadius = max(normalRadius * normalShape * gestureWidth, 0.0001);
-        float localTangentRadius = max(tangentRadius * tangentShape * (0.92 + gestureWidth * 0.08), 0.0001);
+        float poseSpread = saturate(0.92 + abs(poseTilt) * 0.22 + compliance * 0.10 - gripHeight * 0.04);
+        float localNormalRadius = max(normalRadius * normalShape * gestureWidth * poseSpread, 0.0001);
+        float localTangentRadius = max(tangentRadius * tangentShape * (0.86 + gestureWidth * 0.08 + gripHeight * 0.10), 0.0001);
         float turn = sin(t * 6.28318530718 + (float)strokeIndex * 0.37);
-        float targetOffset = restOffset * localNormalRadius * (0.38 + splay * 0.52 + localPressure * 0.08 - wetness * 0.10) + turn * localNormalRadius * 0.14 * (1.0 - edge);
-        float recovery = saturate(0.08 + stateWet * 0.12 + localPressure * 0.08 + (1.0 - edge) * 0.07);
+        float rotatedRest = restOffset + poseRotation * 0.10 * (1.0 - edge);
+        float targetOffset = rotatedRest * localNormalRadius * (0.38 + splay * 0.52 + localPressure * 0.08 - wetness * 0.10) + (turn + poseRotation * 0.22) * localNormalRadius * 0.14 * (1.0 - edge);
+        float recovery = saturate(0.06 + stateWet * 0.10 + localPressure * 0.07 + (1.0 - edge) * 0.06 + compliance * 0.07);
         offset = cultmath_lerp(offset, targetOffset, recovery);
 
-        float lag = localTangentRadius * (0.12 + bend * 0.72 + friction * localPressure * 0.34 + edge * 0.18);
+        float lag = localTangentRadius * (0.10 + bend * 0.62 + gripHeight * 0.18 + friction * localPressure * 0.30 + edge * 0.16);
         float2 desiredTip = center + normal * offset - tangent * lag;
         float2 slip = desiredTip - tip;
-        float contact = saturate(localPressure * stateWet * stateLoad * (0.58 + cohesion * 0.40 + (1.0 - edge) * 0.18));
+        float poseContact = 0.90 + compliance * 0.10 + (1.0 - saturate(gripHeight / 2.4)) * 0.10;
+        float contact = saturate(localPressure * poseContact * stateWet * stateLoad * (0.58 + cohesion * 0.40 + (1.0 - edge) * 0.18));
         float drag = contact * friction * (0.38 + stateWet * 0.22 + edge * 0.18);
         tip = tip + slip * (1.0 - drag);
 

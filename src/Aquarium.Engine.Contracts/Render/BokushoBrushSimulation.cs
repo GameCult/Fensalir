@@ -51,6 +51,10 @@ public static class BokushoBrushSimulation
             var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale, 0.0001f);
             var normalRadius = MathF.Max(radius * stroke.NormalScale, 0.0001f);
             var tangentRadius = MathF.Max(radius * stroke.TangentScale, 0.0001f);
+            var poseTilt = stroke.ShaftTilt;
+            var poseRotation = stroke.ShaftRotation;
+            var gripHeight = stroke.GripHeight;
+            var compliance = stroke.Compliance;
 
             for (var tuft = 0; tuft < tuftCount; tuft++)
             {
@@ -62,7 +66,8 @@ public static class BokushoBrushSimulation
                 var split = Saturate((0.20f - LaneHash(strokeIndex, tuft, 53)) * 4.0f) * Saturate((edge - 0.18f) * 1.7f) * stroke.SplitScale;
                 var initialCohesion = LaneCohesion(edge, split, wetness, pressure);
                 var tip = StrokePoint(stroke, 0.0f);
-                var offset = restOffset * normalRadius * (0.42f + splay * 0.38f) + (laneHash - 0.5f) * normalRadius * 0.05f;
+                var poseBias = poseTilt * 0.18f + poseRotation * 0.08f;
+                var offset = (restOffset + poseBias * (1.0f - edge * 0.35f)) * normalRadius * (0.42f + splay * 0.38f) + (laneHash - 0.5f) * normalRadius * 0.05f;
                 var stateLoad = load * (0.62f + initialCohesion * 0.46f) * (1.0f - edge * 0.18f) * laneLoad * (1.0f - split * 0.36f);
                 var stateWet = wetness * (0.74f + initialCohesion * 0.24f - split * 0.08f);
 
@@ -80,17 +85,20 @@ public static class BokushoBrushSimulation
                     var gestureWidth = StrokeGestureWidthShape(stroke, t, sampleCount);
                     var localPressure = pressure * taper * pressureShape * gesturePressure;
                     var cohesion = LaneCohesion(edge, split, stateWet, localPressure);
-                    var localNormalRadius = MathF.Max(normalRadius * normalShape * gestureWidth, 0.0001f);
-                    var localTangentRadius = MathF.Max(tangentRadius * tangentShape * (0.92f + gestureWidth * 0.08f), 0.0001f);
+                    var poseSpread = Saturate(0.92f + MathF.Abs(poseTilt) * 0.22f + compliance * 0.10f - gripHeight * 0.04f);
+                    var localNormalRadius = MathF.Max(normalRadius * normalShape * gestureWidth * poseSpread, 0.0001f);
+                    var localTangentRadius = MathF.Max(tangentRadius * tangentShape * (0.86f + gestureWidth * 0.08f + gripHeight * 0.10f), 0.0001f);
                     var turn = MathF.Sin(t * MathF.Tau + strokeIndex * 0.37f);
-                    var targetOffset = restOffset * localNormalRadius * (0.38f + splay * 0.52f + localPressure * 0.08f - wetness * 0.10f) + turn * localNormalRadius * 0.14f * (1.0f - edge);
-                    var recovery = Saturate(0.08f + stateWet * 0.12f + localPressure * 0.08f + (1.0f - edge) * 0.07f);
+                    var rotatedRest = restOffset + poseRotation * 0.10f * (1.0f - edge);
+                    var targetOffset = rotatedRest * localNormalRadius * (0.38f + splay * 0.52f + localPressure * 0.08f - wetness * 0.10f) + (turn + poseRotation * 0.22f) * localNormalRadius * 0.14f * (1.0f - edge);
+                    var recovery = Saturate(0.06f + stateWet * 0.10f + localPressure * 0.07f + (1.0f - edge) * 0.06f + compliance * 0.07f);
                     offset = Lerp(offset, targetOffset, recovery);
 
-                    var lag = localTangentRadius * (0.12f + bend * 0.72f + friction * localPressure * 0.34f + edge * 0.18f);
+                    var lag = localTangentRadius * (0.10f + bend * 0.62f + gripHeight * 0.18f + friction * localPressure * 0.30f + edge * 0.16f);
                     var desiredTip = center + normal * offset - tangent * lag;
                     var slip = desiredTip - tip;
-                    var contact = Saturate(localPressure * stateWet * stateLoad * (0.58f + cohesion * 0.40f + (1.0f - edge) * 0.18f));
+                    var poseContact = 0.90f + compliance * 0.10f + (1.0f - Saturate(gripHeight / 2.4f)) * 0.10f;
+                    var contact = Saturate(localPressure * poseContact * stateWet * stateLoad * (0.58f + cohesion * 0.40f + (1.0f - edge) * 0.18f));
                     var drag = contact * friction * (0.38f + stateWet * 0.22f + edge * 0.18f);
                     tip += slip * (1.0f - drag);
 
@@ -243,10 +251,12 @@ public static class BokushoBrushSimulation
         var lateral = Vector2.Dot(world - centerPoint, normal);
         var taper = StrokeTaper(bestT, stroke.EntryTaper, stroke.ExitTaper);
         var gestureWidth = StrokeGestureWidthShape(stroke, bestT, sampleCount);
-        var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale * stroke.NormalScale * StrokeNormalRadiusShape(taper) * gestureWidth, 0.0001f);
+        var poseSpread = Saturate(0.92f + MathF.Abs(stroke.ShaftTilt) * 0.22f + stroke.Compliance * 0.10f - stroke.GripHeight * 0.04f);
+        var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale * stroke.NormalScale * StrokeNormalRadiusShape(taper) * gestureWidth * poseSpread, 0.0001f);
         var splay = Saturate(frame.Splay / 2.0f);
         var pressure = Saturate(frame.Pressure * stroke.PressureScale * 0.5f) * taper;
-        pressure *= StrokePressureShape(bestT, stroke.EntryTaper, stroke.ExitTaper) * StrokeGesturePressureShape(stroke, bestT, sampleCount);
+        var poseContact = 0.90f + stroke.Compliance * 0.10f + (1.0f - Saturate(stroke.GripHeight / 2.4f)) * 0.10f;
+        pressure *= StrokePressureShape(bestT, stroke.EntryTaper, stroke.ExitTaper) * StrokeGesturePressureShape(stroke, bestT, sampleCount) * poseContact;
         var footprint = radius * (0.42f + splay * 0.74f + pressure * 0.18f);
         var tuftT = Saturate(lateral / MathF.Max(footprint, 0.001f) * 0.5f + 0.5f);
         var distance = MathF.Sqrt(bestDistance);

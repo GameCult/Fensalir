@@ -49,6 +49,7 @@ struct BokushoBrushStroke
 {
     float4 profile;
     float4 dynamics;
+    float4 pose;
     float4 p0;
     float4 p1;
     float4 p2;
@@ -258,9 +259,11 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float lateral = dot(world - center, normal);
     float taper = bokushoStrokeTaper(stroke, bestT);
     float gestureWidth = bokushoStrokeGestureWidthShape(stroke, bestT);
-    float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * bokushoStrokeNormalRadiusShape(taper) * gestureWidth, 0.0001);
+    float poseSpread = saturate(0.92 + abs(stroke.pose.x) * 0.22 + stroke.pose.w * 0.10 - stroke.pose.z * 0.04);
+    float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * bokushoStrokeNormalRadiusShape(taper) * gestureWidth * poseSpread, 0.0001);
     float splay = saturate(bokushoDynamics.x / 2.0);
-    float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper * bokushoStrokePressureShape(stroke, bestT) * bokushoStrokeGesturePressureShape(stroke, bestT);
+    float poseContact = 0.90 + stroke.pose.w * 0.10 + (1.0 - saturate(stroke.pose.z / 2.4)) * 0.10;
+    float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper * bokushoStrokePressureShape(stroke, bestT) * bokushoStrokeGesturePressureShape(stroke, bestT) * poseContact;
     float footprint = radius * (0.42 + splay * 0.74 + pressure * 0.18);
     float tuftT = saturate(lateral / max(footprint, 0.001) * 0.5 + 0.5);
     float distance = sqrt(bestDistance);

@@ -38,6 +38,7 @@ cbuffer BokushoPageConstants : register(b5)
     float4 bokushoShape;     // sampleCount, tuftCount, physicsHz, hasInput
     float4 bokushoMaterial;  // radius, pressure, inkLoad, wetness
     float4 bokushoDynamics;  // splay, bend, friction, reserved
+    float4 bokushoProfile;   // radiusScale, pressureScale, normalScale, tangentScale
     float4 bokushoStrokeP0;
     float4 bokushoStrokeP1;
     float4 bokushoStrokeP2;
@@ -150,16 +151,16 @@ float bokushoPageHeight(float2 world)
     float2 tangent = bokushoStrokeTangent(bestT);
     float2 normal = float2(-tangent.y, tangent.x);
     float lateral = dot(world - center, normal);
-    float radius = max(bokushoMaterial.x, 0.0001);
+    float radius = max(bokushoMaterial.x * bokushoProfile.x * bokushoProfile.z, 0.0001);
     float splay = saturate(bokushoDynamics.x / 2.0);
-    float footprint = radius * (0.42 + splay * 0.74 + saturate(bokushoMaterial.y * 0.5) * 0.18);
+    float footprint = radius * (0.42 + splay * 0.74 + saturate(bokushoMaterial.y * bokushoProfile.y * 0.5) * 0.18);
     float tuftT = saturate(lateral / max(footprint, 0.001) * 0.5 + 0.5);
     float distance = sqrt(bestDistance);
     float contact = smoothstep(1.0, 0.0, distance / max(footprint * 0.80, 0.001));
     float sampleIndex = bestT * max(bokushoShape.x - 1.0, 1.0);
     float tuftIndex = tuftT * max(bokushoShape.y - 1.0, 0.0);
     float pigment = bokushoCanvasSample(sampleIndex, tuftIndex);
-    float pressure = saturate(bokushoMaterial.y * 0.5);
+    float pressure = saturate(bokushoMaterial.y * bokushoProfile.y * 0.5);
     return pigment * contact * (0.10 + pressure * 0.18 + saturate(bokushoMaterial.z * 0.5) * 0.08);
 }
 

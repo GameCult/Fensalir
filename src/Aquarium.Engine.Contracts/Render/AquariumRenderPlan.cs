@@ -540,6 +540,14 @@ public sealed class AquariumBokushoBrushFrame
 
     public float Friction { get; init; } = 0.62f;
 
+    public float RadiusScale { get; init; } = 1.0f;
+
+    public float PressureScale { get; init; } = 1.0f;
+
+    public float NormalScale { get; init; } = 1.0f;
+
+    public float TangentScale { get; init; } = 1.0f;
+
     public Vector4 StrokeP0 { get; init; } = new(-7.2f, 1.0f, 0.0f, 0.0f);
 
     public Vector4 StrokeP1 { get; init; } = new(-2.4f, -1.8f, 0.0f, 0.0f);
@@ -562,6 +570,10 @@ public sealed class AquariumBokushoBrushFrame
         Splay = Math.Clamp(Splay, 0.0f, 2.0f),
         Bend = Math.Clamp(Bend, 0.0f, 2.4f),
         Friction = Math.Clamp(Friction, 0.0f, 1.0f),
+        RadiusScale = Math.Clamp(RadiusScale, 0.1f, 4.0f),
+        PressureScale = Math.Clamp(PressureScale, 0.1f, 4.0f),
+        NormalScale = Math.Clamp(NormalScale, 0.1f, 4.0f),
+        TangentScale = Math.Clamp(TangentScale, 0.1f, 4.0f),
         StrokeP0 = StrokeP0,
         StrokeP1 = StrokeP1,
         StrokeP2 = StrokeP2,

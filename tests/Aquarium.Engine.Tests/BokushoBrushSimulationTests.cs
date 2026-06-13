@@ -110,4 +110,42 @@ public sealed class BokushoBrushSimulationTests
         Assert.True(max > offStrokeCorner * 8.0f);
         Assert.Contains(page, value => value > 0.0f);
     }
+
+    [Fact]
+    public void CpuBrushProfileControlsPageFootprint()
+    {
+        var narrow = new AquariumBokushoBrushFrame
+        {
+            TuftCount = 9,
+            SampleCount = 48,
+            PhysicsHz = 500.0f,
+            BrushRadius = 1.8f,
+            Pressure = 0.86f,
+            InkLoad = 1.18f,
+            Wetness = 0.88f,
+            NormalScale = 0.55f,
+            TangentScale = 1.10f,
+        };
+        var wide = new AquariumBokushoBrushFrame
+        {
+            TuftCount = narrow.TuftCount,
+            SampleCount = narrow.SampleCount,
+            PhysicsHz = narrow.PhysicsHz,
+            BrushRadius = narrow.BrushRadius,
+            Pressure = narrow.Pressure,
+            InkLoad = narrow.InkLoad,
+            Wetness = narrow.Wetness,
+            NormalScale = 1.45f,
+            TangentScale = narrow.TangentScale,
+        };
+        var narrowResult = BokushoBrushSimulation.Evaluate(narrow);
+        var wideResult = BokushoBrushSimulation.Evaluate(wide);
+
+        var narrowPage = BokushoBrushSimulation.ProjectCanvasToPage(narrow, narrowResult.Canvas, 64, 64, Vector2.Zero, 8.0f);
+        var widePage = BokushoBrushSimulation.ProjectCanvasToPage(wide, wideResult.Canvas, 64, 64, Vector2.Zero, 8.0f);
+        var narrowCoverage = narrowPage.Count(value => value > 0.001f);
+        var wideCoverage = widePage.Count(value => value > 0.001f);
+
+        Assert.True(wideCoverage > narrowCoverage);
+    }
 }

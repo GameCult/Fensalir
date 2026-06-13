@@ -4041,6 +4041,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new Vector4(sampleCount, tuftCount, frame.PhysicsHz, 1.0f),
             new Vector4(frame.BrushRadius, frame.Pressure, frame.InkLoad, frame.Wetness),
             new Vector4(frame.Splay, frame.Bend, frame.Friction, 0.0f),
+            new Vector4(frame.RadiusScale, frame.PressureScale, frame.NormalScale, frame.TangentScale),
             frame.StrokeP0,
             frame.StrokeP1,
             frame.StrokeP2,
@@ -4726,6 +4727,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 Vector4.Zero,
                 Vector4.Zero,
                 Vector4.Zero,
+                Vector4.Zero,
                 Vector4.Zero);
         }
 
@@ -4736,6 +4738,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new Vector4(sampleCount, tuftCount, frame.PhysicsHz, 1.0f),
             new Vector4(frame.BrushRadius, frame.Pressure, frame.InkLoad, frame.Wetness),
             new Vector4(frame.Splay, frame.Bend, frame.Friction, 0.0f),
+            new Vector4(frame.RadiusScale, frame.PressureScale, frame.NormalScale, frame.TangentScale),
             frame.StrokeP0,
             frame.StrokeP1,
             frame.StrokeP2,
@@ -6951,6 +6954,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Vector4 Shape,
         Vector4 Brush,
         Vector4 Dynamics,
+        Vector4 Profile,
         Vector4 StrokeP0,
         Vector4 StrokeP1,
         Vector4 StrokeP2,

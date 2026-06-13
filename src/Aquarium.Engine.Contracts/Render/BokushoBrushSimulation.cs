@@ -493,6 +493,10 @@ public static class BokushoBrushSimulation
                 var tip = tips[index];
                 var previousTip = tips[previousIndex];
                 var pigment = canvas[index];
+                var nextSampleIndex = Math.Clamp(sampleIndex + 1, 0, sampleCount - 1);
+                var nextIndex = ((sampleStrokeIndex * tuftCount) + tuftIndex) * sampleCount + nextSampleIndex;
+                var neighborPigment = MathF.Max(canvas[previousIndex], canvas[nextIndex]);
+                var releasePigment = SmoothStep(0.12f, 0.68f, pigment) * SmoothStep(0.030f, 0.16f, pigment - neighborPigment);
                 var tipPoint = new Vector2(tip.X, tip.Y);
                 var previousTipPoint = new Vector2(previousTip.X, previousTip.Y);
                 var sweep = tipPoint - previousTipPoint;
@@ -522,7 +526,8 @@ public static class BokushoBrushSimulation
                 var laneEdge = MathF.Abs(laneT * 2.0f - 1.0f);
                 var islandSeedPoint = contactPoint * 34.0f + new Vector2(tuftIndex * 0.19f, sampleIndex * 0.13f);
                 var islandSeed = HashNoiseCell(islandSeedPoint, paperKey, 0x510E527Fu);
-                var islandPigment = SmoothStep(0.006f, 0.075f, pigment) * (1.0f - SmoothStep(0.22f, 0.55f, pigment));
+                var thinPigment = SmoothStep(0.006f, 0.075f, pigment) * (1.0f - SmoothStep(0.22f, 0.55f, pigment));
+                var islandPigment = MathF.Max(thinPigment, releasePigment * 0.72f);
                 var islandGate = SmoothStep(0.38f, 0.88f, laneEdge)
                     * dryIslandLift
                     * islandPigment
@@ -541,7 +546,7 @@ public static class BokushoBrushSimulation
 
                     var fleckSeedPoint = contactPoint * 61.0f + new Vector2(sampleIndex * 0.17f, tuftIndex * 0.23f);
                     var fleckSeed = HashNoiseCell(fleckSeedPoint, paperKey, 0xF1E57A2Du);
-                    var fleckGate = islandGate * SmoothStep(0.44f, 0.88f, fleckSeed);
+                    var fleckGate = islandGate * SmoothStep(0.44f - releasePigment * 0.18f, 0.88f, fleckSeed) * (1.0f + releasePigment * 1.35f);
                     if (fleckGate > 0.0f)
                     {
                         var fleckSide = fleckSeed < 0.86f ? side : -side;

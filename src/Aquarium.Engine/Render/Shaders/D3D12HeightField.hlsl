@@ -396,6 +396,9 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
 
             uint previousSampleIndex = min((uint)max(previousSampleIndexValue, 0), sampleCount - 1u);
             float4 previousTip = bokushoTipSample(previousStrokeIndex, previousSampleIndex, tuftIndex);
+            uint nextSampleIndex = min(sampleIndex + 1u, sampleCount - 1u);
+            float previousPigment = BokushoCanvasField[((previousStrokeIndex * tuftCount) + tuftIndex) * sampleCount + previousSampleIndex];
+            float nextPigment = BokushoCanvasField[((sampleStrokeIndex * tuftCount) + tuftIndex) * sampleCount + nextSampleIndex];
             float2 sweep = tip.xy - previousTip.xy;
             float sweepLengthSquared = dot(sweep, sweep);
             float sweepT = sweepLengthSquared <= 0.000001 ? 1.0 : saturate(dot(world - previousTip.xy, sweep) / sweepLengthSquared);
@@ -409,6 +412,8 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
             float tipContact = max(smoothstep(1.0, 0.0, ellipse), sweepContact * 0.86);
             float longitudinalGate = smoothstep(1.0, 0.0, abs(tangentDistance) * 0.62);
             float pigment = BokushoCanvasField[((sampleStrokeIndex * tuftCount) + tuftIndex) * sampleCount + sampleIndex];
+            float neighborPigment = max(previousPigment, nextPigment);
+            float releasePigment = smoothstep(0.12, 0.68, pigment) * smoothstep(0.030, 0.16, pigment - neighborPigment);
             float contribution = pigment
                 * tipContact
                 * (0.006 + contactCore * 0.994)
@@ -422,7 +427,8 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
             float laneEdge = abs(laneT * 2.0 - 1.0);
             float2 islandSeedPoint = contactPoint * 34.0 + float2((float)tuftIndex * 0.19, (float)sampleIndex * 0.13);
             float islandSeed = bokushoHashNoiseCell(islandSeedPoint, paperKey, 0x510E527Fu);
-            float islandPigment = smoothstep(0.006, 0.075, pigment) * (1.0 - smoothstep(0.22, 0.55, pigment));
+            float thinPigment = smoothstep(0.006, 0.075, pigment) * (1.0 - smoothstep(0.22, 0.55, pigment));
+            float islandPigment = max(thinPigment, releasePigment * 0.72);
             float islandGate = smoothstep(0.38, 0.88, laneEdge)
                 * dryIslandLift
                 * islandPigment
@@ -441,7 +447,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
 
                 float2 fleckSeedPoint = contactPoint * 61.0 + float2((float)sampleIndex * 0.17, (float)tuftIndex * 0.23);
                 float fleckSeed = bokushoHashNoiseCell(fleckSeedPoint, paperKey, 0xF1E57A2Du);
-                float fleckGate = islandGate * smoothstep(0.44, 0.88, fleckSeed);
+                float fleckGate = islandGate * smoothstep(0.44 - releasePigment * 0.18, 0.88, fleckSeed) * (1.0 + releasePigment * 1.35);
                 if (fleckGate > 0.0)
                 {
                     float fleckSide = fleckSeed < 0.86 ? side : -side;

@@ -394,6 +394,18 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushProjectionLiftsIsolatedReleasePigmentAsFringeFlecks()
+    {
+        var dry = LaneCohesionFrame(wetness: 0.42f, inkLoad: 1.46f, splay: 1.16f);
+        var result = BokushoBrushSimulation.Evaluate(dry);
+        var isolatedCanvas = IsolatedEdgeReleaseCanvas(result.Canvas, result.SampleCount, result.TuftCount);
+        var isolatedPage = BokushoBrushSimulation.ProjectCanvasToPage(dry, isolatedCanvas, result.Tips, 128, 128, Vector2.Zero, 4.0f);
+        var isolatedSmallComponents = CountSmallPageComponents(isolatedPage, 128, 128, threshold: 0.018f, maxSize: 28);
+
+        Assert.True(isolatedSmallComponents > 12, $"isolated={isolatedSmallComponents}");
+    }
+
+    [Fact]
     public void CpuBrushSourceStrokeIdPreventsAccidentalSegmentReplay()
     {
         var shared = SourceIdentityFrame(sameSourceId: true);
@@ -871,6 +883,57 @@ public sealed class BokushoBrushSimulationTests
         return count;
     }
 
+    private static int CountSmallPageComponents(IReadOnlyList<float> page, int width, int height, float threshold, int maxSize)
+    {
+        var visited = new bool[page.Count];
+        var stack = new Stack<int>();
+        var components = 0;
+        for (var index = 0; index < page.Count; index++)
+        {
+            if (visited[index] || page[index] <= threshold)
+            {
+                continue;
+            }
+
+            var size = 0;
+            visited[index] = true;
+            stack.Push(index);
+            while (stack.Count > 0)
+            {
+                var current = stack.Pop();
+                size++;
+                var x = current % width;
+                var y = current / width;
+                TryVisit(x - 1, y);
+                TryVisit(x + 1, y);
+                TryVisit(x, y - 1);
+                TryVisit(x, y + 1);
+            }
+
+            if (size <= maxSize)
+            {
+                components++;
+            }
+        }
+
+        return components;
+
+        void TryVisit(int x, int y)
+        {
+            if (x < 0 || x >= width || y < 0 || y >= height)
+            {
+                return;
+            }
+
+            var next = y * width + x;
+            if (!visited[next] && page[next] > threshold)
+            {
+                visited[next] = true;
+                stack.Push(next);
+            }
+        }
+    }
+
     private static float[] WithoutEdgeTuftPigment(IReadOnlyList<float> canvas, int sampleCount, int tuftCount)
     {
         var stripped = canvas.ToArray();
@@ -889,6 +952,26 @@ public sealed class BokushoBrushSimulationTests
         }
 
         return stripped;
+    }
+
+    private static float[] IsolatedEdgeReleaseCanvas(IReadOnlyList<float> canvas, int sampleCount, int tuftCount)
+    {
+        var isolated = new float[canvas.Count];
+        for (var tuft = 0; tuft < tuftCount; tuft++)
+        {
+            var laneT = tuftCount <= 1 ? 0.5f : tuft / (float)(tuftCount - 1);
+            if (MathF.Abs(laneT * 2.0f - 1.0f) < 0.55f)
+            {
+                continue;
+            }
+
+            for (var sample = 2; sample < sampleCount - 2; sample += 9)
+            {
+                isolated[tuft * sampleCount + sample] = MathF.Max(canvas[tuft * sampleCount + sample], 0.42f);
+            }
+        }
+
+        return isolated;
     }
 
     private static float[] LastSampleOnly(IReadOnlyList<float> canvas, int sampleCount, int tuftCount)

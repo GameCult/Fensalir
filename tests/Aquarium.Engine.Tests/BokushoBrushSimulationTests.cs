@@ -377,6 +377,21 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushSourceStrokeIdKeepsFanPhaseContinuousAcrossSegments()
+    {
+        var shared = SourceIdentityFrame(sameSourceId: true);
+        var split = SourceIdentityFrame(sameSourceId: false);
+
+        var sharedResult = BokushoBrushSimulation.Evaluate(shared);
+        var splitResult = BokushoBrushSimulation.Evaluate(split);
+        var centerTuft = sharedResult.TuftCount / 2;
+        var sharedJump = TipJumpAtSecondSegmentStart(sharedResult, centerTuft);
+        var splitJump = TipJumpAtSecondSegmentStart(splitResult, centerTuft);
+
+        Assert.True(sharedJump < splitJump * 1.25f);
+    }
+
+    [Fact]
     public void CpuBrushGeometryEnrichesCurvedStrokePressureAndWidth()
     {
         var straight = GestureFrame(curved: false);
@@ -606,6 +621,15 @@ public sealed class BokushoBrushSimulationTests
     private static float TuftSum(float[] canvas, int sampleCount, int tuft)
     {
         return canvas.Skip(tuft * sampleCount).Take(sampleCount).Sum();
+    }
+
+    private static float TipJumpAtSecondSegmentStart(BokushoBrushSimulationResult result, int tuft)
+    {
+        var lastFirstIndex = (tuft * result.SampleCount) + result.SampleCount - 1;
+        var firstSecondIndex = ((result.TuftCount + tuft) * result.SampleCount);
+        var first = result.Tips[lastFirstIndex];
+        var second = result.Tips[firstSecondIndex];
+        return Vector2.Distance(new Vector2(first.X, first.Y), new Vector2(second.X, second.Y));
     }
 
     private static float SamplePage(float[] page, int width, int height, Vector2 world, float viewRadius)

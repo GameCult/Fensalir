@@ -226,7 +226,9 @@ void SimulateBokushoTuftSegment(
         float poseSpread = saturate(0.92 + abs(stroke.pose.x) * 0.22 + stroke.pose.w * 0.10 - stroke.pose.z * 0.04);
         float localNormalRadius = max(normalRadius * normalShape * gestureWidth * poseSpread, 0.0001);
         float localTangentRadius = max(tangentRadius * tangentShape * (0.86 + gestureWidth * 0.08 + stroke.pose.z * 0.10), 0.0001);
-        float turn = sin(t * 6.28318530718 + (float)outputStrokeIndex * 0.37);
+        float strokeT = saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
+        float turnKey = stroke.p3.w >= 0.0 ? stroke.p3.w : (float)outputStrokeIndex;
+        float turn = sin(strokeT * 6.28318530718 + turnKey * 0.37);
         float rotatedRest = restOffset + stroke.pose.y * 0.10 * (1.0 - edge);
         float targetOffset = rotatedRest * localNormalRadius * (0.38 + splay * 0.52 + localPressure * 0.08 - wetness * 0.10) + (turn + stroke.pose.y * 0.22) * localNormalRadius * 0.14 * (1.0 - edge);
         float recovery = saturate(0.06 + stateWet * 0.10 + localPressure * 0.07 + (1.0 - edge) * 0.06 + stroke.pose.w * 0.07);

@@ -153,7 +153,8 @@ public static class BokushoBrushSimulation
             var poseSpread = Saturate(0.92f + MathF.Abs(stroke.ShaftTilt) * 0.22f + stroke.Compliance * 0.10f - stroke.GripHeight * 0.04f);
             var localNormalRadius = MathF.Max(normalRadius * normalShape * gestureWidth * poseSpread, 0.0001f);
             var localTangentRadius = MathF.Max(tangentRadius * tangentShape * (0.86f + gestureWidth * 0.08f + stroke.GripHeight * 0.10f), 0.0001f);
-            var turn = MathF.Sin(t * MathF.Tau + strokeIndex * 0.37f);
+            var turnKey = stroke.SourceStrokeId >= 0 ? stroke.SourceStrokeId : strokeIndex;
+            var turn = MathF.Sin(strokeT * MathF.Tau + turnKey * 0.37f);
             var rotatedRest = restOffset + stroke.ShaftRotation * 0.10f * (1.0f - edge);
             var targetOffset = rotatedRest * localNormalRadius * (0.38f + splay * 0.52f + localPressure * 0.08f - wetness * 0.10f) + (turn + stroke.ShaftRotation * 0.22f) * localNormalRadius * 0.14f * (1.0f - edge);
             var recovery = Saturate(0.06f + stateWet * 0.10f + localPressure * 0.07f + (1.0f - edge) * 0.06f + stroke.Compliance * 0.07f);
@@ -186,7 +187,7 @@ public static class BokushoBrushSimulation
             {
                 var index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
                 var pigmentSurvival = 0.62f + cohesion * 0.30f + laneCore * 0.36f - split * 0.08f - dryMemory * 0.12f;
-            var joinBlend = SegmentJoinBlend(strokes, strokeIndex, stroke, t);
+                var joinBlend = SegmentJoinBlend(strokes, strokeIndex, stroke, t);
                 var pigment = deposition * (8.4f + contact * 2.8f) + contact * stateLoad * stateWet * (0.14f + laneCore * 0.18f) + adhesion * contact * 0.08f;
                 canvas[index] = Saturate(pigment * pigmentSurvival * stroke.PigmentScale * joinBlend);
                 trace[index] = Saturate((contact * (0.24f + stateLoad * 0.36f + adhesion * 0.18f + laneCore * 0.12f) + deposition * 1.9f) * joinBlend);

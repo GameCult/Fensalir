@@ -75,6 +75,11 @@ float StrokePressureShape(BokushoBrushStroke stroke, float t)
     return saturate(0.54 + pressIn * liftOut * 0.28 + belly * 0.30);
 }
 
+float LaneCohesion(float edge, float split, float wetness, float pressure)
+{
+    return saturate(0.50 + (1.0 - edge) * 0.38 + wetness * 0.22 + pressure * 0.12 - split * 0.18);
+}
+
 float LaneHash(uint strokeIndex, uint tuft, uint salt)
 {
     uint value = (strokeIndex + 1u) * 0x9E3779B9u ^ (tuft + 1u) * 0x85EBCA6Bu ^ salt;
@@ -109,6 +114,7 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float split = saturate((0.20 - LaneHash(strokeIndex, tuft, 53u)) * 4.0) * saturate((edge - 0.18) * 1.7) * stroke.dynamics.w;
     float pressure = saturate(brushMaterial.y * stroke.profile.y * 0.5) * 2.0;
     float wetness = saturate(brushMaterial.w / 1.6);
+    float initialCohesion = LaneCohesion(edge, split, wetness, pressure);
     float load = saturate(brushMaterial.z / 2.0);
     float splay = saturate(brushDynamics.x / 2.0);
     float bend = saturate(brushDynamics.y / 2.4);
@@ -118,8 +124,8 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float tangentRadius = max(radius * stroke.profile.w, 0.0001);
     float2 tip = StrokePoint(stroke, 0.0);
     float offset = restOffset * normalRadius * (0.42 + splay * 0.38) + (laneHash - 0.5) * normalRadius * 0.05;
-    float stateLoad = load * (1.0 - edge * 0.36) * laneLoad * (1.0 - split * 0.58);
-    float stateWet = wetness * (0.86 + (1.0 - edge) * 0.14);
+    float stateLoad = load * (0.62 + initialCohesion * 0.46) * (1.0 - edge * 0.18) * laneLoad * (1.0 - split * 0.36);
+    float stateWet = wetness * (0.74 + initialCohesion * 0.24 - split * 0.08);
 
     [loop]
     for (uint sample = 0u; sample < sampleCount; sample += 1u)
@@ -133,6 +139,7 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         float tangentShape = StrokeTangentRadiusShape(taper);
         float pressureShape = StrokePressureShape(stroke, t);
         float localPressure = pressure * taper * pressureShape;
+        float cohesion = LaneCohesion(edge, split, stateWet, localPressure);
         float localNormalRadius = max(normalRadius * normalShape, 0.0001);
         float localTangentRadius = max(tangentRadius * tangentShape, 0.0001);
         float turn = sin(t * 6.28318530718 + (float)strokeIndex * 0.37);
@@ -143,20 +150,21 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         float lag = localTangentRadius * (0.12 + bend * 0.72 + friction * localPressure * 0.34 + edge * 0.18);
         float2 desiredTip = center + normal * offset - tangent * lag;
         float2 slip = desiredTip - tip;
-        float contact = saturate(localPressure * stateWet * stateLoad * (0.70 + (1.0 - edge) * 0.26));
+        float contact = saturate(localPressure * stateWet * stateLoad * (0.58 + cohesion * 0.40 + (1.0 - edge) * 0.18));
         float drag = contact * friction * (0.38 + stateWet * 0.22 + edge * 0.18);
         tip = tip + slip * (1.0 - drag);
 
         float velocity = length(slip) * brushShape.z / max(radius, 0.001);
         float tension = saturate(abs(targetOffset - offset) / max(localNormalRadius, 0.001) * 0.38 + velocity * 0.018 + drag * 0.46);
-        float separation = saturate(edge * 0.22 + tension * 0.34 + velocity * 0.010 - stateWet * 0.16);
-        float adhesion = saturate(stateWet * (0.52 + localPressure * 0.20) - separation * 0.18 - tension * 0.08);
-        float deposition = contact * stateLoad * stateWet * saturate(0.10 + drag * 0.72 + velocity * 0.012) * (0.82 + separation * 0.22);
-        stateLoad = max(0.0, stateLoad - deposition * (0.040 + localPressure * 0.025));
+        float separation = saturate(edge * 0.18 + tension * (0.24 + split * 0.18) + velocity * 0.008 - stateWet * (0.12 + cohesion * 0.10));
+        float adhesion = saturate(stateWet * (0.44 + cohesion * 0.28 + localPressure * 0.20) - separation * 0.16 - tension * 0.07);
+        float deposition = contact * stateLoad * stateWet * saturate(0.10 + drag * 0.72 + velocity * 0.010) * (0.74 + separation * 0.18 + cohesion * 0.26);
+        stateLoad = max(0.0, stateLoad - deposition * (0.032 + localPressure * 0.020 - cohesion * 0.008));
         stateWet = max(0.0, stateWet - deposition * 0.010);
 
         uint index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
-        float localPigment = saturate((deposition * (7.5 + contact * 2.5) + contact * stateLoad * stateWet * 0.22 + adhesion * contact * 0.08) * stroke.dynamics.z);
+        float pigmentSurvival = 0.74 + cohesion * 0.36 - split * 0.08;
+        float localPigment = saturate((deposition * (7.5 + contact * 2.5) + contact * stateLoad * stateWet * 0.24 + adhesion * contact * 0.10) * pigmentSurvival * stroke.dynamics.z);
         float trace = saturate(contact * (0.30 + stateLoad * 0.42 + adhesion * 0.20) + deposition * 1.8);
         BokushoTraceField[index] = trace;
         BokushoCanvasField[index] = localPigment;

@@ -319,6 +319,28 @@ public sealed class BokushoBrushSimulationTests
         Assert.True(middleShoulder > entryShoulder * 1.8f);
     }
 
+    [Fact]
+    public void CpuBrushLaneCohesionPreservesWetCenterPigment()
+    {
+        var wet = LaneCohesionFrame(wetness: 1.35f);
+        var dry = LaneCohesionFrame(wetness: 0.32f);
+
+        var wetResult = BokushoBrushSimulation.Evaluate(wet);
+        var dryResult = BokushoBrushSimulation.Evaluate(dry);
+        var centerTuft = wetResult.TuftCount / 2;
+        var wetCenter = TuftSum(wetResult.Canvas, wetResult.SampleCount, centerTuft);
+        var wetEdge = TuftSum(wetResult.Canvas, wetResult.SampleCount, 0);
+        var dryCenter = TuftSum(dryResult.Canvas, dryResult.SampleCount, centerTuft);
+        var sustainedWetSamples = wetResult.Canvas
+            .Skip(centerTuft * wetResult.SampleCount)
+            .Take(wetResult.SampleCount)
+            .Count(value => value > 0.06f);
+
+        Assert.True(wetCenter > dryCenter * 1.25f);
+        Assert.True(wetCenter > wetEdge * 1.8f);
+        Assert.True(sustainedWetSamples > wetResult.SampleCount / 3);
+    }
+
     private static AquariumBokushoBrushFrame StrokeDynamicsFrame(float pigmentScale, float entryTaper)
     {
         return new AquariumBokushoBrushFrame
@@ -352,6 +374,46 @@ public sealed class BokushoBrushSimulationTests
                 },
             ],
         };
+    }
+
+    private static AquariumBokushoBrushFrame LaneCohesionFrame(float wetness)
+    {
+        return new AquariumBokushoBrushFrame
+        {
+            TuftCount = 15,
+            SampleCount = 72,
+            PhysicsHz = 500.0f,
+            BrushRadius = 1.2f,
+            Pressure = 0.88f,
+            InkLoad = 1.32f,
+            Wetness = wetness,
+            Splay = 0.92f,
+            Bend = 0.78f,
+            Friction = 0.70f,
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-3.2f, 0.2f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-1.8f, -0.2f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(1.8f, -0.1f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(3.2f, 0.3f, 0.0f, 0.0f),
+                    RadiusScale = 0.92f,
+                    PressureScale = 1.0f,
+                    NormalScale = 0.72f,
+                    TangentScale = 1.16f,
+                    EntryTaper = 0.08f,
+                    ExitTaper = 0.22f,
+                    PigmentScale = 1.0f,
+                    SplitScale = 1.8f,
+                },
+            ],
+        };
+    }
+
+    private static float TuftSum(float[] canvas, int sampleCount, int tuft)
+    {
+        return canvas.Skip(tuft * sampleCount).Take(sampleCount).Sum();
     }
 
     private static float SamplePage(float[] page, int width, int height, Vector2 world, float viewRadius)

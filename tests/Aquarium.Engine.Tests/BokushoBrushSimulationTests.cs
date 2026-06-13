@@ -341,6 +341,23 @@ public sealed class BokushoBrushSimulationTests
         Assert.True(sustainedWetSamples > wetResult.SampleCount / 3);
     }
 
+    [Fact]
+    public void CpuBrushGeometryEnrichesCurvedStrokePressureAndWidth()
+    {
+        var straight = GestureFrame(curved: false);
+        var curved = GestureFrame(curved: true);
+
+        var straightResult = BokushoBrushSimulation.Evaluate(straight);
+        var curvedResult = BokushoBrushSimulation.Evaluate(curved);
+        var straightPage = BokushoBrushSimulation.ProjectCanvasToPage(straight, straightResult.Canvas, 128, 128, Vector2.Zero, 4.0f);
+        var curvedPage = BokushoBrushSimulation.ProjectCanvasToPage(curved, curvedResult.Canvas, 128, 128, Vector2.Zero, 4.0f);
+        var straightCoverage = straightPage.Count(value => value > 0.004f);
+        var curvedCoverage = curvedPage.Count(value => value > 0.004f);
+
+        Assert.True(curvedResult.Canvas.Sum() > straightResult.Canvas.Sum() * 1.08f);
+        Assert.True(curvedCoverage > straightCoverage);
+    }
+
     private static AquariumBokushoBrushFrame StrokeDynamicsFrame(float pigmentScale, float entryTaper)
     {
         return new AquariumBokushoBrushFrame
@@ -371,6 +388,41 @@ public sealed class BokushoBrushSimulationTests
                     ExitTaper = 0.18f,
                     PigmentScale = pigmentScale,
                     SplitScale = 1.0f,
+                },
+            ],
+        };
+    }
+
+    private static AquariumBokushoBrushFrame GestureFrame(bool curved)
+    {
+        return new AquariumBokushoBrushFrame
+        {
+            TuftCount = 13,
+            SampleCount = 84,
+            PhysicsHz = 500.0f,
+            BrushRadius = 1.25f,
+            Pressure = 0.84f,
+            InkLoad = 1.20f,
+            Wetness = 1.0f,
+            Splay = 0.78f,
+            Bend = 0.72f,
+            Friction = 0.66f,
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-2.8f, curved ? 0.8f : 0.0f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-1.4f, curved ? -1.2f : 0.0f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(1.4f, curved ? 1.1f : 0.0f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(2.8f, curved ? -0.7f : 0.0f, 0.0f, 0.0f),
+                    RadiusScale = 0.88f,
+                    PressureScale = 1.0f,
+                    NormalScale = 0.62f,
+                    TangentScale = 1.12f,
+                    EntryTaper = 0.08f,
+                    ExitTaper = 0.24f,
+                    PigmentScale = 1.0f,
+                    SplitScale = 1.1f,
                 },
             ],
         };

@@ -128,6 +128,47 @@ float bokushoStrokePressureShape(BokushoBrushStroke stroke, float t)
     return saturate(0.54 + pressIn * liftOut * 0.28 + belly * 0.30);
 }
 
+float bokushoStrokeSpeed(BokushoBrushStroke stroke, float t)
+{
+    float dt = 1.0 / max(bokushoShape.x - 1.0, 1.0);
+    float2 before = bokushoStrokePoint(stroke, saturate(t - dt));
+    float2 after = bokushoStrokePoint(stroke, saturate(t + dt));
+    return length(after - before) / max(dt * 2.0, 0.001);
+}
+
+float2 bokushoStrokeLocalTangent(BokushoBrushStroke stroke, float t, float dt)
+{
+    float2 before = bokushoStrokePoint(stroke, saturate(t - dt));
+    float2 after = bokushoStrokePoint(stroke, saturate(t + dt));
+    return cultmath_normalize(after - before);
+}
+
+float bokushoStrokeTurn(BokushoBrushStroke stroke, float t)
+{
+    float dt = 1.0 / max(bokushoShape.x - 1.0, 1.0);
+    float2 before = bokushoStrokeLocalTangent(stroke, saturate(t - dt), dt);
+    float2 after = bokushoStrokeLocalTangent(stroke, saturate(t + dt), dt);
+    return saturate(abs(before.x * after.y - before.y * after.x) * 1.8);
+}
+
+float bokushoStrokeGesturePressureShape(BokushoBrushStroke stroke, float t)
+{
+    float localSpeed = bokushoStrokeSpeed(stroke, t);
+    float expectedSpeed = max(length(stroke.p3.xy - stroke.p0.xy), 0.001);
+    float slowPress = saturate((expectedSpeed * 1.18 - localSpeed) / max(expectedSpeed * 0.80, 0.001));
+    float turnPress = bokushoStrokeTurn(stroke, t);
+    return saturate(0.88 + slowPress * 0.30 + turnPress * 0.20);
+}
+
+float bokushoStrokeGestureWidthShape(BokushoBrushStroke stroke, float t)
+{
+    float localSpeed = bokushoStrokeSpeed(stroke, t);
+    float expectedSpeed = max(length(stroke.p3.xy - stroke.p0.xy), 0.001);
+    float slowSpread = saturate((expectedSpeed * 1.08 - localSpeed) / max(expectedSpeed * 0.85, 0.001));
+    float turnSpread = bokushoStrokeTurn(stroke, t);
+    return saturate(0.84 + slowSpread * 0.36 + turnSpread * 0.20);
+}
+
 float bokushoCanvasSample(uint strokeIndex, float sampleIndex, float tuftIndex)
 {
     uint sampleCount = max((uint)round(bokushoShape.x), 2u);
@@ -216,9 +257,10 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float2 normal = float2(-tangent.y, tangent.x);
     float lateral = dot(world - center, normal);
     float taper = bokushoStrokeTaper(stroke, bestT);
-    float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * bokushoStrokeNormalRadiusShape(taper), 0.0001);
+    float gestureWidth = bokushoStrokeGestureWidthShape(stroke, bestT);
+    float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * bokushoStrokeNormalRadiusShape(taper) * gestureWidth, 0.0001);
     float splay = saturate(bokushoDynamics.x / 2.0);
-    float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper * bokushoStrokePressureShape(stroke, bestT);
+    float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper * bokushoStrokePressureShape(stroke, bestT) * bokushoStrokeGesturePressureShape(stroke, bestT);
     float footprint = radius * (0.42 + splay * 0.74 + pressure * 0.18);
     float tuftT = saturate(lateral / max(footprint, 0.001) * 0.5 + 0.5);
     float distance = sqrt(bestDistance);

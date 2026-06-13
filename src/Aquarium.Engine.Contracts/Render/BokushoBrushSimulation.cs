@@ -76,10 +76,12 @@ public static class BokushoBrushSimulation
                     var normalShape = StrokeNormalRadiusShape(taper);
                     var tangentShape = StrokeTangentRadiusShape(taper);
                     var pressureShape = StrokePressureShape(t, stroke.EntryTaper, stroke.ExitTaper);
-                    var localPressure = pressure * taper * pressureShape;
+                    var gesturePressure = StrokeGesturePressureShape(stroke, t, sampleCount);
+                    var gestureWidth = StrokeGestureWidthShape(stroke, t, sampleCount);
+                    var localPressure = pressure * taper * pressureShape * gesturePressure;
                     var cohesion = LaneCohesion(edge, split, stateWet, localPressure);
-                    var localNormalRadius = MathF.Max(normalRadius * normalShape, 0.0001f);
-                    var localTangentRadius = MathF.Max(tangentRadius * tangentShape, 0.0001f);
+                    var localNormalRadius = MathF.Max(normalRadius * normalShape * gestureWidth, 0.0001f);
+                    var localTangentRadius = MathF.Max(tangentRadius * tangentShape * (0.92f + gestureWidth * 0.08f), 0.0001f);
                     var turn = MathF.Sin(t * MathF.Tau + strokeIndex * 0.37f);
                     var targetOffset = restOffset * localNormalRadius * (0.38f + splay * 0.52f + localPressure * 0.08f - wetness * 0.10f) + turn * localNormalRadius * 0.14f * (1.0f - edge);
                     var recovery = Saturate(0.08f + stateWet * 0.12f + localPressure * 0.08f + (1.0f - edge) * 0.07f);
@@ -240,10 +242,11 @@ public static class BokushoBrushSimulation
         var normal = new Vector2(-tangent.Y, tangent.X);
         var lateral = Vector2.Dot(world - centerPoint, normal);
         var taper = StrokeTaper(bestT, stroke.EntryTaper, stroke.ExitTaper);
-        var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale * stroke.NormalScale * StrokeNormalRadiusShape(taper), 0.0001f);
+        var gestureWidth = StrokeGestureWidthShape(stroke, bestT, sampleCount);
+        var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale * stroke.NormalScale * StrokeNormalRadiusShape(taper) * gestureWidth, 0.0001f);
         var splay = Saturate(frame.Splay / 2.0f);
         var pressure = Saturate(frame.Pressure * stroke.PressureScale * 0.5f) * taper;
-        pressure *= StrokePressureShape(bestT, stroke.EntryTaper, stroke.ExitTaper);
+        pressure *= StrokePressureShape(bestT, stroke.EntryTaper, stroke.ExitTaper) * StrokeGesturePressureShape(stroke, bestT, sampleCount);
         var footprint = radius * (0.42f + splay * 0.74f + pressure * 0.18f);
         var tuftT = Saturate(lateral / MathF.Max(footprint, 0.001f) * 0.5f + 0.5f);
         var distance = MathF.Sqrt(bestDistance);
@@ -280,6 +283,47 @@ public static class BokushoBrushSimulation
     private static float LaneCohesion(float edge, float split, float wetness, float pressure)
     {
         return Saturate(0.50f + (1.0f - edge) * 0.38f + wetness * 0.22f + pressure * 0.12f - split * 0.18f);
+    }
+
+    private static float StrokeGesturePressureShape(AquariumBokushoBrushStroke stroke, float t, int sampleCount)
+    {
+        var dt = 1.0f / MathF.Max(sampleCount - 1.0f, 1.0f);
+        var localSpeed = StrokeSpeed(stroke, t, dt);
+        var expectedSpeed = MathF.Max(Vector2.Distance(new Vector2(stroke.StrokeP3.X, stroke.StrokeP3.Y), new Vector2(stroke.StrokeP0.X, stroke.StrokeP0.Y)), 0.001f);
+        var slowPress = Saturate((expectedSpeed * 1.18f - localSpeed) / MathF.Max(expectedSpeed * 0.80f, 0.001f));
+        var turnPress = StrokeTurn(stroke, t, dt);
+        return Saturate(0.88f + slowPress * 0.30f + turnPress * 0.20f);
+    }
+
+    private static float StrokeGestureWidthShape(AquariumBokushoBrushStroke stroke, float t, int sampleCount)
+    {
+        var dt = 1.0f / MathF.Max(sampleCount - 1.0f, 1.0f);
+        var localSpeed = StrokeSpeed(stroke, t, dt);
+        var expectedSpeed = MathF.Max(Vector2.Distance(new Vector2(stroke.StrokeP3.X, stroke.StrokeP3.Y), new Vector2(stroke.StrokeP0.X, stroke.StrokeP0.Y)), 0.001f);
+        var slowSpread = Saturate((expectedSpeed * 1.08f - localSpeed) / MathF.Max(expectedSpeed * 0.85f, 0.001f));
+        var turnSpread = StrokeTurn(stroke, t, dt);
+        return Saturate(0.84f + slowSpread * 0.36f + turnSpread * 0.20f);
+    }
+
+    private static float StrokeSpeed(AquariumBokushoBrushStroke stroke, float t, float dt)
+    {
+        var before = StrokePoint(stroke, Saturate(t - dt));
+        var after = StrokePoint(stroke, Saturate(t + dt));
+        return Vector2.Distance(before, after) / MathF.Max(dt * 2.0f, 0.001f);
+    }
+
+    private static float StrokeTurn(AquariumBokushoBrushStroke stroke, float t, float dt)
+    {
+        var before = StrokeLocalTangent(stroke, Saturate(t - dt), dt);
+        var after = StrokeLocalTangent(stroke, Saturate(t + dt), dt);
+        return Saturate(MathF.Abs(before.X * after.Y - before.Y * after.X) * 1.8f);
+    }
+
+    private static Vector2 StrokeLocalTangent(AquariumBokushoBrushStroke stroke, float t, float dt)
+    {
+        var before = StrokePoint(stroke, Saturate(t - dt));
+        var after = StrokePoint(stroke, Saturate(t + dt));
+        return Normalize(after - before);
     }
 
     private static float LaneHash(int strokeIndex, int tuft, uint salt)

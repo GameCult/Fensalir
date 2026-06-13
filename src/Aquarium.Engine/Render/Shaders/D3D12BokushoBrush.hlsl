@@ -80,6 +80,47 @@ float LaneCohesion(float edge, float split, float wetness, float pressure)
     return saturate(0.50 + (1.0 - edge) * 0.38 + wetness * 0.22 + pressure * 0.12 - split * 0.18);
 }
 
+float StrokeSpeed(BokushoBrushStroke stroke, float t, float dt)
+{
+    float2 before = StrokePoint(stroke, saturate(t - dt));
+    float2 after = StrokePoint(stroke, saturate(t + dt));
+    return length(after - before) / max(dt * 2.0, 0.001);
+}
+
+float2 StrokeLocalTangent(BokushoBrushStroke stroke, float t, float dt)
+{
+    float2 before = StrokePoint(stroke, saturate(t - dt));
+    float2 after = StrokePoint(stroke, saturate(t + dt));
+    return cultmath_normalize(after - before);
+}
+
+float StrokeTurn(BokushoBrushStroke stroke, float t, float dt)
+{
+    float2 before = StrokeLocalTangent(stroke, saturate(t - dt), dt);
+    float2 after = StrokeLocalTangent(stroke, saturate(t + dt), dt);
+    return saturate(abs(before.x * after.y - before.y * after.x) * 1.8);
+}
+
+float StrokeGesturePressureShape(BokushoBrushStroke stroke, float t)
+{
+    float dt = 1.0 / max(brushShape.x - 1.0, 1.0);
+    float localSpeed = StrokeSpeed(stroke, t, dt);
+    float expectedSpeed = max(length(stroke.p3.xy - stroke.p0.xy), 0.001);
+    float slowPress = saturate((expectedSpeed * 1.18 - localSpeed) / max(expectedSpeed * 0.80, 0.001));
+    float turnPress = StrokeTurn(stroke, t, dt);
+    return saturate(0.88 + slowPress * 0.30 + turnPress * 0.20);
+}
+
+float StrokeGestureWidthShape(BokushoBrushStroke stroke, float t)
+{
+    float dt = 1.0 / max(brushShape.x - 1.0, 1.0);
+    float localSpeed = StrokeSpeed(stroke, t, dt);
+    float expectedSpeed = max(length(stroke.p3.xy - stroke.p0.xy), 0.001);
+    float slowSpread = saturate((expectedSpeed * 1.08 - localSpeed) / max(expectedSpeed * 0.85, 0.001));
+    float turnSpread = StrokeTurn(stroke, t, dt);
+    return saturate(0.84 + slowSpread * 0.36 + turnSpread * 0.20);
+}
+
 float LaneHash(uint strokeIndex, uint tuft, uint salt)
 {
     uint value = (strokeIndex + 1u) * 0x9E3779B9u ^ (tuft + 1u) * 0x85EBCA6Bu ^ salt;
@@ -138,10 +179,12 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         float normalShape = StrokeNormalRadiusShape(taper);
         float tangentShape = StrokeTangentRadiusShape(taper);
         float pressureShape = StrokePressureShape(stroke, t);
-        float localPressure = pressure * taper * pressureShape;
+        float gesturePressure = StrokeGesturePressureShape(stroke, t);
+        float gestureWidth = StrokeGestureWidthShape(stroke, t);
+        float localPressure = pressure * taper * pressureShape * gesturePressure;
         float cohesion = LaneCohesion(edge, split, stateWet, localPressure);
-        float localNormalRadius = max(normalRadius * normalShape, 0.0001);
-        float localTangentRadius = max(tangentRadius * tangentShape, 0.0001);
+        float localNormalRadius = max(normalRadius * normalShape * gestureWidth, 0.0001);
+        float localTangentRadius = max(tangentRadius * tangentShape * (0.92 + gestureWidth * 0.08), 0.0001);
         float turn = sin(t * 6.28318530718 + (float)strokeIndex * 0.37);
         float targetOffset = restOffset * localNormalRadius * (0.38 + splay * 0.52 + localPressure * 0.08 - wetness * 0.10) + turn * localNormalRadius * 0.14 * (1.0 - edge);
         float recovery = saturate(0.08 + stateWet * 0.12 + localPressure * 0.08 + (1.0 - edge) * 0.07);

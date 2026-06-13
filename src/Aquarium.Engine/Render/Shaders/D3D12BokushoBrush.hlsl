@@ -43,7 +43,7 @@ float StrokeTaper(float t)
 {
     float entry = smoothstep(0.0, 0.10, t);
     float exit = 1.0 - smoothstep(0.86, 1.0, t);
-    return 0.18 + entry * exit * 0.82;
+    return 0.04 + entry * exit * 0.96;
 }
 
 float StrokeTaper(BokushoBrushStroke stroke, float t)
@@ -52,7 +52,7 @@ float StrokeTaper(BokushoBrushStroke stroke, float t)
     float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
     float entry = smoothstep(0.0, entryTaper, t);
     float exit = 1.0 - smoothstep(1.0 - exitTaper, 1.0, t);
-    return 0.18 + entry * exit * 0.82;
+    return 0.04 + entry * exit * 0.96;
 }
 
 float LaneHash(uint strokeIndex, uint tuft, uint salt)

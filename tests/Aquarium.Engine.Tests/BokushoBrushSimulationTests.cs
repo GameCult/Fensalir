@@ -224,6 +224,60 @@ public sealed class BokushoBrushSimulationTests
         Assert.True(SamplePage(strongPage, 96, 96, new Vector2(-1.8f, 0.0f), 4.0f) > SamplePage(faintPage, 96, 96, new Vector2(-1.8f, 0.0f), 4.0f));
     }
 
+    [Fact]
+    public void CpuBrushPageProjectionAppliesDryPaperEdgeBreakup()
+    {
+        var dry = new AquariumBokushoBrushFrame
+        {
+            TuftCount = 13,
+            SampleCount = 64,
+            PhysicsHz = 500.0f,
+            BrushRadius = 1.8f,
+            Pressure = 0.64f,
+            InkLoad = 1.0f,
+            Wetness = 0.0f,
+            Splay = 0.88f,
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-3.2f, 0.0f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-2.0f, 0.0f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(2.0f, 0.0f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(3.2f, 0.0f, 0.0f, 0.0f),
+                    RadiusScale = 1.0f,
+                    PressureScale = 1.0f,
+                    NormalScale = 0.84f,
+                    TangentScale = 1.0f,
+                    EntryTaper = 0.08f,
+                    ExitTaper = 0.08f,
+                    PigmentScale = 1.0f,
+                    SplitScale = 1.5f,
+                },
+            ],
+        };
+        var wet = new AquariumBokushoBrushFrame
+        {
+            TuftCount = dry.TuftCount,
+            SampleCount = dry.SampleCount,
+            PhysicsHz = dry.PhysicsHz,
+            BrushRadius = dry.BrushRadius,
+            Pressure = dry.Pressure,
+            InkLoad = dry.InkLoad,
+            Wetness = 1.6f,
+            Splay = dry.Splay,
+            Strokes = dry.Strokes,
+        };
+        var canvas = Enumerable.Repeat(1.0f, dry.TuftCount * dry.SampleCount).ToArray();
+
+        var dryPage = BokushoBrushSimulation.ProjectCanvasToPage(dry, canvas, 96, 96, Vector2.Zero, 4.0f);
+        var wetPage = BokushoBrushSimulation.ProjectCanvasToPage(wet, canvas, 96, 96, Vector2.Zero, 4.0f);
+        var edge = new Vector2(0.0f, 0.66f);
+
+        Assert.True(wetPage.Sum() > dryPage.Sum() * 1.05f);
+        Assert.True(SamplePage(wetPage, 96, 96, edge, 4.0f) > SamplePage(dryPage, 96, 96, edge, 4.0f));
+    }
+
     private static AquariumBokushoBrushFrame StrokeDynamicsFrame(float pigmentScale, float entryTaper)
     {
         return new AquariumBokushoBrushFrame

@@ -34,7 +34,7 @@ SamplerState linearSampler : register(s0);
 
 static const float FIELD_ID_HEIGHT_FIELD = 4.0;
 static const float PI = 3.14159265359;
-static const float HEIGHT_FIELD_TEXEL_COUNT = 128.0;
+static const float HEIGHT_FIELD_TEXEL_COUNT = 512.0;
 static const float SURFACE_FLAT_REFLECTION_MAX_LOD = 3.0;
 static const float BACKGROUND_PMREM_LOD = 3.0;
 static const float BACKGROUND_PMREM_CONE = 0.16;

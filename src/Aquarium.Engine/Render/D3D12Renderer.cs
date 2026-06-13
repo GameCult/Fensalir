@@ -29,7 +29,7 @@ namespace Aquarium.Engine.Render;
 public sealed class D3D12Renderer : IAquariumRenderer
 {
     private const int BackBufferCount = 2;
-    private const int HeightFieldTextureSize = 128;
+    private const int HeightFieldTextureSize = 512;
     private const Format HeightFieldFormat = Format.R16_Float;
     private const Format SceneDepthFormat = Format.D32_Float;
     private const int MaxSdfLightCount = 64;

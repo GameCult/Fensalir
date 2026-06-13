@@ -244,14 +244,18 @@ public static class BokushoBrushSimulation
         var samplePosition = bestT * MathF.Max(sampleCount - 1.0f, 1.0f);
         var tuftPosition = tuftT * MathF.Max(tuftCount - 1.0f, 0.0f);
         var pigment = BilinearCanvasSample(canvas, strokeIndex, tuftCount, sampleCount, samplePosition, tuftPosition);
-        return pigment * contact * (0.10f + pressure * 0.18f + Saturate(frame.InkLoad * 0.5f) * 0.08f);
+        var tooth = PaperTooth(world, strokeIndex);
+        var edge = Saturate(distance / MathF.Max(footprint * 0.80f, 0.001f));
+        var dryBreak = SmoothStep(0.18f + tooth * 0.18f, 0.92f, edge) * (1.0f - Saturate(frame.Wetness / 1.6f)) * (0.34f + stroke.SplitScale * 0.12f);
+        var hold = Saturate(0.52f + tooth * 0.42f + pressure * 0.28f - dryBreak);
+        return pigment * contact * hold * (0.10f + pressure * 0.18f + Saturate(frame.InkLoad * 0.5f) * 0.08f);
     }
 
     private static float StrokeTaper(float t, float entryTaper, float exitTaper)
     {
         var entry = SmoothStep(0.0f, entryTaper, t);
         var exit = 1.0f - SmoothStep(1.0f - exitTaper, 1.0f, t);
-        return 0.18f + entry * exit * 0.82f;
+        return 0.04f + entry * exit * 0.96f;
     }
 
     private static float LaneHash(int strokeIndex, int tuft, uint salt)
@@ -263,6 +267,29 @@ public static class BokushoBrushSimulation
         value *= 0x846CA68Bu;
         value ^= value >> 16;
         return (value & 0x00FFFFFFu) / 16777215.0f;
+    }
+
+    private static float PaperTooth(Vector2 world, int strokeIndex)
+    {
+        var fine = HashNoiseCell(world * 22.0f, strokeIndex, 0x6A09E667u);
+        var fiber = HashNoiseCell(new Vector2(world.X * 7.0f + world.Y * 0.35f, world.Y * 2.4f), strokeIndex, 0xBB67AE85u);
+        return Saturate(fine * 0.58f + fiber * 0.42f);
+    }
+
+    private static float HashNoiseCell(Vector2 point, int strokeIndex, uint salt)
+    {
+        unchecked
+        {
+            var x = (uint)(int)MathF.Floor(point.X);
+            var y = (uint)(int)MathF.Floor(point.Y);
+            var value = (uint)(strokeIndex + 1) * 0x9E3779B9u ^ x * 0x85EBCA6Bu ^ y * 0xC2B2AE35u ^ salt;
+            value ^= value >> 16;
+            value *= 0x7FEB352Du;
+            value ^= value >> 15;
+            value *= 0x846CA68Bu;
+            value ^= value >> 16;
+            return (value & 0x00FFFFFFu) / 16777215.0f;
+        }
     }
 
     private static float BilinearCanvasSample(ReadOnlySpan<float> canvas, int strokeIndex, int tuftCount, int sampleCount, float samplePosition, float tuftPosition)

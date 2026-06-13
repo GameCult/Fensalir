@@ -110,7 +110,7 @@ float bokushoStrokeTaper(BokushoBrushStroke stroke, float t)
     float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
     float entry = smoothstep(0.0, entryTaper, t);
     float exit = 1.0 - smoothstep(1.0 - exitTaper, 1.0, t);
-    return 0.18 + entry * exit * 0.82;
+    return 0.04 + entry * exit * 0.96;
 }
 
 float bokushoCanvasSample(uint strokeIndex, float sampleIndex, float tuftIndex)
@@ -133,6 +133,27 @@ float bokushoCanvasSample(uint strokeIndex, float sampleIndex, float tuftIndex)
     float lower = cultmath_lerp(p00, p10, sampleBlend);
     float upper = cultmath_lerp(p01, p11, sampleBlend);
     return saturate(cultmath_lerp(lower, upper, tuftBlend));
+}
+
+float bokushoHashNoiseCell(float2 paperPoint, uint strokeIndex, uint salt)
+{
+    int2 cell = int2(floor(paperPoint));
+    uint x = (uint)cell.x;
+    uint y = (uint)cell.y;
+    uint value = (strokeIndex + 1u) * 0x9E3779B9u ^ x * 0x85EBCA6Bu ^ y * 0xC2B2AE35u ^ salt;
+    value ^= value >> 16;
+    value *= 0x7FEB352Du;
+    value ^= value >> 15;
+    value *= 0x846CA68Bu;
+    value ^= value >> 16;
+    return (float)(value & 0x00FFFFFFu) / 16777215.0;
+}
+
+float bokushoPaperTooth(float2 world, uint strokeIndex)
+{
+    float fine = bokushoHashNoiseCell(world * 22.0, strokeIndex, 0x6A09E667u);
+    float fiber = bokushoHashNoiseCell(float2(world.x * 7.0 + world.y * 0.35, world.y * 2.4), strokeIndex, 0xBB67AE85u);
+    return saturate(fine * 0.58 + fiber * 0.42);
 }
 
 float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint strokeIndex)
@@ -190,7 +211,13 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float sampleIndex = bestT * max(bokushoShape.x - 1.0, 1.0);
     float tuftIndex = tuftT * max(bokushoShape.y - 1.0, 0.0);
     float pigment = bokushoCanvasSample(strokeIndex, sampleIndex, tuftIndex);
-    return pigment * contact * (0.10 + pressure * 0.18 + saturate(bokushoMaterial.z * 0.5) * 0.08);
+    float tooth = bokushoPaperTooth(world, strokeIndex);
+    float edge = saturate(distance / max(footprint * 0.80, 0.001));
+    float dryBreak = smoothstep(0.18 + tooth * 0.18, 0.92, edge)
+        * (1.0 - saturate(bokushoMaterial.w / 1.6))
+        * (0.34 + stroke.dynamics.w * 0.12);
+    float hold = saturate(0.52 + tooth * 0.42 + pressure * 0.28 - dryBreak);
+    return pigment * contact * hold * (0.10 + pressure * 0.18 + saturate(bokushoMaterial.z * 0.5) * 0.08);
 }
 
 float bokushoPageHeight(float2 world)

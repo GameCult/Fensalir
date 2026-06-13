@@ -365,6 +365,22 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushProjectionCreatesDryEdgeIslandsFromTuftState()
+    {
+        var dry = LaneCohesionFrame(wetness: 0.52f, inkLoad: 1.46f, splay: 1.12f);
+        var dryResult = BokushoBrushSimulation.Evaluate(dry);
+        var strippedCanvas = WithoutEdgeTuftPigment(dryResult.Canvas, dryResult.SampleCount, dryResult.TuftCount);
+        var dryPage = BokushoBrushSimulation.ProjectCanvasToPage(dry, dryResult.Canvas, dryResult.Tips, 128, 128, Vector2.Zero, 4.0f);
+        var strippedPage = BokushoBrushSimulation.ProjectCanvasToPage(dry, strippedCanvas, dryResult.Tips, 128, 128, Vector2.Zero, 4.0f);
+        var dryFringe = CountFringeInk(dryPage, 128, 128, viewRadius: 4.0f, threshold: 0.018f);
+        var strippedFringe = CountFringeInk(strippedPage, 128, 128, viewRadius: 4.0f, threshold: 0.018f);
+        var dryCore = SamplePage(dryPage, 128, 128, Vector2.Zero, 4.0f);
+
+        Assert.True(dryCore > 0.01f);
+        Assert.True(dryFringe > strippedFringe + 8, $"full={dryFringe}; stripped={strippedFringe}");
+    }
+
+    [Fact]
     public void CpuBrushSourceStrokeIdPreventsAccidentalSegmentReplay()
     {
         var shared = SourceIdentityFrame(sameSourceId: true);
@@ -790,6 +806,50 @@ public sealed class BokushoBrushSimulationTests
         }
 
         return variation / MathF.Max(total, 0.001f);
+    }
+
+    private static int CountFringeInk(IReadOnlyList<float> page, int width, int height, float viewRadius, float threshold)
+    {
+        var count = 0;
+        for (var y = 0; y < height; y++)
+        {
+            var uvY = height <= 1 ? 0.0f : y / (float)(height - 1);
+            var worldY = (uvY * 2.0f - 1.0f) * viewRadius;
+            if (MathF.Abs(worldY) < 0.42f || MathF.Abs(worldY) > 1.35f)
+            {
+                continue;
+            }
+
+            for (var x = 0; x < width; x++)
+            {
+                if (page[y * width + x] > threshold)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    private static float[] WithoutEdgeTuftPigment(IReadOnlyList<float> canvas, int sampleCount, int tuftCount)
+    {
+        var stripped = canvas.ToArray();
+        for (var tuft = 0; tuft < tuftCount; tuft++)
+        {
+            var laneT = tuftCount <= 1 ? 0.5f : tuft / (float)(tuftCount - 1);
+            if (MathF.Abs(laneT * 2.0f - 1.0f) < 0.28f)
+            {
+                continue;
+            }
+
+            for (var sample = 0; sample < sampleCount; sample++)
+            {
+                stripped[tuft * sampleCount + sample] = 0.0f;
+            }
+        }
+
+        return stripped;
     }
 
     private static float[] LastSampleOnly(IReadOnlyList<float> canvas, int sampleCount, int tuftCount)

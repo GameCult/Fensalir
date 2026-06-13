@@ -323,6 +323,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     uint paperKey = stroke.p3.w >= 0.0 ? (uint)round(stroke.p3.w) : strokeIndex;
     float tooth = bokushoPaperTooth(world, paperKey);
     float edge = saturate(distance / max(footprint * 0.80, 0.001));
+    float dryIslandLift = smoothstep(0.66, 0.20, saturate(bokushoMaterial.w / 1.6));
     float dryBreak = smoothstep(0.18 + tooth * 0.18, 0.92, edge)
         * (1.0 - saturate(bokushoMaterial.w / 1.6))
         * (0.34 + stroke.dynamics.w * 0.12);
@@ -331,6 +332,8 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     uint centerTuft = min((uint)round(tuftT * (float)max((int)tuftCount - 1, 0)), tuftCount - 1u);
     float pigmentPeak = 0.0;
     float pigmentFlow = 0.0;
+    float dryIslandPeak = 0.0;
+    float dryFleckPeak = 0.0;
 
     [unroll]
     for (int sampleDelta = -3; sampleDelta <= 3; sampleDelta += 1)
@@ -414,11 +417,50 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
                 * (0.82 + sweepContact * 0.24);
             pigmentPeak = max(pigmentPeak, contribution);
             pigmentFlow += contribution;
+
+            float laneT = tuftCount <= 1u ? 0.5 : (float)tuftIndex / (float)(tuftCount - 1u);
+            float laneEdge = abs(laneT * 2.0 - 1.0);
+            float2 islandSeedPoint = contactPoint * 34.0 + float2((float)tuftIndex * 0.19, (float)sampleIndex * 0.13);
+            float islandSeed = bokushoHashNoiseCell(islandSeedPoint, paperKey, 0x510E527Fu);
+            float islandPigment = smoothstep(0.006, 0.075, pigment) * (1.0 - smoothstep(0.22, 0.55, pigment));
+            float islandGate = smoothstep(0.38, 0.88, laneEdge)
+                * dryIslandLift
+                * islandPigment
+                * smoothstep(0.25, 0.88, tooth)
+                * smoothstep(0.42, 0.92, islandSeed);
+            if (islandGate > 0.0)
+            {
+                float side = islandSeed < 0.78 ? -1.0 : 1.0;
+                float2 islandCenter = contactPoint
+                    + sampleNormal * side * tip.z * (0.88 + laneEdge * 0.55)
+                    + sampleTangent * (islandSeed - 0.5) * tip.w * 0.22;
+                float islandRadius = max(tip.z * (0.30 + laneEdge * 0.22), 0.060);
+                float islandDistance = length(world - islandCenter);
+                float islandContact = smoothstep(1.0, 0.0, islandDistance / islandRadius);
+                dryIslandPeak = max(dryIslandPeak, pigment * islandGate * islandContact * 5.2);
+
+                float2 fleckSeedPoint = contactPoint * 61.0 + float2((float)sampleIndex * 0.17, (float)tuftIndex * 0.23);
+                float fleckSeed = bokushoHashNoiseCell(fleckSeedPoint, paperKey, 0xF1E57A2Du);
+                float fleckGate = islandGate * smoothstep(0.44, 0.88, fleckSeed);
+                if (fleckGate > 0.0)
+                {
+                    float fleckSide = fleckSeed < 0.86 ? side : -side;
+                    float2 fleckCenter = contactPoint
+                        + sampleNormal * fleckSide * tip.z * (2.30 + laneEdge * 1.05 + fleckSeed * 0.55)
+                        + sampleTangent * (fleckSeed - 0.5) * tip.w * 0.50;
+                    float fleckRadius = max(tip.z * (0.12 + laneEdge * 0.05), 0.030);
+                    float fleckDistance = length(world - fleckCenter);
+                    float fleckContact = smoothstep(1.0, 0.0, fleckDistance / fleckRadius);
+                    dryFleckPeak = max(dryFleckPeak, pigment * fleckGate * fleckContact * 22.0);
+                }
+            }
         }
     }
 
     float decisiveInk = saturate((pigmentPeak - 0.012) * 2.25 + pigmentFlow * 0.002);
-    return decisiveInk * hold * projectionGate * (0.36 + pressure * 0.44 + saturate(bokushoMaterial.z * 0.5) * 0.20);
+    float islandInk = saturate((dryIslandPeak - 0.001) * 14.0);
+    float fleckInk = saturate((dryFleckPeak - 0.001) * 36.0);
+    return saturate(decisiveInk + islandInk + fleckInk) * hold * projectionGate * (0.36 + pressure * 0.44 + saturate(bokushoMaterial.z * 0.5) * 0.20);
 }
 
 float bokushoPageHeight(float2 world)

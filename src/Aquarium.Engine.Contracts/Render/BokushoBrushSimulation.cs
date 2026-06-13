@@ -407,12 +407,15 @@ public static class BokushoBrushSimulation
         var paperKey = stroke.SourceStrokeId >= 0 ? stroke.SourceStrokeId : strokeIndex;
         var tooth = PaperTooth(world, paperKey);
         var edge = Saturate(distance / MathF.Max(footprint * 0.80f, 0.001f));
+        var dryIslandLift = SmoothStep(0.66f, 0.20f, Saturate(frame.Wetness / 1.6f));
         var dryBreak = SmoothStep(0.18f + tooth * 0.18f, 0.92f, edge) * (1.0f - Saturate(frame.Wetness / 1.6f)) * (0.34f + stroke.SplitScale * 0.12f);
         var hold = Saturate(0.52f + tooth * 0.42f + pressure * 0.28f - dryBreak);
         var centerSample = Math.Clamp((int)MathF.Round(bestT * (sampleCount - 1)), 0, sampleCount - 1);
         var centerTuft = Math.Clamp((int)MathF.Round(tuftT * MathF.Max(tuftCount - 1.0f, 0.0f)), 0, tuftCount - 1);
         var pigmentPeak = 0.0f;
         var pigmentFlow = 0.0f;
+        var dryIslandPeak = 0.0f;
+        var dryFleckPeak = 0.0f;
 
         for (var sampleDelta = -3; sampleDelta <= 3; sampleDelta++)
         {
@@ -474,6 +477,7 @@ public static class BokushoBrushSimulation
                 var previousIndex = ((previousStrokeIndex * tuftCount) + tuftIndex) * sampleCount + previousSampleIndex;
                 var tip = tips[index];
                 var previousTip = tips[previousIndex];
+                var pigment = canvas[index];
                 var tipPoint = new Vector2(tip.X, tip.Y);
                 var previousTipPoint = new Vector2(previousTip.X, previousTip.Y);
                 var sweep = tipPoint - previousTipPoint;
@@ -490,7 +494,7 @@ public static class BokushoBrushSimulation
                 var ellipse = MathF.Sqrt(normalDistance * normalDistance + tangentDistance * tangentDistance);
                 var tipContact = MathF.Max(SmoothStep(1.0f, 0.0f, ellipse), sweepContact * 0.86f);
                 var longitudinalGate = SmoothStep(1.0f, 0.0f, MathF.Abs(tangentDistance) * 0.62f);
-                var contribution = canvas[index]
+                var contribution = pigment
                     * tipContact
                     * (0.006f + contactCore * 0.994f)
                     * (0.06f + longitudinalGate * 0.94f)
@@ -498,11 +502,50 @@ public static class BokushoBrushSimulation
                     * (0.82f + sweepContact * 0.24f);
                 pigmentPeak = MathF.Max(pigmentPeak, contribution);
                 pigmentFlow += contribution;
+
+                var laneT = tuftCount <= 1 ? 0.5f : tuftIndex / (float)(tuftCount - 1);
+                var laneEdge = MathF.Abs(laneT * 2.0f - 1.0f);
+                var islandSeedPoint = contactPoint * 34.0f + new Vector2(tuftIndex * 0.19f, sampleIndex * 0.13f);
+                var islandSeed = HashNoiseCell(islandSeedPoint, paperKey, 0x510E527Fu);
+                var islandPigment = SmoothStep(0.006f, 0.075f, pigment) * (1.0f - SmoothStep(0.22f, 0.55f, pigment));
+                var islandGate = SmoothStep(0.38f, 0.88f, laneEdge)
+                    * dryIslandLift
+                    * islandPigment
+                    * SmoothStep(0.25f, 0.88f, tooth)
+                    * SmoothStep(0.42f, 0.92f, islandSeed);
+                if (islandGate > 0.0f)
+                {
+                    var side = islandSeed < 0.78f ? -1.0f : 1.0f;
+                    var islandCenter = contactPoint
+                        + sampleNormal * side * tip.Z * (0.88f + laneEdge * 0.55f)
+                        + sampleTangent * (islandSeed - 0.5f) * tip.W * 0.22f;
+                    var islandRadius = MathF.Max(tip.Z * (0.30f + laneEdge * 0.22f), 0.060f);
+                    var islandDistance = MathF.Sqrt(Vector2.DistanceSquared(world, islandCenter));
+                    var islandContact = SmoothStep(1.0f, 0.0f, islandDistance / islandRadius);
+                    dryIslandPeak = MathF.Max(dryIslandPeak, pigment * islandGate * islandContact * 5.2f);
+
+                    var fleckSeedPoint = contactPoint * 61.0f + new Vector2(sampleIndex * 0.17f, tuftIndex * 0.23f);
+                    var fleckSeed = HashNoiseCell(fleckSeedPoint, paperKey, 0xF1E57A2Du);
+                    var fleckGate = islandGate * SmoothStep(0.44f, 0.88f, fleckSeed);
+                    if (fleckGate > 0.0f)
+                    {
+                        var fleckSide = fleckSeed < 0.86f ? side : -side;
+                        var fleckCenter = contactPoint
+                            + sampleNormal * fleckSide * tip.Z * (2.30f + laneEdge * 1.05f + fleckSeed * 0.55f)
+                            + sampleTangent * (fleckSeed - 0.5f) * tip.W * 0.50f;
+                        var fleckRadius = MathF.Max(tip.Z * (0.12f + laneEdge * 0.05f), 0.030f);
+                        var fleckDistance = MathF.Sqrt(Vector2.DistanceSquared(world, fleckCenter));
+                        var fleckContact = SmoothStep(1.0f, 0.0f, fleckDistance / fleckRadius);
+                        dryFleckPeak = MathF.Max(dryFleckPeak, pigment * fleckGate * fleckContact * 22.0f);
+                    }
+                }
             }
         }
 
         var decisiveInk = Saturate((pigmentPeak - 0.012f) * 2.25f + pigmentFlow * 0.002f);
-        return decisiveInk * hold * projectionGate * (0.36f + pressure * 0.44f + Saturate(frame.InkLoad * 0.5f) * 0.20f);
+        var islandInk = Saturate((dryIslandPeak - 0.001f) * 14.0f);
+        var fleckInk = Saturate((dryFleckPeak - 0.001f) * 36.0f);
+        return Saturate(decisiveInk + islandInk + fleckInk) * hold * projectionGate * (0.36f + pressure * 0.44f + Saturate(frame.InkLoad * 0.5f) * 0.20f);
     }
 
     private static bool CanBorrowSourceSample(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex, int candidateIndex)

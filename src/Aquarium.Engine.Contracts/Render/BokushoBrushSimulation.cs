@@ -63,6 +63,8 @@ public static class BokushoBrushSimulation
         for (var strokeIndex = 0; strokeIndex < strokes.Length; strokeIndex++)
         {
             var stroke = strokes[strokeIndex];
+            var chainStart = ChainStart(strokes, strokeIndex);
+            var strokeStart = Math.Clamp(stroke.SegmentStart, 0.0f, 1.0f);
             var pressure = Saturate(frame.Pressure * stroke.PressureScale * 0.5f) * 2.0f;
             var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale, 0.0001f);
             var normalRadius = MathF.Max(radius * stroke.NormalScale, 0.0001f);
@@ -77,15 +79,16 @@ public static class BokushoBrushSimulation
                 var laneT = tuftCount <= 1 ? 0.5f : tuft / (float)(tuftCount - 1);
                 var restOffset = laneT * 2.0f - 1.0f;
                 var edge = MathF.Abs(restOffset);
-                var laneHash = LaneHash(strokeIndex, tuft, 17);
+                var laneHash = LaneHash(chainStart, tuft, 17);
                 var laneLoad = 0.76f + laneHash * 0.34f;
-                var split = Saturate((0.20f - LaneHash(strokeIndex, tuft, 53)) * 4.0f) * Saturate((edge - 0.18f) * 1.7f) * stroke.SplitScale;
+                var split = Saturate((0.20f - LaneHash(chainStart, tuft, 53)) * 4.0f) * Saturate((edge - 0.18f) * 1.7f) * stroke.SplitScale;
                 var initialCohesion = LaneCohesion(edge, split, wetness, pressure);
                 var tip = StrokePoint(stroke, 0.0f);
                 var poseBias = poseTilt * 0.18f + poseRotation * 0.08f;
                 var offset = (restOffset + poseBias * (1.0f - edge * 0.35f)) * normalRadius * (0.42f + splay * 0.38f) + (laneHash - 0.5f) * normalRadius * 0.05f;
-                var stateLoad = load * (0.62f + initialCohesion * 0.46f) * (1.0f - edge * 0.18f) * laneLoad * (1.0f - split * 0.36f);
-                var stateWet = wetness * (0.74f + initialCohesion * 0.24f - split * 0.08f);
+                var sourceCarry = 1.0f - strokeStart;
+                var stateLoad = load * (0.62f + initialCohesion * 0.46f) * (1.0f - edge * 0.18f) * laneLoad * (1.0f - split * 0.36f) * (0.52f + sourceCarry * 0.48f);
+                var stateWet = wetness * (0.74f + initialCohesion * 0.24f - split * 0.08f) * (0.78f + sourceCarry * 0.22f);
 
                 for (var sample = 0; sample < sampleCount; sample++)
                 {
@@ -93,10 +96,11 @@ public static class BokushoBrushSimulation
                     var center = StrokePoint(stroke, t);
                     var tangent = StrokeTangent(stroke, t, sampleCount);
                     var normal = new Vector2(-tangent.Y, tangent.X);
-                    var taper = StrokeTaper(t, stroke.EntryTaper, stroke.ExitTaper);
+                    var strokeT = StrokeProgress(stroke, t);
+                    var taper = StrokeTaper(strokeT, stroke.EntryTaper, stroke.ExitTaper);
                     var normalShape = StrokeNormalRadiusShape(taper);
                     var tangentShape = StrokeTangentRadiusShape(taper);
-                    var pressureShape = StrokePressureShape(t, stroke.EntryTaper, stroke.ExitTaper);
+                    var pressureShape = StrokePressureShape(strokeT, stroke.EntryTaper, stroke.ExitTaper);
                     var gesturePressure = StrokeGesturePressureShape(stroke, t, sampleCount);
                     var gestureWidth = StrokeGestureWidthShape(stroke, t, sampleCount);
                     var localPressure = pressure * taper * pressureShape * gesturePressure;
@@ -128,8 +132,9 @@ public static class BokushoBrushSimulation
 
                     var index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
                     var pigmentSurvival = 0.74f + cohesion * 0.36f - split * 0.08f;
-                    var localPigment = Saturate((deposition * (7.5f + contact * 2.5f) + contact * stateLoad * stateWet * 0.24f + adhesion * contact * 0.10f) * pigmentSurvival * stroke.PigmentScale);
-                    trace[index] = Saturate(contact * (0.30f + stateLoad * 0.42f + adhesion * 0.20f) + deposition * 1.8f);
+                    var joinBlend = SegmentJoinBlend(stroke, t);
+                    var localPigment = Saturate((deposition * (7.5f + contact * 2.5f) + contact * stateLoad * stateWet * 0.24f + adhesion * contact * 0.10f) * pigmentSurvival * stroke.PigmentScale * joinBlend);
+                    trace[index] = Saturate((contact * (0.30f + stateLoad * 0.42f + adhesion * 0.20f) + deposition * 1.8f) * joinBlend);
                     canvas[index] = localPigment;
                     tips[index] = new Vector4(
                         tip.X,
@@ -227,8 +232,30 @@ public static class BokushoBrushSimulation
                 ExitTaper = 0.14f,
                 PigmentScale = 1.0f,
                 SplitScale = 1.0f,
+                SegmentStart = 0.0f,
+                SegmentEnd = 1.0f,
             }.Normalized()
         ];
+    }
+
+    private static int ChainStart(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex)
+    {
+        var chainStart = strokeIndex;
+        var expectedStart = Math.Clamp(strokes[strokeIndex].SegmentStart, 0.0f, 1.0f);
+        while (chainStart > 0 && expectedStart > 0.0001f)
+        {
+            var previous = strokes[chainStart - 1];
+            var previousEnd = Math.Clamp(previous.SegmentEnd, 0.0f, 1.0f);
+            if (MathF.Abs(previousEnd - expectedStart) > 0.001f)
+            {
+                break;
+            }
+
+            chainStart--;
+            expectedStart = Math.Clamp(strokes[chainStart].SegmentStart, 0.0f, 1.0f);
+        }
+
+        return chainStart;
     }
 
     private static Vector2 StrokePoint(AquariumBokushoBrushStroke stroke, float t)
@@ -291,14 +318,15 @@ public static class BokushoBrushSimulation
         var tangent = StrokeTangent(stroke, bestT, sampleCount);
         var normal = new Vector2(-tangent.Y, tangent.X);
         var lateral = Vector2.Dot(world - centerPoint, normal);
-        var taper = StrokeTaper(bestT, stroke.EntryTaper, stroke.ExitTaper);
+        var strokeT = StrokeProgress(stroke, bestT);
+        var taper = StrokeTaper(strokeT, stroke.EntryTaper, stroke.ExitTaper);
         var gestureWidth = StrokeGestureWidthShape(stroke, bestT, sampleCount);
         var poseSpread = Saturate(0.92f + MathF.Abs(stroke.ShaftTilt) * 0.22f + stroke.Compliance * 0.10f - stroke.GripHeight * 0.04f);
         var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale * stroke.NormalScale * StrokeNormalRadiusShape(taper) * gestureWidth * poseSpread, 0.0001f);
         var splay = Saturate(frame.Splay / 2.0f);
         var pressure = Saturate(frame.Pressure * stroke.PressureScale * 0.5f) * taper;
         var poseContact = 0.90f + stroke.Compliance * 0.10f + (1.0f - Saturate(stroke.GripHeight / 2.4f)) * 0.10f;
-        pressure *= StrokePressureShape(bestT, stroke.EntryTaper, stroke.ExitTaper) * StrokeGesturePressureShape(stroke, bestT, sampleCount) * poseContact;
+        pressure *= StrokePressureShape(strokeT, stroke.EntryTaper, stroke.ExitTaper) * StrokeGesturePressureShape(stroke, bestT, sampleCount) * poseContact;
         var footprint = radius * (0.42f + splay * 0.74f + pressure * 0.18f);
         var tuftT = Saturate(lateral / MathF.Max(footprint, 0.001f) * 0.5f + 0.5f);
         var distance = MathF.Sqrt(bestDistance);
@@ -348,6 +376,29 @@ public static class BokushoBrushSimulation
     private static float StrokeNormalRadiusShape(float taper) => 0.08f + taper * 0.92f;
 
     private static float StrokeTangentRadiusShape(float taper) => 0.16f + taper * 0.84f;
+
+    private static float StrokeProgress(AquariumBokushoBrushStroke stroke, float t)
+    {
+        var start = Math.Clamp(stroke.SegmentStart, 0.0f, 1.0f);
+        var end = Math.Clamp(stroke.SegmentEnd, start, 1.0f);
+        return Saturate(Lerp(start, end, t));
+    }
+
+    private static float SegmentJoinBlend(AquariumBokushoBrushStroke stroke, float t)
+    {
+        var blend = 1.0f;
+        if (stroke.SegmentStart > 0.0001f)
+        {
+            blend *= 0.58f + SmoothStep(0.0f, 0.08f, t) * 0.42f;
+        }
+
+        if (stroke.SegmentEnd < 0.9999f)
+        {
+            blend *= 0.58f + (1.0f - SmoothStep(0.92f, 1.0f, t)) * 0.42f;
+        }
+
+        return Math.Clamp(blend, 0.0f, 1.0f);
+    }
 
     private static float StrokePressureShape(float t, float entryTaper, float exitTaper)
     {

@@ -108,10 +108,11 @@ float2 bokushoStrokeTangent(BokushoBrushStroke stroke, float t)
 
 float bokushoStrokeTaper(BokushoBrushStroke stroke, float t)
 {
+    float strokeT = saturate(cultmath_lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
     float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
     float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
-    float entry = smoothstep(0.0, entryTaper, t);
-    float exit = 1.0 - smoothstep(1.0 - exitTaper, 1.0, t);
+    float entry = smoothstep(0.0, entryTaper, strokeT);
+    float exit = 1.0 - smoothstep(1.0 - exitTaper, 1.0, strokeT);
     return 0.04 + entry * exit * 0.96;
 }
 
@@ -122,11 +123,12 @@ float bokushoStrokeNormalRadiusShape(float taper)
 
 float bokushoStrokePressureShape(BokushoBrushStroke stroke, float t)
 {
+    float strokeT = saturate(cultmath_lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
     float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
     float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
-    float pressIn = smoothstep(0.0, min(entryTaper * 1.6, 0.62), t);
-    float liftOut = 1.0 - smoothstep(max(1.0 - exitTaper * 1.35, 0.20), 1.0, t);
-    float belly = smoothstep(0.12, 0.42, t) * (1.0 - smoothstep(0.68, 0.96, t));
+    float pressIn = smoothstep(0.0, min(entryTaper * 1.6, 0.62), strokeT);
+    float liftOut = 1.0 - smoothstep(max(1.0 - exitTaper * 1.35, 0.20), 1.0, strokeT);
+    float belly = smoothstep(0.12, 0.42, strokeT) * (1.0 - smoothstep(0.68, 0.96, strokeT));
     return saturate(0.54 + pressIn * liftOut * 0.28 + belly * 0.30);
 }
 

@@ -50,10 +50,11 @@ float StrokeTaper(float t)
 
 float StrokeTaper(BokushoBrushStroke stroke, float t)
 {
+    float strokeT = saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
     float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
     float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
-    float entry = smoothstep(0.0, entryTaper, t);
-    float exit = 1.0 - smoothstep(1.0 - exitTaper, 1.0, t);
+    float entry = smoothstep(0.0, entryTaper, strokeT);
+    float exit = 1.0 - smoothstep(1.0 - exitTaper, 1.0, strokeT);
     return 0.04 + entry * exit * 0.96;
 }
 
@@ -69,11 +70,12 @@ float StrokeTangentRadiusShape(float taper)
 
 float StrokePressureShape(BokushoBrushStroke stroke, float t)
 {
+    float strokeT = saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
     float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
     float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
-    float pressIn = smoothstep(0.0, min(entryTaper * 1.6, 0.62), t);
-    float liftOut = 1.0 - smoothstep(max(1.0 - exitTaper * 1.35, 0.20), 1.0, t);
-    float belly = smoothstep(0.12, 0.42, t) * (1.0 - smoothstep(0.68, 0.96, t));
+    float pressIn = smoothstep(0.0, min(entryTaper * 1.6, 0.62), strokeT);
+    float liftOut = 1.0 - smoothstep(max(1.0 - exitTaper * 1.35, 0.20), 1.0, strokeT);
+    float belly = smoothstep(0.12, 0.42, strokeT) * (1.0 - smoothstep(0.68, 0.96, strokeT));
     return saturate(0.54 + pressIn * liftOut * 0.28 + belly * 0.30);
 }
 
@@ -134,6 +136,42 @@ float LaneHash(uint strokeIndex, uint tuft, uint salt)
     return (float)(value & 0x00FFFFFFu) / 16777215.0;
 }
 
+float SegmentJoinBlend(BokushoBrushStroke stroke, float t)
+{
+    float blend = 1.0;
+    if (stroke.p0.z > 0.0001)
+    {
+        blend *= 0.58 + smoothstep(0.0, 0.08, t) * 0.42;
+    }
+
+    if (stroke.p0.w < 0.9999)
+    {
+        blend *= 0.58 + (1.0 - smoothstep(0.92, 1.0, t)) * 0.42;
+    }
+
+    return saturate(blend);
+}
+
+uint StrokeChainStart(uint strokeIndex)
+{
+    uint chainStart = strokeIndex;
+    float expectedStart = saturate(BokushoBrushStrokes[strokeIndex].p0.z);
+    [loop]
+    while (chainStart > 0u && expectedStart > 0.0001)
+    {
+        float previousEnd = saturate(BokushoBrushStrokes[chainStart - 1u].p0.w);
+        if (abs(previousEnd - expectedStart) > 0.001)
+        {
+            break;
+        }
+
+        chainStart = chainStart - 1u;
+        expectedStart = saturate(BokushoBrushStrokes[chainStart].p0.z);
+    }
+
+    return chainStart;
+}
+
 [numthreads(128, 1, 1)]
 void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
@@ -149,12 +187,14 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
 
     BokushoBrushStroke stroke = BokushoBrushStrokes[strokeIndex];
+    uint chainStart = StrokeChainStart(strokeIndex);
+    float strokeStart = saturate(stroke.p0.z);
     float laneT = tuftCount <= 1u ? 0.5 : (float)tuft / (float)(tuftCount - 1u);
     float restOffset = laneT * 2.0 - 1.0;
     float edge = abs(restOffset);
-    float laneHash = LaneHash(strokeIndex, tuft, 17u);
+    float laneHash = LaneHash(chainStart, tuft, 17u);
     float laneLoad = 0.76 + laneHash * 0.34;
-    float split = saturate((0.20 - LaneHash(strokeIndex, tuft, 53u)) * 4.0) * saturate((edge - 0.18) * 1.7) * stroke.dynamics.w;
+    float split = saturate((0.20 - LaneHash(chainStart, tuft, 53u)) * 4.0) * saturate((edge - 0.18) * 1.7) * stroke.dynamics.w;
     float pressure = saturate(brushMaterial.y * stroke.profile.y * 0.5) * 2.0;
     float wetness = saturate(brushMaterial.w / 1.6);
     float initialCohesion = LaneCohesion(edge, split, wetness, pressure);
@@ -172,8 +212,9 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float2 tip = StrokePoint(stroke, 0.0);
     float poseBias = poseTilt * 0.18 + poseRotation * 0.08;
     float offset = (restOffset + poseBias * (1.0 - edge * 0.35)) * normalRadius * (0.42 + splay * 0.38) + (laneHash - 0.5) * normalRadius * 0.05;
-    float stateLoad = load * (0.62 + initialCohesion * 0.46) * (1.0 - edge * 0.18) * laneLoad * (1.0 - split * 0.36);
-    float stateWet = wetness * (0.74 + initialCohesion * 0.24 - split * 0.08);
+    float sourceCarry = 1.0 - strokeStart;
+    float stateLoad = load * (0.62 + initialCohesion * 0.46) * (1.0 - edge * 0.18) * laneLoad * (1.0 - split * 0.36) * (0.52 + sourceCarry * 0.48);
+    float stateWet = wetness * (0.74 + initialCohesion * 0.24 - split * 0.08) * (0.78 + sourceCarry * 0.22);
 
     [loop]
     for (uint sample = 0u; sample < sampleCount; sample += 1u)
@@ -217,8 +258,9 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 
         uint index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
         float pigmentSurvival = 0.74 + cohesion * 0.36 - split * 0.08;
-        float localPigment = saturate((deposition * (7.5 + contact * 2.5) + contact * stateLoad * stateWet * 0.24 + adhesion * contact * 0.10) * pigmentSurvival * stroke.dynamics.z);
-        float trace = saturate(contact * (0.30 + stateLoad * 0.42 + adhesion * 0.20) + deposition * 1.8);
+        float joinBlend = SegmentJoinBlend(stroke, t);
+        float localPigment = saturate((deposition * (7.5 + contact * 2.5) + contact * stateLoad * stateWet * 0.24 + adhesion * contact * 0.10) * pigmentSurvival * stroke.dynamics.z * joinBlend);
+        float trace = saturate((contact * (0.30 + stateLoad * 0.42 + adhesion * 0.20) + deposition * 1.8) * joinBlend);
         BokushoTraceField[index] = trace;
         BokushoCanvasField[index] = localPigment;
         BokushoTipField[index] = float4(tip, localNormalRadius * (0.70 + localPressure * 0.22 + splay * 0.24), localTangentRadius * (0.84 + drag * 0.34 + bend * 0.18));

@@ -4799,7 +4799,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 new Vector4(frame.RadiusScale, frame.PressureScale, frame.NormalScale, frame.TangentScale),
                 new Vector4(0.10f, 0.14f, 1.0f, 1.0f),
                 new Vector4(0.0f, 0.0f, 1.0f, 1.0f),
-                frame.StrokeP0,
+                new Vector4(frame.StrokeP0.X, frame.StrokeP0.Y, 0.0f, 1.0f),
                 frame.StrokeP1,
                 frame.StrokeP2,
                 frame.StrokeP3),
@@ -4812,7 +4812,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new Vector4(stroke.RadiusScale, stroke.PressureScale, stroke.NormalScale, stroke.TangentScale),
             new Vector4(stroke.EntryTaper, stroke.ExitTaper, stroke.PigmentScale, stroke.SplitScale),
             new Vector4(stroke.ShaftTilt, stroke.ShaftRotation, stroke.GripHeight, stroke.Compliance),
-            stroke.StrokeP0,
+            new Vector4(stroke.StrokeP0.X, stroke.StrokeP0.Y, stroke.SegmentStart, stroke.SegmentEnd),
             stroke.StrokeP1,
             stroke.StrokeP2,
             stroke.StrokeP3);

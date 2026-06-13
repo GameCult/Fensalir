@@ -602,6 +602,14 @@ public sealed class AquariumBokushoBrushStroke
 
     public float TangentScale { get; init; } = 1.0f;
 
+    public float EntryTaper { get; init; } = 0.10f;
+
+    public float ExitTaper { get; init; } = 0.14f;
+
+    public float PigmentScale { get; init; } = 1.0f;
+
+    public float SplitScale { get; init; } = 1.0f;
+
     public AquariumBokushoBrushStroke Normalized() => new()
     {
         StrokeP0 = StrokeP0,
@@ -612,6 +620,10 @@ public sealed class AquariumBokushoBrushStroke
         PressureScale = Math.Clamp(PressureScale, 0.1f, 4.0f),
         NormalScale = Math.Clamp(NormalScale, 0.1f, 4.0f),
         TangentScale = Math.Clamp(TangentScale, 0.1f, 4.0f),
+        EntryTaper = Math.Clamp(EntryTaper, 0.01f, 0.50f),
+        ExitTaper = Math.Clamp(ExitTaper, 0.01f, 0.50f),
+        PigmentScale = Math.Clamp(PigmentScale, 0.05f, 4.0f),
+        SplitScale = Math.Clamp(SplitScale, 0.0f, 4.0f),
     };
 }
 

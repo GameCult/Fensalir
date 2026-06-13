@@ -209,6 +209,56 @@ public sealed class BokushoBrushSimulationTests
         Assert.True(SamplePage(page, 96, 96, new Vector2(0.0f, -1.0f), 6.0f) > 0.001f);
     }
 
+    [Fact]
+    public void CpuBrushStrokeDynamicsControlPigmentAndTaper()
+    {
+        var faint = StrokeDynamicsFrame(pigmentScale: 0.35f, entryTaper: 0.24f);
+        var strong = StrokeDynamicsFrame(pigmentScale: 1.65f, entryTaper: 0.04f);
+
+        var faintResult = BokushoBrushSimulation.Evaluate(faint);
+        var strongResult = BokushoBrushSimulation.Evaluate(strong);
+        var faintPage = BokushoBrushSimulation.ProjectCanvasToPage(faint, faintResult.Canvas, 96, 96, Vector2.Zero, 4.0f);
+        var strongPage = BokushoBrushSimulation.ProjectCanvasToPage(strong, strongResult.Canvas, 96, 96, Vector2.Zero, 4.0f);
+
+        Assert.True(strongPage.Max() > faintPage.Max() * 1.8f);
+        Assert.True(SamplePage(strongPage, 96, 96, new Vector2(-1.8f, 0.0f), 4.0f) > SamplePage(faintPage, 96, 96, new Vector2(-1.8f, 0.0f), 4.0f));
+    }
+
+    private static AquariumBokushoBrushFrame StrokeDynamicsFrame(float pigmentScale, float entryTaper)
+    {
+        return new AquariumBokushoBrushFrame
+        {
+            TuftCount = 11,
+            SampleCount = 56,
+            PhysicsHz = 500.0f,
+            BrushRadius = 1.4f,
+            Pressure = 0.92f,
+            InkLoad = 1.24f,
+            Wetness = 0.90f,
+            Splay = 0.82f,
+            Bend = 0.74f,
+            Friction = 0.66f,
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-2.8f, 0.1f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-1.7f, 0.0f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(1.4f, 0.0f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(2.8f, -0.1f, 0.0f, 0.0f),
+                    RadiusScale = 0.86f,
+                    PressureScale = 1.0f,
+                    NormalScale = 0.66f,
+                    TangentScale = 1.2f,
+                    EntryTaper = entryTaper,
+                    ExitTaper = 0.18f,
+                    PigmentScale = pigmentScale,
+                    SplitScale = 1.0f,
+                },
+            ],
+        };
+    }
+
     private static float SamplePage(float[] page, int width, int height, Vector2 world, float viewRadius)
     {
         var uv = world / viewRadius * 0.5f + new Vector2(0.5f, 0.5f);

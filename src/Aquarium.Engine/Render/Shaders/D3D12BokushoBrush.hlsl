@@ -15,6 +15,7 @@ cbuffer BokushoBrushConstants : register(b4)
 struct BokushoBrushStroke
 {
     float4 profile;
+    float4 dynamics;
     float4 p0;
     float4 p1;
     float4 p2;
@@ -42,6 +43,15 @@ float StrokeTaper(float t)
 {
     float entry = smoothstep(0.0, 0.10, t);
     float exit = 1.0 - smoothstep(0.86, 1.0, t);
+    return 0.18 + entry * exit * 0.82;
+}
+
+float StrokeTaper(BokushoBrushStroke stroke, float t)
+{
+    float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
+    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
+    float entry = smoothstep(0.0, entryTaper, t);
+    float exit = 1.0 - smoothstep(1.0 - exitTaper, 1.0, t);
     return 0.18 + entry * exit * 0.82;
 }
 
@@ -76,7 +86,7 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float edge = abs(restOffset);
     float laneHash = LaneHash(strokeIndex, tuft, 17u);
     float laneLoad = 0.76 + laneHash * 0.34;
-    float split = saturate((0.20 - LaneHash(strokeIndex, tuft, 53u)) * 4.0) * saturate((edge - 0.18) * 1.7);
+    float split = saturate((0.20 - LaneHash(strokeIndex, tuft, 53u)) * 4.0) * saturate((edge - 0.18) * 1.7) * stroke.dynamics.w;
     float pressure = saturate(brushMaterial.y * stroke.profile.y * 0.5) * 2.0;
     float wetness = saturate(brushMaterial.w / 1.6);
     float load = saturate(brushMaterial.z / 2.0);
@@ -98,7 +108,7 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         float2 center = StrokePoint(stroke, t);
         float2 tangent = StrokeTangent(stroke, t);
         float2 normal = float2(-tangent.y, tangent.x);
-        float taper = StrokeTaper(t);
+        float taper = StrokeTaper(stroke, t);
         float localPressure = pressure * taper;
         float localNormalRadius = max(normalRadius * (0.34 + taper * 0.66), 0.0001);
         float localTangentRadius = max(tangentRadius * (0.48 + taper * 0.52), 0.0001);
@@ -123,7 +133,7 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         stateWet = max(0.0, stateWet - deposition * 0.010);
 
         uint index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
-        float localPigment = saturate(deposition * (7.5 + contact * 2.5) + contact * stateLoad * stateWet * 0.22 + adhesion * contact * 0.08);
+        float localPigment = saturate((deposition * (7.5 + contact * 2.5) + contact * stateLoad * stateWet * 0.22 + adhesion * contact * 0.08) * stroke.dynamics.z);
         float trace = saturate(contact * (0.30 + stateLoad * 0.42 + adhesion * 0.20) + deposition * 1.8);
         BokushoTraceField[index] = trace;
         BokushoCanvasField[index] = localPigment;

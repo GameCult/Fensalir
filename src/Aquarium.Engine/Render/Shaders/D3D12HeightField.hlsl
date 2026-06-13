@@ -48,6 +48,7 @@ cbuffer BokushoPageConstants : register(b5)
 struct BokushoBrushStroke
 {
     float4 profile;
+    float4 dynamics;
     float4 p0;
     float4 p1;
     float4 p2;
@@ -103,10 +104,12 @@ float2 bokushoStrokeTangent(BokushoBrushStroke stroke, float t)
     return cultmath_normalize(after - before);
 }
 
-float bokushoStrokeTaper(float t)
+float bokushoStrokeTaper(BokushoBrushStroke stroke, float t)
 {
-    float entry = smoothstep(0.0, 0.10, t);
-    float exit = 1.0 - smoothstep(0.86, 1.0, t);
+    float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
+    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
+    float entry = smoothstep(0.0, entryTaper, t);
+    float exit = 1.0 - smoothstep(1.0 - exitTaper, 1.0, t);
     return 0.18 + entry * exit * 0.82;
 }
 
@@ -176,7 +179,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float2 tangent = bokushoStrokeTangent(stroke, bestT);
     float2 normal = float2(-tangent.y, tangent.x);
     float lateral = dot(world - center, normal);
-    float taper = bokushoStrokeTaper(bestT);
+    float taper = bokushoStrokeTaper(stroke, bestT);
     float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * (0.34 + taper * 0.66), 0.0001);
     float splay = saturate(bokushoDynamics.x / 2.0);
     float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper;

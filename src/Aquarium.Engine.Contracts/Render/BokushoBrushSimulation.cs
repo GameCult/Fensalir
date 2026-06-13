@@ -59,7 +59,7 @@ public static class BokushoBrushSimulation
                 var edge = MathF.Abs(restOffset);
                 var laneHash = LaneHash(strokeIndex, tuft, 17);
                 var laneLoad = 0.76f + laneHash * 0.34f;
-                var split = Saturate((0.20f - LaneHash(strokeIndex, tuft, 53)) * 4.0f) * Saturate((edge - 0.18f) * 1.7f);
+                var split = Saturate((0.20f - LaneHash(strokeIndex, tuft, 53)) * 4.0f) * Saturate((edge - 0.18f) * 1.7f) * stroke.SplitScale;
                 var tip = StrokePoint(stroke, 0.0f);
                 var offset = restOffset * normalRadius * (0.42f + splay * 0.38f) + (laneHash - 0.5f) * normalRadius * 0.05f;
                 var stateLoad = load * (1.0f - edge * 0.36f) * laneLoad * (1.0f - split * 0.58f);
@@ -71,7 +71,7 @@ public static class BokushoBrushSimulation
                     var center = StrokePoint(stroke, t);
                     var tangent = StrokeTangent(stroke, t, sampleCount);
                     var normal = new Vector2(-tangent.Y, tangent.X);
-                    var taper = StrokeTaper(t);
+                    var taper = StrokeTaper(t, stroke.EntryTaper, stroke.ExitTaper);
                     var localPressure = pressure * taper;
                     var localNormalRadius = MathF.Max(normalRadius * (0.34f + taper * 0.66f), 0.0001f);
                     var localTangentRadius = MathF.Max(tangentRadius * (0.48f + taper * 0.52f), 0.0001f);
@@ -96,7 +96,7 @@ public static class BokushoBrushSimulation
                     stateWet = MathF.Max(0.0f, stateWet - deposition * 0.010f);
 
                     var index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
-                    var localPigment = Saturate(deposition * (7.5f + contact * 2.5f) + contact * stateLoad * stateWet * 0.22f + adhesion * contact * 0.08f);
+                    var localPigment = Saturate((deposition * (7.5f + contact * 2.5f) + contact * stateLoad * stateWet * 0.22f + adhesion * contact * 0.08f) * stroke.PigmentScale);
                     trace[index] = Saturate(contact * (0.30f + stateLoad * 0.42f + adhesion * 0.20f) + deposition * 1.8f);
                     canvas[index] = localPigment;
                 }
@@ -165,6 +165,10 @@ public static class BokushoBrushSimulation
                 PressureScale = frame.PressureScale,
                 NormalScale = frame.NormalScale,
                 TangentScale = frame.TangentScale,
+                EntryTaper = 0.10f,
+                ExitTaper = 0.14f,
+                PigmentScale = 1.0f,
+                SplitScale = 1.0f,
             }.Normalized()
         ];
     }
@@ -229,7 +233,7 @@ public static class BokushoBrushSimulation
         var tangent = StrokeTangent(stroke, bestT, sampleCount);
         var normal = new Vector2(-tangent.Y, tangent.X);
         var lateral = Vector2.Dot(world - centerPoint, normal);
-        var taper = StrokeTaper(bestT);
+        var taper = StrokeTaper(bestT, stroke.EntryTaper, stroke.ExitTaper);
         var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale * stroke.NormalScale * (0.34f + taper * 0.66f), 0.0001f);
         var splay = Saturate(frame.Splay / 2.0f);
         var pressure = Saturate(frame.Pressure * stroke.PressureScale * 0.5f) * taper;
@@ -243,10 +247,10 @@ public static class BokushoBrushSimulation
         return pigment * contact * (0.10f + pressure * 0.18f + Saturate(frame.InkLoad * 0.5f) * 0.08f);
     }
 
-    private static float StrokeTaper(float t)
+    private static float StrokeTaper(float t, float entryTaper, float exitTaper)
     {
-        var entry = SmoothStep(0.0f, 0.10f, t);
-        var exit = 1.0f - SmoothStep(0.86f, 1.0f, t);
+        var entry = SmoothStep(0.0f, entryTaper, t);
+        var exit = 1.0f - SmoothStep(1.0f - exitTaper, 1.0f, t);
         return 0.18f + entry * exit * 0.82f;
     }
 

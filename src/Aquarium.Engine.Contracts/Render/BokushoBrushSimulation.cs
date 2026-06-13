@@ -559,6 +559,23 @@ public static class BokushoBrushSimulation
                         dryFleckPeak = MathF.Max(dryFleckPeak, pigment * fleckGate * fleckContact * 22.0f);
                     }
 
+                    var fraySeedPoint = contactPoint * 47.0f + new Vector2(sampleIndex * 0.29f, tuftIndex * 0.37f);
+                    var fraySeed = HashNoiseCell(fraySeedPoint, paperKey, 0x8D3F9A21u);
+                    var frayGate = islandGate
+                        * releasePigment
+                        * SmoothStep(0.28f, 0.82f, fraySeed);
+                    if (frayGate > 0.0f)
+                    {
+                        var fraySide = fraySeed < 0.70f ? side : -side;
+                        var frayCenter = contactPoint
+                            + sampleNormal * fraySide * tip.Z * (1.48f + laneEdge * 0.62f + fraySeed * 0.30f)
+                            + sampleTangent * (fraySeed - 0.5f) * tip.W * 0.34f;
+                        var frayRadius = MathF.Max(tip.Z * (0.095f + laneEdge * 0.040f), 0.024f);
+                        var frayDistance = MathF.Sqrt(Vector2.DistanceSquared(world, frayCenter));
+                        var frayContact = SmoothStep(1.0f, 0.0f, frayDistance / frayRadius);
+                        dryFleckPeak = MathF.Max(dryFleckPeak, pigment * frayGate * frayContact * 26.0f);
+                    }
+
                     var satelliteSeedPoint = contactPoint * 83.0f + new Vector2(tuftIndex * 0.31f, sampleIndex * 0.11f);
                     var satelliteSeed = HashNoiseCell(satelliteSeedPoint, paperKey, 0x5A771EAFu);
                     var satelliteGate = islandGate
@@ -568,8 +585,8 @@ public static class BokushoBrushSimulation
                     {
                         var satelliteSide = satelliteSeed < 0.52f ? side : -side;
                         var satelliteCenter = contactPoint
-                            + sampleNormal * satelliteSide * tip.Z * (2.90f + laneEdge * 1.35f + satelliteSeed * 0.72f)
-                            + sampleTangent * (satelliteSeed - 0.5f) * tip.W * 0.82f;
+                            + sampleNormal * satelliteSide * tip.Z * (2.34f + laneEdge * 0.96f + satelliteSeed * 0.46f)
+                            + sampleTangent * (satelliteSeed - 0.5f) * tip.W * 0.64f;
                         var satelliteRadius = MathF.Max(tip.Z * (0.075f + laneEdge * 0.035f), 0.020f);
                         var satelliteDistance = MathF.Sqrt(Vector2.DistanceSquared(world, satelliteCenter));
                         var satelliteContact = SmoothStep(1.0f, 0.0f, satelliteDistance / satelliteRadius);

@@ -72,9 +72,12 @@ public static class BokushoBrushSimulation
                     var tangent = StrokeTangent(stroke, t, sampleCount);
                     var normal = new Vector2(-tangent.Y, tangent.X);
                     var taper = StrokeTaper(t, stroke.EntryTaper, stroke.ExitTaper);
-                    var localPressure = pressure * taper;
-                    var localNormalRadius = MathF.Max(normalRadius * (0.34f + taper * 0.66f), 0.0001f);
-                    var localTangentRadius = MathF.Max(tangentRadius * (0.48f + taper * 0.52f), 0.0001f);
+                    var normalShape = StrokeNormalRadiusShape(taper);
+                    var tangentShape = StrokeTangentRadiusShape(taper);
+                    var pressureShape = StrokePressureShape(t, stroke.EntryTaper, stroke.ExitTaper);
+                    var localPressure = pressure * taper * pressureShape;
+                    var localNormalRadius = MathF.Max(normalRadius * normalShape, 0.0001f);
+                    var localTangentRadius = MathF.Max(tangentRadius * tangentShape, 0.0001f);
                     var turn = MathF.Sin(t * MathF.Tau + strokeIndex * 0.37f);
                     var targetOffset = restOffset * localNormalRadius * (0.38f + splay * 0.52f + localPressure * 0.08f - wetness * 0.10f) + turn * localNormalRadius * 0.14f * (1.0f - edge);
                     var recovery = Saturate(0.08f + stateWet * 0.12f + localPressure * 0.08f + (1.0f - edge) * 0.07f);
@@ -234,9 +237,10 @@ public static class BokushoBrushSimulation
         var normal = new Vector2(-tangent.Y, tangent.X);
         var lateral = Vector2.Dot(world - centerPoint, normal);
         var taper = StrokeTaper(bestT, stroke.EntryTaper, stroke.ExitTaper);
-        var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale * stroke.NormalScale * (0.34f + taper * 0.66f), 0.0001f);
+        var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale * stroke.NormalScale * StrokeNormalRadiusShape(taper), 0.0001f);
         var splay = Saturate(frame.Splay / 2.0f);
         var pressure = Saturate(frame.Pressure * stroke.PressureScale * 0.5f) * taper;
+        pressure *= StrokePressureShape(bestT, stroke.EntryTaper, stroke.ExitTaper);
         var footprint = radius * (0.42f + splay * 0.74f + pressure * 0.18f);
         var tuftT = Saturate(lateral / MathF.Max(footprint, 0.001f) * 0.5f + 0.5f);
         var distance = MathF.Sqrt(bestDistance);
@@ -256,6 +260,18 @@ public static class BokushoBrushSimulation
         var entry = SmoothStep(0.0f, entryTaper, t);
         var exit = 1.0f - SmoothStep(1.0f - exitTaper, 1.0f, t);
         return 0.04f + entry * exit * 0.96f;
+    }
+
+    private static float StrokeNormalRadiusShape(float taper) => 0.08f + taper * 0.92f;
+
+    private static float StrokeTangentRadiusShape(float taper) => 0.16f + taper * 0.84f;
+
+    private static float StrokePressureShape(float t, float entryTaper, float exitTaper)
+    {
+        var pressIn = SmoothStep(0.0f, MathF.Min(entryTaper * 1.6f, 0.62f), t);
+        var liftOut = 1.0f - SmoothStep(MathF.Max(1.0f - exitTaper * 1.35f, 0.20f), 1.0f, t);
+        var belly = SmoothStep(0.12f, 0.42f, t) * (1.0f - SmoothStep(0.68f, 0.96f, t));
+        return Saturate(0.54f + pressIn * liftOut * 0.28f + belly * 0.30f);
     }
 
     private static float LaneHash(int strokeIndex, int tuft, uint salt)

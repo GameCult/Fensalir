@@ -221,7 +221,7 @@ public sealed class BokushoBrushSimulationTests
         var strongPage = BokushoBrushSimulation.ProjectCanvasToPage(strong, strongResult.Canvas, 96, 96, Vector2.Zero, 4.0f);
 
         Assert.True(strongPage.Max() > faintPage.Max() * 1.8f);
-        Assert.True(SamplePage(strongPage, 96, 96, new Vector2(-1.8f, 0.0f), 4.0f) > SamplePage(faintPage, 96, 96, new Vector2(-1.8f, 0.0f), 4.0f));
+        Assert.True(strongPage.Sum() > faintPage.Sum() * 1.45f);
     }
 
     [Fact]
@@ -276,6 +276,47 @@ public sealed class BokushoBrushSimulationTests
 
         Assert.True(wetPage.Sum() > dryPage.Sum() * 1.05f);
         Assert.True(SamplePage(wetPage, 96, 96, edge, 4.0f) > SamplePage(dryPage, 96, 96, edge, 4.0f));
+    }
+
+    [Fact]
+    public void CpuBrushPageProjectionNarrowsTaperedStrokeEnds()
+    {
+        var frame = new AquariumBokushoBrushFrame
+        {
+            TuftCount = 11,
+            SampleCount = 80,
+            PhysicsHz = 500.0f,
+            BrushRadius = 1.8f,
+            Pressure = 0.84f,
+            InkLoad = 1.0f,
+            Wetness = 1.2f,
+            Splay = 0.72f,
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-3.2f, 0.0f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-2.1f, 0.0f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(2.1f, 0.0f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(3.2f, 0.0f, 0.0f, 0.0f),
+                    RadiusScale = 1.0f,
+                    PressureScale = 1.0f,
+                    NormalScale = 0.80f,
+                    TangentScale = 1.0f,
+                    EntryTaper = 0.20f,
+                    ExitTaper = 0.20f,
+                    PigmentScale = 1.0f,
+                    SplitScale = 1.0f,
+                },
+            ],
+        };
+        var canvas = Enumerable.Repeat(1.0f, frame.TuftCount * frame.SampleCount).ToArray();
+
+        var page = BokushoBrushSimulation.ProjectCanvasToPage(frame, canvas, 128, 128, Vector2.Zero, 4.0f);
+        var middleShoulder = SamplePage(page, 128, 128, new Vector2(0.0f, 0.46f), 4.0f);
+        var entryShoulder = SamplePage(page, 128, 128, new Vector2(-2.1f, 0.46f), 4.0f);
+
+        Assert.True(middleShoulder > entryShoulder * 1.8f);
     }
 
     private static AquariumBokushoBrushFrame StrokeDynamicsFrame(float pigmentScale, float entryTaper)

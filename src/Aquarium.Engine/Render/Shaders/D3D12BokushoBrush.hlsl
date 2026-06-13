@@ -55,6 +55,26 @@ float StrokeTaper(BokushoBrushStroke stroke, float t)
     return 0.04 + entry * exit * 0.96;
 }
 
+float StrokeNormalRadiusShape(float taper)
+{
+    return 0.08 + taper * 0.92;
+}
+
+float StrokeTangentRadiusShape(float taper)
+{
+    return 0.16 + taper * 0.84;
+}
+
+float StrokePressureShape(BokushoBrushStroke stroke, float t)
+{
+    float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
+    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
+    float pressIn = smoothstep(0.0, min(entryTaper * 1.6, 0.62), t);
+    float liftOut = 1.0 - smoothstep(max(1.0 - exitTaper * 1.35, 0.20), 1.0, t);
+    float belly = smoothstep(0.12, 0.42, t) * (1.0 - smoothstep(0.68, 0.96, t));
+    return saturate(0.54 + pressIn * liftOut * 0.28 + belly * 0.30);
+}
+
 float LaneHash(uint strokeIndex, uint tuft, uint salt)
 {
     uint value = (strokeIndex + 1u) * 0x9E3779B9u ^ (tuft + 1u) * 0x85EBCA6Bu ^ salt;
@@ -109,9 +129,12 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         float2 tangent = StrokeTangent(stroke, t);
         float2 normal = float2(-tangent.y, tangent.x);
         float taper = StrokeTaper(stroke, t);
-        float localPressure = pressure * taper;
-        float localNormalRadius = max(normalRadius * (0.34 + taper * 0.66), 0.0001);
-        float localTangentRadius = max(tangentRadius * (0.48 + taper * 0.52), 0.0001);
+        float normalShape = StrokeNormalRadiusShape(taper);
+        float tangentShape = StrokeTangentRadiusShape(taper);
+        float pressureShape = StrokePressureShape(stroke, t);
+        float localPressure = pressure * taper * pressureShape;
+        float localNormalRadius = max(normalRadius * normalShape, 0.0001);
+        float localTangentRadius = max(tangentRadius * tangentShape, 0.0001);
         float turn = sin(t * 6.28318530718 + (float)strokeIndex * 0.37);
         float targetOffset = restOffset * localNormalRadius * (0.38 + splay * 0.52 + localPressure * 0.08 - wetness * 0.10) + turn * localNormalRadius * 0.14 * (1.0 - edge);
         float recovery = saturate(0.08 + stateWet * 0.12 + localPressure * 0.08 + (1.0 - edge) * 0.07);

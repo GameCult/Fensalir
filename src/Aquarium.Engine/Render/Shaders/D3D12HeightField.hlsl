@@ -113,6 +113,21 @@ float bokushoStrokeTaper(BokushoBrushStroke stroke, float t)
     return 0.04 + entry * exit * 0.96;
 }
 
+float bokushoStrokeNormalRadiusShape(float taper)
+{
+    return 0.08 + taper * 0.92;
+}
+
+float bokushoStrokePressureShape(BokushoBrushStroke stroke, float t)
+{
+    float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
+    float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
+    float pressIn = smoothstep(0.0, min(entryTaper * 1.6, 0.62), t);
+    float liftOut = 1.0 - smoothstep(max(1.0 - exitTaper * 1.35, 0.20), 1.0, t);
+    float belly = smoothstep(0.12, 0.42, t) * (1.0 - smoothstep(0.68, 0.96, t));
+    return saturate(0.54 + pressIn * liftOut * 0.28 + belly * 0.30);
+}
+
 float bokushoCanvasSample(uint strokeIndex, float sampleIndex, float tuftIndex)
 {
     uint sampleCount = max((uint)round(bokushoShape.x), 2u);
@@ -201,9 +216,9 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float2 normal = float2(-tangent.y, tangent.x);
     float lateral = dot(world - center, normal);
     float taper = bokushoStrokeTaper(stroke, bestT);
-    float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * (0.34 + taper * 0.66), 0.0001);
+    float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * bokushoStrokeNormalRadiusShape(taper), 0.0001);
     float splay = saturate(bokushoDynamics.x / 2.0);
-    float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper;
+    float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper * bokushoStrokePressureShape(stroke, bestT);
     float footprint = radius * (0.42 + splay * 0.74 + pressure * 0.18);
     float tuftT = saturate(lateral / max(footprint, 0.001) * 0.5 + 0.5);
     float distance = sqrt(bestDistance);

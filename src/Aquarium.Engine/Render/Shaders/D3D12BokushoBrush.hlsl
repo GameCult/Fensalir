@@ -252,8 +252,11 @@ void SimulateBokushoTuftSegment(
         float recovery = saturate(0.06 + stateWet * 0.10 + localPressure * 0.07 + (1.0 - edge) * 0.06 + stroke.pose.w * 0.07);
         offset = cultmath_lerp(offset, targetOffset, recovery);
 
-        float lag = localTangentRadius * (0.04 + bend * 0.32 + stroke.pose.z * 0.10 + friction * localPressure * 0.16 + edge * 0.08);
-        float2 desiredTip = center + normal * offset - tangent * lag;
+        float poseLead = stroke.pose.x * 0.42 + stroke.pose.y * 0.22;
+        float dragNormalBias = saturate(0.28 + abs(poseLead) * 0.58 + stroke.pose.w * 0.08);
+        float lag = localTangentRadius * (0.04 + bend * 0.34 + stroke.pose.z * 0.10 + friction * localPressure * 0.18 + edge * 0.08);
+        float2 dragVector = cultmath_normalize(tangent + normal * poseLead * dragNormalBias);
+        float2 desiredTip = center + normal * offset - dragVector * lag;
         float2 slip = desiredTip - tip;
         float poseContact = 0.90 + stroke.pose.w * 0.10 + (1.0 - saturate(stroke.pose.z / 2.4)) * 0.10;
         float contact = saturate(localPressure * poseContact * stateWet * stateLoad * (0.58 + cohesion * 0.40 + (1.0 - edge) * 0.18));

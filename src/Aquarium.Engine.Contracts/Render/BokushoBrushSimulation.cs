@@ -162,8 +162,11 @@ public static class BokushoBrushSimulation
             var recovery = Saturate(0.06f + stateWet * 0.10f + localPressure * 0.07f + (1.0f - edge) * 0.06f + stroke.Compliance * 0.07f);
             offset = Lerp(offset, targetOffset, recovery);
 
-            var lag = localTangentRadius * (0.04f + bend * 0.32f + stroke.GripHeight * 0.10f + friction * localPressure * 0.16f + edge * 0.08f);
-            var desiredTip = center + normal * offset - tangent * lag;
+            var poseLead = stroke.ShaftTilt * 0.42f + stroke.ShaftRotation * 0.22f;
+            var dragNormalBias = Saturate(0.28f + MathF.Abs(poseLead) * 0.58f + stroke.Compliance * 0.08f);
+            var lag = localTangentRadius * (0.04f + bend * 0.34f + stroke.GripHeight * 0.10f + friction * localPressure * 0.18f + edge * 0.08f);
+            var dragVector = Normalize(tangent + normal * poseLead * dragNormalBias);
+            var desiredTip = center + normal * offset - dragVector * lag;
             var slip = desiredTip - tip;
             var poseContact = 0.90f + stroke.Compliance * 0.10f + (1.0f - Saturate(stroke.GripHeight / 2.4f)) * 0.10f;
             var contact = Saturate(localPressure * poseContact * stateWet * stateLoad * (0.58f + cohesion * 0.40f + (1.0f - edge) * 0.18f));

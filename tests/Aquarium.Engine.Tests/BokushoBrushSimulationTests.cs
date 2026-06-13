@@ -511,6 +511,27 @@ public sealed class BokushoBrushSimulationTests
         Assert.True(expressiveCoverage > neutralCoverage);
     }
 
+    [Fact]
+    public void CpuBrushPoseSteersTuftDragDirection()
+    {
+        var leftLead = PoseFrame(tilt: -0.95f, rotation: -0.70f, gripHeight: 0.58f, compliance: 1.45f);
+        var rightLead = PoseFrame(tilt: 0.95f, rotation: 0.70f, gripHeight: 0.58f, compliance: 1.45f);
+        var leftResult = BokushoBrushSimulation.Evaluate(leftLead);
+        var rightResult = BokushoBrushSimulation.Evaluate(rightLead);
+        var tuft = leftResult.TuftCount / 2;
+        var sample = leftResult.SampleCount / 2;
+        var leftTip = TipPoint(leftResult, tuft, sample);
+        var rightTip = TipPoint(rightResult, tuft, sample);
+        var stroke = leftLead.Strokes[0];
+        var center = CatmullRomPoint(stroke, sample / (float)(leftResult.SampleCount - 1));
+        var tangent = CatmullRomTangent(stroke, sample / (float)(leftResult.SampleCount - 1), leftResult.SampleCount);
+        var normal = new Vector2(-tangent.Y, tangent.X);
+        var leftNormalOffset = Vector2.Dot(leftTip - center, normal);
+        var rightNormalOffset = Vector2.Dot(rightTip - center, normal);
+
+        Assert.True(leftNormalOffset > rightNormalOffset + 0.03f, $"left={leftNormalOffset:0.000000}; right={rightNormalOffset:0.000000}");
+    }
+
     private static AquariumBokushoBrushFrame StrokeDynamicsFrame(float pigmentScale, float entryTaper)
     {
         return new AquariumBokushoBrushFrame
@@ -718,6 +739,32 @@ public sealed class BokushoBrushSimulationTests
     {
         var index = ((stroke * result.TuftCount) + tuft) * result.SampleCount + Math.Clamp(sample, 0, result.SampleCount - 1);
         return result.Tips[index].Z;
+    }
+
+    private static Vector2 TipPoint(BokushoBrushSimulationResult result, int tuft, int sample, int stroke = 0)
+    {
+        var index = ((stroke * result.TuftCount) + tuft) * result.SampleCount + Math.Clamp(sample, 0, result.SampleCount - 1);
+        var tip = result.Tips[index];
+        return new Vector2(tip.X, tip.Y);
+    }
+
+    private static Vector2 CatmullRomPoint(AquariumBokushoBrushStroke stroke, float t)
+    {
+        var p0 = new Vector2(stroke.StrokeP0.X, stroke.StrokeP0.Y);
+        var p1 = new Vector2(stroke.StrokeP1.X, stroke.StrokeP1.Y);
+        var p2 = new Vector2(stroke.StrokeP2.X, stroke.StrokeP2.Y);
+        var p3 = new Vector2(stroke.StrokeP3.X, stroke.StrokeP3.Y);
+        var tt = t * t;
+        var ttt = tt * t;
+        return 0.5f * ((2.0f * p1) + (-p0 + p2) * t + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * tt + (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * ttt);
+    }
+
+    private static Vector2 CatmullRomTangent(AquariumBokushoBrushStroke stroke, float t, int sampleCount)
+    {
+        var dt = 1.0f / MathF.Max(sampleCount - 1.0f, 1.0f);
+        var before = CatmullRomPoint(stroke, Math.Clamp(t - dt, 0.0f, 1.0f));
+        var after = CatmullRomPoint(stroke, Math.Clamp(t + dt, 0.0f, 1.0f));
+        return Vector2.Normalize(after - before);
     }
 
     private static float CanvasWindow(BokushoBrushSimulationResult result, int tuft, int sample, int radius, int stroke = 0)

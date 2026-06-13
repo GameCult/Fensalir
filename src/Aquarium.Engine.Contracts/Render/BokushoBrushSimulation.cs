@@ -14,10 +14,11 @@ public static class BokushoBrushSimulation
 
         var sampleCount = Math.Clamp(frame.SampleCount, 2, 4096);
         var tuftCount = Math.Clamp(frame.TuftCount, 1, 4096);
-        var trace = new float[checked(sampleCount * tuftCount)];
+        var strokeCount = EffectiveStrokes(frame).Length;
+        var trace = new float[checked(sampleCount * tuftCount * strokeCount)];
         var canvas = new float[trace.Length];
         Evaluate(frame, trace, canvas);
-        return new BokushoBrushSimulationResult(sampleCount, tuftCount, trace, canvas);
+        return new BokushoBrushSimulationResult(sampleCount, tuftCount, strokeCount, trace, canvas);
     }
 
     public static void Evaluate(AquariumBokushoBrushFrame source, Span<float> trace, Span<float> canvas)
@@ -25,7 +26,8 @@ public static class BokushoBrushSimulation
         var frame = source.Normalized();
         var sampleCount = Math.Clamp(frame.SampleCount, 2, 4096);
         var tuftCount = Math.Clamp(frame.TuftCount, 1, 4096);
-        var valueCount = checked(sampleCount * tuftCount);
+        var strokes = EffectiveStrokes(frame);
+        var valueCount = checked(sampleCount * tuftCount * strokes.Length);
         if (trace.Length < valueCount)
         {
             throw new ArgumentException("Trace buffer is smaller than the brush simulation frame.", nameof(trace));
@@ -36,57 +38,62 @@ public static class BokushoBrushSimulation
             throw new ArgumentException("Canvas buffer is smaller than the brush simulation frame.", nameof(canvas));
         }
 
-        var pressure = Saturate(frame.Pressure * frame.PressureScale * 0.5f) * 2.0f;
         var wetness = Saturate(frame.Wetness / 1.6f);
         var load = Saturate(frame.InkLoad / 2.0f);
         var splay = Saturate(frame.Splay / 2.0f);
         var bend = Saturate(frame.Bend / 2.4f);
         var friction = Saturate(frame.Friction);
-        var radius = MathF.Max(frame.BrushRadius * frame.RadiusScale, 0.0001f);
-        var normalRadius = MathF.Max(radius * frame.NormalScale, 0.0001f);
-        var tangentRadius = MathF.Max(radius * frame.TangentScale, 0.0001f);
 
-        for (var tuft = 0; tuft < tuftCount; tuft++)
+        for (var strokeIndex = 0; strokeIndex < strokes.Length; strokeIndex++)
         {
-            var laneT = tuftCount <= 1 ? 0.5f : tuft / (float)(tuftCount - 1);
-            var restOffset = laneT * 2.0f - 1.0f;
-            var edge = MathF.Abs(restOffset);
-            var tip = StrokePoint(frame, 0.0f);
-            var offset = restOffset * normalRadius * (0.42f + splay * 0.38f);
-            var stateLoad = load * (1.0f - edge * 0.36f);
-            var stateWet = wetness * (0.86f + (1.0f - edge) * 0.14f);
-            var shed = 0.0f;
+            var stroke = strokes[strokeIndex];
+            var pressure = Saturate(frame.Pressure * stroke.PressureScale * 0.5f) * 2.0f;
+            var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale, 0.0001f);
+            var normalRadius = MathF.Max(radius * stroke.NormalScale, 0.0001f);
+            var tangentRadius = MathF.Max(radius * stroke.TangentScale, 0.0001f);
 
-            for (var sample = 0; sample < sampleCount; sample++)
+            for (var tuft = 0; tuft < tuftCount; tuft++)
             {
-                var t = sampleCount <= 1 ? 0.0f : sample / (float)(sampleCount - 1);
-                var center = StrokePoint(frame, t);
-                var tangent = StrokeTangent(frame, t, sampleCount);
-                var normal = new Vector2(-tangent.Y, tangent.X);
-                var turn = MathF.Sin(t * MathF.Tau + 0.0f);
-                var targetOffset = restOffset * normalRadius * (0.38f + splay * 0.52f + pressure * 0.08f - wetness * 0.10f) + turn * normalRadius * 0.14f * (1.0f - edge);
-                var recovery = Saturate(0.08f + stateWet * 0.12f + pressure * 0.08f + (1.0f - edge) * 0.07f);
-                offset = Lerp(offset, targetOffset, recovery);
+                var laneT = tuftCount <= 1 ? 0.5f : tuft / (float)(tuftCount - 1);
+                var restOffset = laneT * 2.0f - 1.0f;
+                var edge = MathF.Abs(restOffset);
+                var tip = StrokePoint(stroke, 0.0f);
+                var offset = restOffset * normalRadius * (0.42f + splay * 0.38f);
+                var stateLoad = load * (1.0f - edge * 0.36f);
+                var stateWet = wetness * (0.86f + (1.0f - edge) * 0.14f);
+                var shed = 0.0f;
 
-                var lag = tangentRadius * (0.12f + bend * 0.72f + friction * pressure * 0.34f + edge * 0.18f);
-                var desiredTip = center + normal * offset - tangent * lag;
-                var slip = desiredTip - tip;
-                var contact = Saturate(pressure * stateWet * stateLoad * (0.70f + (1.0f - edge) * 0.26f));
-                var drag = contact * friction * (0.38f + stateWet * 0.22f + edge * 0.18f);
-                tip += slip * (1.0f - drag);
+                for (var sample = 0; sample < sampleCount; sample++)
+                {
+                    var t = sampleCount <= 1 ? 0.0f : sample / (float)(sampleCount - 1);
+                    var center = StrokePoint(stroke, t);
+                    var tangent = StrokeTangent(stroke, t, sampleCount);
+                    var normal = new Vector2(-tangent.Y, tangent.X);
+                    var turn = MathF.Sin(t * MathF.Tau + strokeIndex * 0.37f);
+                    var targetOffset = restOffset * normalRadius * (0.38f + splay * 0.52f + pressure * 0.08f - wetness * 0.10f) + turn * normalRadius * 0.14f * (1.0f - edge);
+                    var recovery = Saturate(0.08f + stateWet * 0.12f + pressure * 0.08f + (1.0f - edge) * 0.07f);
+                    offset = Lerp(offset, targetOffset, recovery);
 
-                var velocity = slip.Length() * frame.PhysicsHz / MathF.Max(radius, 0.001f);
-                var tension = Saturate(MathF.Abs(targetOffset - offset) / MathF.Max(normalRadius, 0.001f) * 0.38f + velocity * 0.018f + drag * 0.46f);
-                var separation = Saturate(edge * 0.22f + tension * 0.34f + velocity * 0.010f - stateWet * 0.16f);
-                var adhesion = Saturate(stateWet * (0.52f + pressure * 0.20f) - separation * 0.18f - tension * 0.08f);
-                var deposition = contact * stateLoad * stateWet * Saturate(0.10f + drag * 0.72f + velocity * 0.012f) * (0.82f + separation * 0.22f);
-                stateLoad = MathF.Max(0.0f, stateLoad - deposition * (0.040f + pressure * 0.025f));
-                stateWet = MathF.Max(0.0f, stateWet - deposition * 0.010f);
-                shed += deposition;
+                    var lag = tangentRadius * (0.12f + bend * 0.72f + friction * pressure * 0.34f + edge * 0.18f);
+                    var desiredTip = center + normal * offset - tangent * lag;
+                    var slip = desiredTip - tip;
+                    var contact = Saturate(pressure * stateWet * stateLoad * (0.70f + (1.0f - edge) * 0.26f));
+                    var drag = contact * friction * (0.38f + stateWet * 0.22f + edge * 0.18f);
+                    tip += slip * (1.0f - drag);
 
-                var index = tuft * sampleCount + sample;
-                trace[index] = Saturate(contact * (0.30f + stateLoad * 0.42f + adhesion * 0.20f) + deposition * 1.8f);
-                canvas[index] = Saturate(shed);
+                    var velocity = slip.Length() * frame.PhysicsHz / MathF.Max(radius, 0.001f);
+                    var tension = Saturate(MathF.Abs(targetOffset - offset) / MathF.Max(normalRadius, 0.001f) * 0.38f + velocity * 0.018f + drag * 0.46f);
+                    var separation = Saturate(edge * 0.22f + tension * 0.34f + velocity * 0.010f - stateWet * 0.16f);
+                    var adhesion = Saturate(stateWet * (0.52f + pressure * 0.20f) - separation * 0.18f - tension * 0.08f);
+                    var deposition = contact * stateLoad * stateWet * Saturate(0.10f + drag * 0.72f + velocity * 0.012f) * (0.82f + separation * 0.22f);
+                    stateLoad = MathF.Max(0.0f, stateLoad - deposition * (0.040f + pressure * 0.025f));
+                    stateWet = MathF.Max(0.0f, stateWet - deposition * 0.010f);
+                    shed += deposition;
+
+                    var index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
+                    trace[index] = Saturate(contact * (0.30f + stateLoad * 0.42f + adhesion * 0.20f) + deposition * 1.8f);
+                    canvas[index] = Saturate(shed);
+                }
             }
         }
     }
@@ -104,7 +111,8 @@ public static class BokushoBrushSimulation
         var frame = source.Normalized();
         var sampleCount = Math.Clamp(frame.SampleCount, 2, 4096);
         var tuftCount = Math.Clamp(frame.TuftCount, 1, 4096);
-        var valueCount = checked(sampleCount * tuftCount);
+        var strokes = EffectiveStrokes(frame);
+        var valueCount = checked(sampleCount * tuftCount * strokes.Length);
         if (canvas.Length < valueCount)
         {
             throw new ArgumentException("Canvas buffer is smaller than the brush simulation frame.", nameof(canvas));
@@ -119,39 +127,68 @@ public static class BokushoBrushSimulation
             {
                 var uvX = width <= 1 ? 0.0f : x / (float)(width - 1);
                 var world = viewCenter + (new Vector2(uvX, uvY) * 2.0f - Vector2.One) * safeRadius;
-                page[y * width + x] = ProjectCanvasSample(frame, canvas, world);
+                var value = 0.0f;
+                for (var strokeIndex = 0; strokeIndex < strokes.Length; strokeIndex++)
+                {
+                    value += ProjectCanvasSample(frame, strokes[strokeIndex], canvas, strokeIndex, world);
+                }
+
+                page[y * width + x] = Saturate(value);
             }
         }
 
         return page;
     }
 
-    private static Vector2 StrokePoint(AquariumBokushoBrushFrame frame, float t)
+    private static AquariumBokushoBrushStroke[] EffectiveStrokes(AquariumBokushoBrushFrame frame)
+    {
+        if (frame.Strokes.Count > 0)
+        {
+            return frame.Strokes.Select(stroke => stroke.Normalized()).ToArray();
+        }
+
+        return
+        [
+            new AquariumBokushoBrushStroke
+            {
+                StrokeP0 = frame.StrokeP0,
+                StrokeP1 = frame.StrokeP1,
+                StrokeP2 = frame.StrokeP2,
+                StrokeP3 = frame.StrokeP3,
+                RadiusScale = frame.RadiusScale,
+                PressureScale = frame.PressureScale,
+                NormalScale = frame.NormalScale,
+                TangentScale = frame.TangentScale,
+            }.Normalized()
+        ];
+    }
+
+    private static Vector2 StrokePoint(AquariumBokushoBrushStroke stroke, float t)
     {
         return CatmullRom(
-            new Vector2(frame.StrokeP0.X, frame.StrokeP0.Y),
-            new Vector2(frame.StrokeP1.X, frame.StrokeP1.Y),
-            new Vector2(frame.StrokeP2.X, frame.StrokeP2.Y),
-            new Vector2(frame.StrokeP3.X, frame.StrokeP3.Y),
+            new Vector2(stroke.StrokeP0.X, stroke.StrokeP0.Y),
+            new Vector2(stroke.StrokeP1.X, stroke.StrokeP1.Y),
+            new Vector2(stroke.StrokeP2.X, stroke.StrokeP2.Y),
+            new Vector2(stroke.StrokeP3.X, stroke.StrokeP3.Y),
             t);
     }
 
-    private static Vector2 StrokeTangent(AquariumBokushoBrushFrame frame, float t, int sampleCount)
+    private static Vector2 StrokeTangent(AquariumBokushoBrushStroke stroke, float t, int sampleCount)
     {
         var dt = 1.0f / MathF.Max(sampleCount - 1.0f, 1.0f);
-        var before = StrokePoint(frame, Saturate(t - dt));
-        var after = StrokePoint(frame, Saturate(t + dt));
+        var before = StrokePoint(stroke, Saturate(t - dt));
+        var after = StrokePoint(stroke, Saturate(t + dt));
         return Normalize(after - before);
     }
 
-    private static float ProjectCanvasSample(AquariumBokushoBrushFrame frame, ReadOnlySpan<float> canvas, Vector2 world)
+    private static float ProjectCanvasSample(AquariumBokushoBrushFrame frame, AquariumBokushoBrushStroke stroke, ReadOnlySpan<float> canvas, int strokeIndex, Vector2 world)
     {
         var bestDistance = float.PositiveInfinity;
         var bestT = 0.0f;
         for (var scan = 0; scan < 16; scan++)
         {
             var t = scan / 15.0f;
-            var center = StrokePoint(frame, t);
+            var center = StrokePoint(stroke, t);
             var distanceSquared = Vector2.DistanceSquared(world, center);
             if (distanceSquared < bestDistance)
             {
@@ -165,8 +202,8 @@ public static class BokushoBrushSimulation
             var span = 1.0f / (15.0f * MathF.Pow(2.0f, refine));
             var leftT = Saturate(bestT - span);
             var rightT = Saturate(bestT + span);
-            var leftDistance = Vector2.DistanceSquared(world, StrokePoint(frame, leftT));
-            var rightDistance = Vector2.DistanceSquared(world, StrokePoint(frame, rightT));
+            var leftDistance = Vector2.DistanceSquared(world, StrokePoint(stroke, leftT));
+            var rightDistance = Vector2.DistanceSquared(world, StrokePoint(stroke, rightT));
             if (leftDistance < bestDistance)
             {
                 bestDistance = leftDistance;
@@ -182,20 +219,20 @@ public static class BokushoBrushSimulation
 
         var sampleCount = Math.Clamp(frame.SampleCount, 2, 4096);
         var tuftCount = Math.Clamp(frame.TuftCount, 1, 4096);
-        var centerPoint = StrokePoint(frame, bestT);
-        var tangent = StrokeTangent(frame, bestT, sampleCount);
+        var centerPoint = StrokePoint(stroke, bestT);
+        var tangent = StrokeTangent(stroke, bestT, sampleCount);
         var normal = new Vector2(-tangent.Y, tangent.X);
         var lateral = Vector2.Dot(world - centerPoint, normal);
-        var radius = MathF.Max(frame.BrushRadius * frame.RadiusScale * frame.NormalScale, 0.0001f);
+        var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale * stroke.NormalScale, 0.0001f);
         var splay = Saturate(frame.Splay / 2.0f);
-        var footprint = radius * (0.42f + splay * 0.74f + Saturate(frame.Pressure * frame.PressureScale * 0.5f) * 0.18f);
+        var footprint = radius * (0.42f + splay * 0.74f + Saturate(frame.Pressure * stroke.PressureScale * 0.5f) * 0.18f);
         var tuftT = Saturate(lateral / MathF.Max(footprint, 0.001f) * 0.5f + 0.5f);
         var distance = MathF.Sqrt(bestDistance);
         var contact = SmoothStep(1.0f, 0.0f, distance / MathF.Max(footprint * 0.80f, 0.001f));
         var sample = Math.Clamp((int)MathF.Round(bestT * MathF.Max(sampleCount - 1.0f, 1.0f)), 0, sampleCount - 1);
         var tuft = Math.Clamp((int)MathF.Round(tuftT * MathF.Max(tuftCount - 1.0f, 0.0f)), 0, tuftCount - 1);
-        var pigment = Saturate(canvas[tuft * sampleCount + sample]);
-        var pressure = Saturate(frame.Pressure * frame.PressureScale * 0.5f);
+        var pigment = Saturate(canvas[((strokeIndex * tuftCount) + tuft) * sampleCount + sample]);
+        var pressure = Saturate(frame.Pressure * stroke.PressureScale * 0.5f);
         return pigment * contact * (0.10f + pressure * 0.18f + Saturate(frame.InkLoad * 0.5f) * 0.08f);
     }
 
@@ -226,9 +263,9 @@ public static class BokushoBrushSimulation
     private static float Saturate(float value) => Math.Clamp(value, 0.0f, 1.0f);
 }
 
-public sealed record BokushoBrushSimulationResult(int SampleCount, int TuftCount, float[] Trace, float[] Canvas)
+public sealed record BokushoBrushSimulationResult(int SampleCount, int TuftCount, int StrokeCount, float[] Trace, float[] Canvas)
 {
-    public static BokushoBrushSimulationResult Empty { get; } = new(0, 0, [], []);
+    public static BokushoBrushSimulationResult Empty { get; } = new(0, 0, 0, [], []);
 
     public bool HasSamples => Trace.Length > 0 && Canvas.Length == Trace.Length;
 }

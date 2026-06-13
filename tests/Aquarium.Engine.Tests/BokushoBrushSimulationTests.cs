@@ -148,4 +148,63 @@ public sealed class BokushoBrushSimulationTests
 
         Assert.True(wideCoverage > narrowCoverage);
     }
+
+    [Fact]
+    public void CpuBrushSimulationProjectsExplicitStrokePacketsToSharedPage()
+    {
+        var frame = new AquariumBokushoBrushFrame
+        {
+            TuftCount = 9,
+            SampleCount = 48,
+            PhysicsHz = 500.0f,
+            BrushRadius = 1.5f,
+            Pressure = 0.90f,
+            InkLoad = 1.22f,
+            Wetness = 0.90f,
+            Splay = 0.78f,
+            Bend = 0.70f,
+            Friction = 0.64f,
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-5.5f, 1.2f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-3.2f, 0.8f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(-0.4f, 0.8f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(1.8f, 1.1f, 0.0f, 0.0f),
+                    RadiusScale = 0.78f,
+                    PressureScale = 0.82f,
+                    NormalScale = 0.70f,
+                    TangentScale = 1.10f,
+                },
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(1.4f, 1.0f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(0.4f, 0.2f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(-0.2f, -1.6f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(-1.5f, -2.6f, 0.0f, 0.0f),
+                    RadiusScale = 1.08f,
+                    PressureScale = 1.12f,
+                    NormalScale = 0.86f,
+                    TangentScale = 1.24f,
+                },
+            ],
+        };
+
+        var result = BokushoBrushSimulation.Evaluate(frame);
+        var page = BokushoBrushSimulation.ProjectCanvasToPage(frame, result.Canvas, 96, 96, Vector2.Zero, 6.0f);
+
+        Assert.Equal(2, result.StrokeCount);
+        Assert.Equal(frame.SampleCount * frame.TuftCount * 2, result.Canvas.Length);
+        Assert.True(SamplePage(page, 96, 96, new Vector2(-2.6f, 0.8f), 6.0f) > 0.001f);
+        Assert.True(SamplePage(page, 96, 96, new Vector2(0.0f, -1.0f), 6.0f) > 0.001f);
+    }
+
+    private static float SamplePage(float[] page, int width, int height, Vector2 world, float viewRadius)
+    {
+        var uv = world / viewRadius * 0.5f + new Vector2(0.5f, 0.5f);
+        var x = Math.Clamp((int)MathF.Round(uv.X * (width - 1)), 0, width - 1);
+        var y = Math.Clamp((int)MathF.Round(uv.Y * (height - 1)), 0, height - 1);
+        return page[y * width + x];
+    }
 }

@@ -556,6 +556,8 @@ public sealed class AquariumBokushoBrushFrame
 
     public Vector4 StrokeP3 { get; init; } = new(7.2f, 0.8f, 0.0f, 0.0f);
 
+    public IReadOnlyList<AquariumBokushoBrushStroke> Strokes { get; init; } = [];
+
     public bool HasInput => TuftCount > 0 && SampleCount > 1 && PhysicsHz > 0.0f;
 
     public AquariumBokushoBrushFrame Normalized() => new()
@@ -578,6 +580,38 @@ public sealed class AquariumBokushoBrushFrame
         StrokeP1 = StrokeP1,
         StrokeP2 = StrokeP2,
         StrokeP3 = StrokeP3,
+        Strokes = Strokes.Select(stroke => stroke.Normalized()).ToArray(),
+    };
+}
+
+public sealed class AquariumBokushoBrushStroke
+{
+    public Vector4 StrokeP0 { get; init; } = new(-7.2f, 1.0f, 0.0f, 0.0f);
+
+    public Vector4 StrokeP1 { get; init; } = new(-2.4f, -1.8f, 0.0f, 0.0f);
+
+    public Vector4 StrokeP2 { get; init; } = new(2.4f, -1.6f, 0.0f, 0.0f);
+
+    public Vector4 StrokeP3 { get; init; } = new(7.2f, 0.8f, 0.0f, 0.0f);
+
+    public float RadiusScale { get; init; } = 1.0f;
+
+    public float PressureScale { get; init; } = 1.0f;
+
+    public float NormalScale { get; init; } = 1.0f;
+
+    public float TangentScale { get; init; } = 1.0f;
+
+    public AquariumBokushoBrushStroke Normalized() => new()
+    {
+        StrokeP0 = StrokeP0,
+        StrokeP1 = StrokeP1,
+        StrokeP2 = StrokeP2,
+        StrokeP3 = StrokeP3,
+        RadiusScale = Math.Clamp(RadiusScale, 0.1f, 4.0f),
+        PressureScale = Math.Clamp(PressureScale, 0.1f, 4.0f),
+        NormalScale = Math.Clamp(NormalScale, 0.1f, 4.0f),
+        TangentScale = Math.Clamp(TangentScale, 0.1f, 4.0f),
     };
 }
 

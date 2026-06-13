@@ -253,7 +253,7 @@ public static class BokushoBrushSimulation
                 var value = 0.0f;
                 for (var strokeIndex = 0; strokeIndex < strokes.Length; strokeIndex++)
                 {
-                    value += ProjectCanvasSample(frame, strokes[strokeIndex], canvas, tips, strokeIndex, world);
+                    value += ProjectCanvasSample(frame, strokes, canvas, tips, strokeIndex, world);
                 }
 
                 page[y * width + x] = Saturate(value);
@@ -337,8 +337,9 @@ public static class BokushoBrushSimulation
         return Normalize(after - before);
     }
 
-    private static float ProjectCanvasSample(AquariumBokushoBrushFrame frame, AquariumBokushoBrushStroke stroke, ReadOnlySpan<float> canvas, ReadOnlySpan<Vector4> tips, int strokeIndex, Vector2 world)
+    private static float ProjectCanvasSample(AquariumBokushoBrushFrame frame, IReadOnlyList<AquariumBokushoBrushStroke> strokes, ReadOnlySpan<float> canvas, ReadOnlySpan<Vector4> tips, int strokeIndex, Vector2 world)
     {
+        var stroke = strokes[strokeIndex];
         var bestDistance = float.PositiveInfinity;
         var bestT = 0.0f;
         for (var scan = 0; scan < 16; scan++)
@@ -405,16 +406,62 @@ public static class BokushoBrushSimulation
 
         for (var sampleDelta = -3; sampleDelta <= 3; sampleDelta++)
         {
-            var sampleIndex = Math.Clamp(centerSample + sampleDelta, 0, sampleCount - 1);
+            var rawSampleIndex = centerSample + sampleDelta;
+            var sampleStrokeIndex = strokeIndex;
+            var sampleStroke = stroke;
+            var sampleIndex = rawSampleIndex;
+            if (rawSampleIndex < 0)
+            {
+                if (CanBorrowSourceSample(strokes, strokeIndex, strokeIndex - 1))
+                {
+                    sampleStrokeIndex = strokeIndex - 1;
+                    sampleStroke = strokes[sampleStrokeIndex];
+                    sampleIndex = sampleCount + rawSampleIndex;
+                }
+                else
+                {
+                    sampleIndex = 0;
+                }
+            }
+            else if (rawSampleIndex >= sampleCount)
+            {
+                if (CanBorrowSourceSample(strokes, strokeIndex, strokeIndex + 1))
+                {
+                    sampleStrokeIndex = strokeIndex + 1;
+                    sampleStroke = strokes[sampleStrokeIndex];
+                    sampleIndex = rawSampleIndex - sampleCount;
+                }
+                else
+                {
+                    sampleIndex = sampleCount - 1;
+                }
+            }
+
+            sampleIndex = Math.Clamp(sampleIndex, 0, sampleCount - 1);
             var sampleT = sampleIndex / MathF.Max(sampleCount - 1.0f, 1.0f);
-            var sampleTangent = StrokeTangent(stroke, sampleT, sampleCount);
+            var sampleTangent = StrokeTangent(sampleStroke, sampleT, sampleCount);
             var sampleNormal = new Vector2(-sampleTangent.Y, sampleTangent.X);
 
             for (var tuftDelta = -4; tuftDelta <= 4; tuftDelta++)
             {
                 var tuftIndex = Math.Clamp(centerTuft + tuftDelta, 0, tuftCount - 1);
-                var index = ((strokeIndex * tuftCount) + tuftIndex) * sampleCount + sampleIndex;
-                var previousIndex = ((strokeIndex * tuftCount) + tuftIndex) * sampleCount + Math.Max(sampleIndex - 1, 0);
+                var previousStrokeIndex = sampleStrokeIndex;
+                var previousSampleIndex = sampleIndex - 1;
+                if (previousSampleIndex < 0)
+                {
+                    if (CanBorrowSourceSample(strokes, sampleStrokeIndex, sampleStrokeIndex - 1))
+                    {
+                        previousStrokeIndex = sampleStrokeIndex - 1;
+                        previousSampleIndex = sampleCount - 1;
+                    }
+                    else
+                    {
+                        previousSampleIndex = 0;
+                    }
+                }
+
+                var index = ((sampleStrokeIndex * tuftCount) + tuftIndex) * sampleCount + sampleIndex;
+                var previousIndex = ((previousStrokeIndex * tuftCount) + tuftIndex) * sampleCount + previousSampleIndex;
                 var tip = tips[index];
                 var previousTip = tips[previousIndex];
                 var tipPoint = new Vector2(tip.X, tip.Y);
@@ -435,8 +482,8 @@ public static class BokushoBrushSimulation
                 var longitudinalGate = SmoothStep(1.0f, 0.0f, MathF.Abs(tangentDistance) * 0.62f);
                 var contribution = canvas[index]
                     * tipContact
-                    * (0.03f + contactCore * 0.97f)
-                    * (0.18f + longitudinalGate * 0.82f)
+                    * (0.006f + contactCore * 0.994f)
+                    * (0.06f + longitudinalGate * 0.94f)
                     * (1.0f - MathF.Abs(sampleDelta) * 0.070f)
                     * (0.82f + sweepContact * 0.24f);
                 pigmentPeak = MathF.Max(pigmentPeak, contribution);
@@ -444,7 +491,15 @@ public static class BokushoBrushSimulation
             }
         }
 
-        return Saturate(pigmentPeak * 1.30f + pigmentFlow * 0.010f) * hold * (0.36f + pressure * 0.44f + Saturate(frame.InkLoad * 0.5f) * 0.20f);
+        return Saturate(pigmentPeak * 1.75f + pigmentFlow * 0.004f) * hold * (0.36f + pressure * 0.44f + Saturate(frame.InkLoad * 0.5f) * 0.20f);
+    }
+
+    private static bool CanBorrowSourceSample(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex, int candidateIndex)
+    {
+        return candidateIndex >= 0
+            && candidateIndex < strokes.Count
+            && strokes[strokeIndex].SourceStrokeId >= 0
+            && strokes[candidateIndex].SourceStrokeId == strokes[strokeIndex].SourceStrokeId;
     }
 
     private static float StrokeTaper(float t, float entryTaper, float exitTaper)

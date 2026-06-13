@@ -409,6 +409,25 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushProjectionBorrowsSameSourceSamplesAcrossSegmentEdges()
+    {
+        var shared = SourceIdentityFrame(sameSourceId: true);
+        var split = SourceIdentityFrame(sameSourceId: false);
+        var sharedResult = BokushoBrushSimulation.Evaluate(shared);
+        var splitResult = BokushoBrushSimulation.Evaluate(split);
+        var sharedCanvas = LastSampleOnly(sharedResult.Canvas, sharedResult.SampleCount, sharedResult.TuftCount);
+        var splitCanvas = LastSampleOnly(splitResult.Canvas, splitResult.SampleCount, splitResult.TuftCount);
+
+        var sharedPage = BokushoBrushSimulation.ProjectCanvasToPage(shared, sharedCanvas, sharedResult.Tips, 160, 160, Vector2.Zero, 4.0f);
+        var splitPage = BokushoBrushSimulation.ProjectCanvasToPage(split, splitCanvas, splitResult.Tips, 160, 160, Vector2.Zero, 4.0f);
+        var sharedJoin = SamplePage(sharedPage, 160, 160, new Vector2(0.03f, 0.0f), 4.0f);
+        var splitJoin = SamplePage(splitPage, 160, 160, new Vector2(0.03f, 0.0f), 4.0f);
+
+        Assert.True(sharedJoin > 0.0f);
+        Assert.True(sharedJoin > splitJoin * 1.05f, $"shared join={sharedJoin:0.000000}; split join={splitJoin:0.000000}");
+    }
+
+    [Fact]
     public void CpuBrushGeometryEnrichesCurvedStrokePressureAndWidth()
     {
         var straight = GestureFrame(curved: false);
@@ -638,6 +657,18 @@ public sealed class BokushoBrushSimulationTests
     private static float TuftSum(float[] canvas, int sampleCount, int tuft)
     {
         return canvas.Skip(tuft * sampleCount).Take(sampleCount).Sum();
+    }
+
+    private static float[] LastSampleOnly(IReadOnlyList<float> canvas, int sampleCount, int tuftCount)
+    {
+        var sparse = new float[canvas.Count];
+        for (var tuft = 0; tuft < tuftCount; tuft++)
+        {
+            var index = (tuft * sampleCount) + sampleCount - 1;
+            sparse[index] = canvas[index];
+        }
+
+        return sparse;
     }
 
     private static float TipJumpAtSecondSegmentStart(BokushoBrushSimulationResult result, int tuft)

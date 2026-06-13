@@ -125,6 +125,13 @@ float StrokeGestureWidthShape(BokushoBrushStroke stroke, float t)
     return saturate(0.84 + slowSpread * 0.36 + turnSpread * 0.20);
 }
 
+float StrokeSegmentSpan(BokushoBrushStroke stroke, uint sampleCount)
+{
+    float start = saturate(stroke.p0.z);
+    float endValue = saturate(max(stroke.p0.z, stroke.p0.w));
+    return max(endValue - start, 1.0 / max((float)(sampleCount - 1u), 1.0));
+}
+
 float LaneHash(uint strokeIndex, uint tuft, uint salt)
 {
     uint value = (strokeIndex + 1u) * 0x9E3779B9u ^ (tuft + 1u) * 0x85EBCA6Bu ^ salt;
@@ -206,6 +213,8 @@ void SimulateBokushoTuftSegment(
     float radius = max(brushMaterial.x * stroke.profile.x, 0.0001);
     float normalRadius = max(radius * stroke.profile.z, 0.0001);
     float tangentRadius = max(radius * stroke.profile.w, 0.0001);
+    float segmentSpan = StrokeSegmentSpan(stroke, sampleCount);
+    float segmentVelocityScale = 1.0 / segmentSpan;
     float split = saturate((0.20 - LaneHash(laneKey, tuft, 53u)) * 4.0) * saturate((edge - 0.18) * 1.7) * stroke.dynamics.w;
 
     [loop]
@@ -242,7 +251,7 @@ void SimulateBokushoTuftSegment(
         float drag = contact * friction * (0.38 + stateWet * 0.22 + edge * 0.18);
         tip = tip + slip * (1.0 - drag);
 
-        float velocity = length(slip) * brushShape.z / max(radius, 0.001);
+        float velocity = length(slip) * brushShape.z * segmentVelocityScale / max(radius, 0.001);
         float tension = saturate(abs(targetOffset - offset) / max(localNormalRadius, 0.001) * 0.38 + velocity * 0.018 + drag * 0.46);
         float separation = saturate(edge * 0.18 + tension * (0.24 + split * 0.18) + velocity * 0.008 - stateWet * (0.12 + cohesion * 0.10));
         float adhesion = saturate(stateWet * (0.44 + cohesion * 0.28 + localPressure * 0.20) - separation * 0.16 - tension * 0.07);
@@ -254,8 +263,8 @@ void SimulateBokushoTuftSegment(
         float depositBody = 0.70 + laneCore * 0.58 - edgeComb * 0.14;
         float depositIntermittency = 1.0 - fiberGate * dryMemory * (0.48 + edge * 0.24);
         float deposition = contact * stateLoad * stateWet * saturate(0.10 + drag * 0.72 + velocity * 0.010) * (0.74 + separation * 0.18 + cohesion * 0.26) * depositBody * depositIntermittency;
-        stateLoad = max(0.0, stateLoad - deposition * (0.032 + localPressure * 0.020 - cohesion * 0.008));
-        stateWet = max(0.0, stateWet - deposition * (0.010 + dryMemory * 0.004 + edgeComb * 0.003));
+        stateLoad = max(0.0, stateLoad - deposition * segmentSpan * (0.032 + localPressure * 0.020 - cohesion * 0.008));
+        stateWet = max(0.0, stateWet - deposition * segmentSpan * (0.010 + dryMemory * 0.004 + edgeComb * 0.003));
 
         if (writeOutput)
         {

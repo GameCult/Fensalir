@@ -235,6 +235,22 @@ bool bokushoCanBorrowSourceSample(uint strokeIndex, int candidateIndex, uint str
     return sourceStrokeId >= 0.0 && abs(BokushoBrushStrokes[(uint)candidateIndex].p3.w - sourceStrokeId) <= 0.5;
 }
 
+float bokushoInternalSegmentProjectionGate(uint strokeIndex, BokushoBrushStroke stroke, float t, uint strokeCount)
+{
+    float gate = 1.0;
+    if (stroke.p0.z > 0.0001 && bokushoCanBorrowSourceSample(strokeIndex, (int)strokeIndex - 1, strokeCount))
+    {
+        gate *= 0.34 + smoothstep(0.0, 0.16, t) * 0.66;
+    }
+
+    if (stroke.p0.w < 0.9999 && bokushoCanBorrowSourceSample(strokeIndex, (int)strokeIndex + 1, strokeCount))
+    {
+        gate *= 0.34 + (1.0 - smoothstep(0.84, 1.0, t)) * 0.66;
+    }
+
+    return gate;
+}
+
 float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint strokeIndex)
 {
     float bestDistance = 1.0e20;
@@ -281,6 +297,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float2 center = bokushoStrokePoint(stroke, bestT);
     float2 tangent = bokushoStrokeTangent(stroke, bestT);
     float2 normal = float2(-tangent.y, tangent.x);
+    float projectionGate = bokushoInternalSegmentProjectionGate(strokeIndex, stroke, bestT, strokeCount);
     float lateral = dot(world - center, normal);
     float taper = bokushoStrokeTaper(stroke, bestT);
     float gestureWidth = bokushoStrokeGestureWidthShape(stroke, bestT);
@@ -391,7 +408,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
         }
     }
 
-    return saturate(pigmentPeak * 1.75 + pigmentFlow * 0.004) * hold * (0.36 + pressure * 0.44 + saturate(bokushoMaterial.z * 0.5) * 0.20);
+    return saturate(pigmentPeak * 1.75 + pigmentFlow * 0.004) * hold * projectionGate * (0.36 + pressure * 0.44 + saturate(bokushoMaterial.z * 0.5) * 0.20);
 }
 
 float bokushoPageHeight(float2 world)

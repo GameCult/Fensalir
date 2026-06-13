@@ -134,6 +134,8 @@ public static class BokushoBrushSimulation
         var radius = MathF.Max(frameBrushRadius * stroke.RadiusScale, 0.0001f);
         var normalRadius = MathF.Max(radius * stroke.NormalScale, 0.0001f);
         var tangentRadius = MathF.Max(radius * stroke.TangentScale, 0.0001f);
+        var segmentSpan = SegmentSpan(stroke, sampleCount);
+        var segmentVelocityScale = 1.0f / segmentSpan;
         var split = Saturate((0.20f - LaneHash(laneKey, tuft, 53)) * 4.0f) * Saturate((edge - 0.18f) * 1.7f) * stroke.SplitScale;
         for (var sample = 0; sample < sampleCount; sample++)
         {
@@ -168,7 +170,7 @@ public static class BokushoBrushSimulation
             var drag = contact * friction * (0.38f + stateWet * 0.22f + edge * 0.18f);
             tip += slip * (1.0f - drag);
 
-            var velocity = slip.Length() * physicsHz / MathF.Max(radius, 0.001f);
+            var velocity = slip.Length() * physicsHz * segmentVelocityScale / MathF.Max(radius, 0.001f);
             var tension = Saturate(MathF.Abs(targetOffset - offset) / MathF.Max(localNormalRadius, 0.001f) * 0.38f + velocity * 0.018f + drag * 0.46f);
             var separation = Saturate(edge * 0.18f + tension * (0.24f + split * 0.18f) + velocity * 0.008f - stateWet * (0.12f + cohesion * 0.10f));
             var adhesion = Saturate(stateWet * (0.44f + cohesion * 0.28f + localPressure * 0.20f) - separation * 0.16f - tension * 0.07f);
@@ -180,8 +182,8 @@ public static class BokushoBrushSimulation
             var depositBody = 0.70f + laneCore * 0.58f - edgeComb * 0.14f;
             var depositIntermittency = 1.0f - fiberGate * dryMemory * (0.48f + edge * 0.24f);
             var deposition = contact * stateLoad * stateWet * Saturate(0.10f + drag * 0.72f + velocity * 0.010f) * (0.74f + separation * 0.18f + cohesion * 0.26f) * depositBody * depositIntermittency;
-            stateLoad = MathF.Max(0.0f, stateLoad - deposition * (0.032f + localPressure * 0.020f - cohesion * 0.008f));
-            stateWet = MathF.Max(0.0f, stateWet - deposition * (0.010f + dryMemory * 0.004f + edgeComb * 0.003f));
+            stateLoad = MathF.Max(0.0f, stateLoad - deposition * segmentSpan * (0.032f + localPressure * 0.020f - cohesion * 0.008f));
+            stateWet = MathF.Max(0.0f, stateWet - deposition * segmentSpan * (0.010f + dryMemory * 0.004f + edgeComb * 0.003f));
 
             if (writeOutput)
             {
@@ -379,6 +381,7 @@ public static class BokushoBrushSimulation
         var centerPoint = StrokePoint(stroke, bestT);
         var tangent = StrokeTangent(stroke, bestT, sampleCount);
         var normal = new Vector2(-tangent.Y, tangent.X);
+        var projectionGate = InternalSegmentProjectionGate(strokes, strokeIndex, stroke, bestT);
         var lateral = Vector2.Dot(world - centerPoint, normal);
         var strokeT = StrokeProgress(stroke, bestT);
         var taper = StrokeTaper(strokeT, stroke.EntryTaper, stroke.ExitTaper);
@@ -491,7 +494,7 @@ public static class BokushoBrushSimulation
             }
         }
 
-        return Saturate(pigmentPeak * 1.75f + pigmentFlow * 0.004f) * hold * (0.36f + pressure * 0.44f + Saturate(frame.InkLoad * 0.5f) * 0.20f);
+        return Saturate(pigmentPeak * 1.75f + pigmentFlow * 0.004f) * hold * projectionGate * (0.36f + pressure * 0.44f + Saturate(frame.InkLoad * 0.5f) * 0.20f);
     }
 
     private static bool CanBorrowSourceSample(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex, int candidateIndex)
@@ -500,6 +503,29 @@ public static class BokushoBrushSimulation
             && candidateIndex < strokes.Count
             && strokes[strokeIndex].SourceStrokeId >= 0
             && strokes[candidateIndex].SourceStrokeId == strokes[strokeIndex].SourceStrokeId;
+    }
+
+    private static float InternalSegmentProjectionGate(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex, AquariumBokushoBrushStroke stroke, float t)
+    {
+        var gate = 1.0f;
+        if (stroke.SegmentStart > 0.0001f && CanBorrowSourceSample(strokes, strokeIndex, strokeIndex - 1))
+        {
+            gate *= 0.34f + SmoothStep(0.0f, 0.16f, t) * 0.66f;
+        }
+
+        if (stroke.SegmentEnd < 0.9999f && CanBorrowSourceSample(strokes, strokeIndex, strokeIndex + 1))
+        {
+            gate *= 0.34f + (1.0f - SmoothStep(0.84f, 1.0f, t)) * 0.66f;
+        }
+
+        return gate;
+    }
+
+    private static float SegmentSpan(AquariumBokushoBrushStroke stroke, int sampleCount)
+    {
+        var start = Math.Clamp(stroke.SegmentStart, 0.0f, 1.0f);
+        var end = Math.Clamp(stroke.SegmentEnd, start, 1.0f);
+        return MathF.Max(end - start, 1.0f / MathF.Max(sampleCount - 1.0f, 1.0f));
     }
 
     private static float StrokeTaper(float t, float entryTaper, float exitTaper)

@@ -375,6 +375,7 @@ public static class BokushoBrushSimulation
         var tuftT = Saturate(lateral / MathF.Max(footprint, 0.001f) * 0.5f + 0.5f);
         var distance = MathF.Sqrt(bestDistance);
         var contact = SmoothStep(1.0f, 0.0f, distance / MathF.Max(footprint * 0.80f, 0.001f));
+        var contactCore = contact * contact * (3.0f - 2.0f * contact);
         var tooth = PaperTooth(world, strokeIndex);
         var edge = Saturate(distance / MathF.Max(footprint * 0.80f, 0.001f));
         var dryBreak = SmoothStep(0.18f + tooth * 0.18f, 0.92f, edge) * (1.0f - Saturate(frame.Wetness / 1.6f)) * (0.34f + stroke.SplitScale * 0.12f);
@@ -415,7 +416,7 @@ public static class BokushoBrushSimulation
                 var tipContact = MathF.Max(SmoothStep(1.0f, 0.0f, ellipse), sweepContact * 0.86f);
                 var contribution = canvas[index]
                     * tipContact
-                    * (0.20f + contact * 0.80f)
+                    * (0.03f + contactCore * 0.97f)
                     * (1.0f - MathF.Abs(sampleDelta) * 0.045f)
                     * (0.82f + sweepContact * 0.24f);
                 pigmentPeak = MathF.Max(pigmentPeak, contribution);
@@ -423,7 +424,7 @@ public static class BokushoBrushSimulation
             }
         }
 
-        return Saturate(pigmentPeak * 1.14f + pigmentFlow * 0.026f) * hold * (0.30f + pressure * 0.38f + Saturate(frame.InkLoad * 0.5f) * 0.18f);
+        return Saturate(pigmentPeak * 1.30f + pigmentFlow * 0.010f) * hold * (0.36f + pressure * 0.44f + Saturate(frame.InkLoad * 0.5f) * 0.20f);
     }
 
     private static float StrokeTaper(float t, float entryTaper, float exitTaper)

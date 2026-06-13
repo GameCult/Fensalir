@@ -281,6 +281,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float tuftT = saturate(lateral / max(footprint, 0.001) * 0.5 + 0.5);
     float distance = sqrt(bestDistance);
     float contact = smoothstep(1.0, 0.0, distance / max(footprint * 0.80, 0.001));
+    float contactCore = contact * contact * (3.0 - 2.0 * contact);
     float tooth = bokushoPaperTooth(world, strokeIndex);
     float edge = saturate(distance / max(footprint * 0.80, 0.001));
     float dryBreak = smoothstep(0.18 + tooth * 0.18, 0.92, edge)
@@ -321,7 +322,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
             float pigment = BokushoCanvasField[((strokeIndex * tuftCount) + tuftIndex) * sampleCount + sampleIndex];
             float contribution = pigment
                 * tipContact
-                * (0.20 + contact * 0.80)
+                * (0.03 + contactCore * 0.97)
                 * (1.0 - abs((float)sampleDelta) * 0.045)
                 * (0.82 + sweepContact * 0.24);
             pigmentPeak = max(pigmentPeak, contribution);
@@ -329,7 +330,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
         }
     }
 
-    return saturate(pigmentPeak * 1.14 + pigmentFlow * 0.026) * hold * (0.30 + pressure * 0.38 + saturate(bokushoMaterial.z * 0.5) * 0.18);
+    return saturate(pigmentPeak * 1.30 + pigmentFlow * 0.010) * hold * (0.36 + pressure * 0.44 + saturate(bokushoMaterial.z * 0.5) * 0.20);
 }
 
 float bokushoPageHeight(float2 world)

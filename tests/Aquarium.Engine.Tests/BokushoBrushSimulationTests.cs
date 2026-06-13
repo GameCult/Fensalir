@@ -392,6 +392,23 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushProjectionUsesSourceStrokePaperResponseAcrossSegments()
+    {
+        var shared = SourceIdentityFrame(sameSourceId: true);
+        var split = SourceIdentityFrame(sameSourceId: false);
+        var sharedResult = BokushoBrushSimulation.Evaluate(shared);
+        var splitResult = BokushoBrushSimulation.Evaluate(split);
+
+        var sharedPage = BokushoBrushSimulation.ProjectCanvasToPage(shared, sharedResult.Canvas, sharedResult.Tips, 128, 128, Vector2.Zero, 4.0f);
+        var splitPage = BokushoBrushSimulation.ProjectCanvasToPage(split, splitResult.Canvas, splitResult.Tips, 128, 128, Vector2.Zero, 4.0f);
+        var sharedJoin = SamplePage(sharedPage, 128, 128, new Vector2(0.0f, 0.0f), 4.0f);
+        var splitJoin = SamplePage(splitPage, 128, 128, new Vector2(0.0f, 0.0f), 4.0f);
+
+        Assert.True(sharedJoin > 0.0f);
+        Assert.True(MathF.Abs(sharedJoin - splitJoin) > 0.0001f);
+    }
+
+    [Fact]
     public void CpuBrushGeometryEnrichesCurvedStrokePressureAndWidth()
     {
         var straight = GestureFrame(curved: false);

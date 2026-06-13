@@ -393,7 +393,8 @@ public static class BokushoBrushSimulation
         var distance = MathF.Sqrt(bestDistance);
         var contact = SmoothStep(1.0f, 0.0f, distance / MathF.Max(footprint * 0.80f, 0.001f));
         var contactCore = contact * contact * (3.0f - 2.0f * contact);
-        var tooth = PaperTooth(world, strokeIndex);
+        var paperKey = stroke.SourceStrokeId >= 0 ? stroke.SourceStrokeId : strokeIndex;
+        var tooth = PaperTooth(world, paperKey);
         var edge = Saturate(distance / MathF.Max(footprint * 0.80f, 0.001f));
         var dryBreak = SmoothStep(0.18f + tooth * 0.18f, 0.92f, edge) * (1.0f - Saturate(frame.Wetness / 1.6f)) * (0.34f + stroke.SplitScale * 0.12f);
         var hold = Saturate(0.52f + tooth * 0.42f + pressure * 0.28f - dryBreak);

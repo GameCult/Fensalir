@@ -282,7 +282,8 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float distance = sqrt(bestDistance);
     float contact = smoothstep(1.0, 0.0, distance / max(footprint * 0.80, 0.001));
     float contactCore = contact * contact * (3.0 - 2.0 * contact);
-    float tooth = bokushoPaperTooth(world, strokeIndex);
+    uint paperKey = stroke.p3.w >= 0.0 ? (uint)round(stroke.p3.w) : strokeIndex;
+    float tooth = bokushoPaperTooth(world, paperKey);
     float edge = saturate(distance / max(footprint * 0.80, 0.001));
     float dryBreak = smoothstep(0.18 + tooth * 0.18, 0.92, edge)
         * (1.0 - saturate(bokushoMaterial.w / 1.6))

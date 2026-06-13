@@ -260,8 +260,12 @@ void SimulateBokushoTuftSegment(
         float dryMemory = saturate((1.0 - stateWet) * 0.68 + edgeComb * 0.42 + velocity * 0.004 - localPressure * 0.10);
         float fiberNoise = LaneHash(laneKey + sample * 13u, tuft, 101u);
         float fiberGate = smoothstep(0.20 + dryMemory * 0.24, 0.96, fiberNoise);
+        float tearNoise = LaneHash(laneKey + sample * 29u, tuft, 211u);
+        float tearReadiness = saturate(edge * 1.10 + separation * 0.64 + split * 0.18 + dryMemory * 0.22 - laneCore * 0.36);
+        float bristleTear = smoothstep(0.50 - separation * 0.16 - dryMemory * 0.10, 0.98, tearNoise) * tearReadiness;
+        float bristleContinuity = 1.0 - bristleTear * (0.42 + dryMemory * 0.24 + edge * 0.16);
         float depositBody = 0.70 + laneCore * 0.58 - edgeComb * 0.14;
-        float depositIntermittency = 1.0 - fiberGate * dryMemory * (0.48 + edge * 0.24);
+        float depositIntermittency = (1.0 - fiberGate * dryMemory * (0.48 + edge * 0.24)) * bristleContinuity;
         float deposition = contact * stateLoad * stateWet * saturate(0.10 + drag * 0.72 + velocity * 0.010) * (0.74 + separation * 0.18 + cohesion * 0.26) * depositBody * depositIntermittency;
         stateLoad = max(0.0, stateLoad - deposition * segmentSpan * (0.032 + localPressure * 0.020 - cohesion * 0.008));
         stateWet = max(0.0, stateWet - deposition * segmentSpan * (0.010 + dryMemory * 0.004 + edgeComb * 0.003));
@@ -272,11 +276,14 @@ void SimulateBokushoTuftSegment(
             float pigmentSurvival = 0.62 + cohesion * 0.30 + laneCore * 0.36 - split * 0.08 - dryMemory * 0.12;
             float joinBlend = SegmentJoinBlend(outputStrokeIndex, stroke, t);
             float pigment = deposition * (8.4 + contact * 2.8) + contact * stateLoad * stateWet * (0.14 + laneCore * 0.18) + adhesion * contact * 0.08;
-            float localPigment = saturate(pigment * pigmentSurvival * stroke.dynamics.z * joinBlend);
-            float trace = saturate((contact * (0.24 + stateLoad * 0.36 + adhesion * 0.18 + laneCore * 0.12) + deposition * 1.9) * joinBlend);
+            float localPigment = saturate(pigment * pigmentSurvival * stroke.dynamics.z * joinBlend * bristleContinuity);
+            float trace = saturate((contact * (0.24 + stateLoad * 0.36 + adhesion * 0.18 + laneCore * 0.12) + deposition * 1.9) * joinBlend * (0.72 + bristleContinuity * 0.28));
             BokushoTraceField[index] = trace;
             BokushoCanvasField[index] = localPigment;
-            BokushoTipField[index] = float4(tip, localNormalRadius * (0.54 + laneCore * 0.24 + localPressure * 0.22 + splay * 0.20 - split * 0.04), localTangentRadius * (0.84 + drag * 0.34 + bend * 0.18));
+            BokushoTipField[index] = float4(
+                tip,
+                localNormalRadius * (0.54 + laneCore * 0.24 + localPressure * 0.22 + splay * 0.20 - split * 0.04) * (1.0 - bristleTear * (0.34 + edge * 0.16)),
+                localTangentRadius * (0.84 + drag * 0.34 + bend * 0.18) * (1.0 - bristleTear * 0.18));
         }
     }
 }

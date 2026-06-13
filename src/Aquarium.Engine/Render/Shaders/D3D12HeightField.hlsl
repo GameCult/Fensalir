@@ -363,7 +363,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
         float2 sampleNormal = float2(-sampleTangent.y, sampleTangent.x);
 
         [unroll]
-        for (int tuftDelta = -4; tuftDelta <= 4; tuftDelta += 1)
+        for (int tuftDelta = -2; tuftDelta <= 2; tuftDelta += 1)
         {
             uint tuftIndex = min((uint)max((int)centerTuft + tuftDelta, 0), tuftCount - 1u);
             float4 tip = bokushoTipSample(sampleStrokeIndex, sampleIndex, tuftIndex);

@@ -355,10 +355,13 @@ public sealed class BokushoBrushSimulationTests
         var edgeSum = edge.Sum();
         var centerBodySamples = center.Count(value => value > 0.10f);
         var edgeDryBreaks = edge.Count(value => value < 0.035f);
+        var centerRoughness = NormalizedRoughness(center);
+        var edgeRoughness = NormalizedRoughness(edge);
 
         Assert.True(centerSum > edgeSum * 2.2f);
         Assert.True(centerBodySamples > result.SampleCount / 3);
         Assert.True(edgeDryBreaks > result.SampleCount / 2);
+        Assert.True(edgeRoughness > centerRoughness * 1.20f, $"center={centerRoughness:0.000000}; edge={edgeRoughness:0.000000}");
     }
 
     [Fact]
@@ -690,6 +693,18 @@ public sealed class BokushoBrushSimulationTests
     private static float StrokeSum(float[] canvas, int sampleCount, int tuftCount, int stroke)
     {
         return canvas.Skip(stroke * sampleCount * tuftCount).Take(sampleCount * tuftCount).Sum();
+    }
+
+    private static float NormalizedRoughness(IReadOnlyList<float> samples)
+    {
+        var total = samples.Sum();
+        var variation = 0.0f;
+        for (var index = 1; index < samples.Count; index++)
+        {
+            variation += MathF.Abs(samples[index] - samples[index - 1]);
+        }
+
+        return variation / MathF.Max(total, 0.001f);
     }
 
     private static float[] LastSampleOnly(IReadOnlyList<float> canvas, int sampleCount, int tuftCount)

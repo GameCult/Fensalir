@@ -179,8 +179,12 @@ public static class BokushoBrushSimulation
             var dryMemory = Saturate((1.0f - stateWet) * 0.68f + edgeComb * 0.42f + velocity * 0.004f - localPressure * 0.10f);
             var fiberNoise = LaneHash(laneKey + sample * 13, tuft, 101);
             var fiberGate = SmoothStep(0.20f + dryMemory * 0.24f, 0.96f, fiberNoise);
+            var tearNoise = LaneHash(laneKey + sample * 29, tuft, 211);
+            var tearReadiness = Saturate(edge * 1.10f + separation * 0.64f + split * 0.18f + dryMemory * 0.22f - laneCore * 0.36f);
+            var bristleTear = SmoothStep(0.50f - separation * 0.16f - dryMemory * 0.10f, 0.98f, tearNoise) * tearReadiness;
+            var bristleContinuity = 1.0f - bristleTear * (0.42f + dryMemory * 0.24f + edge * 0.16f);
             var depositBody = 0.70f + laneCore * 0.58f - edgeComb * 0.14f;
-            var depositIntermittency = 1.0f - fiberGate * dryMemory * (0.48f + edge * 0.24f);
+            var depositIntermittency = (1.0f - fiberGate * dryMemory * (0.48f + edge * 0.24f)) * bristleContinuity;
             var deposition = contact * stateLoad * stateWet * Saturate(0.10f + drag * 0.72f + velocity * 0.010f) * (0.74f + separation * 0.18f + cohesion * 0.26f) * depositBody * depositIntermittency;
             stateLoad = MathF.Max(0.0f, stateLoad - deposition * segmentSpan * (0.032f + localPressure * 0.020f - cohesion * 0.008f));
             stateWet = MathF.Max(0.0f, stateWet - deposition * segmentSpan * (0.010f + dryMemory * 0.004f + edgeComb * 0.003f));
@@ -191,13 +195,13 @@ public static class BokushoBrushSimulation
                 var pigmentSurvival = 0.62f + cohesion * 0.30f + laneCore * 0.36f - split * 0.08f - dryMemory * 0.12f;
                 var joinBlend = SegmentJoinBlend(strokes, strokeIndex, stroke, t);
                 var pigment = deposition * (8.4f + contact * 2.8f) + contact * stateLoad * stateWet * (0.14f + laneCore * 0.18f) + adhesion * contact * 0.08f;
-                canvas[index] = Saturate(pigment * pigmentSurvival * stroke.PigmentScale * joinBlend);
-                trace[index] = Saturate((contact * (0.24f + stateLoad * 0.36f + adhesion * 0.18f + laneCore * 0.12f) + deposition * 1.9f) * joinBlend);
+                canvas[index] = Saturate(pigment * pigmentSurvival * stroke.PigmentScale * joinBlend * bristleContinuity);
+                trace[index] = Saturate((contact * (0.24f + stateLoad * 0.36f + adhesion * 0.18f + laneCore * 0.12f) + deposition * 1.9f) * joinBlend * (0.72f + bristleContinuity * 0.28f));
                 tips[index] = new Vector4(
                     tip.X,
                     tip.Y,
-                    localNormalRadius * (0.54f + laneCore * 0.24f + localPressure * 0.22f + splay * 0.20f - split * 0.04f),
-                    localTangentRadius * (0.84f + drag * 0.34f + bend * 0.18f));
+                    localNormalRadius * (0.54f + laneCore * 0.24f + localPressure * 0.22f + splay * 0.20f - split * 0.04f) * (1.0f - bristleTear * (0.34f + edge * 0.16f)),
+                    localTangentRadius * (0.84f + drag * 0.34f + bend * 0.18f) * (1.0f - bristleTear * 0.18f));
             }
         }
     }
@@ -445,7 +449,7 @@ public static class BokushoBrushSimulation
             var sampleTangent = StrokeTangent(sampleStroke, sampleT, sampleCount);
             var sampleNormal = new Vector2(-sampleTangent.Y, sampleTangent.X);
 
-            for (var tuftDelta = -4; tuftDelta <= 4; tuftDelta++)
+            for (var tuftDelta = -2; tuftDelta <= 2; tuftDelta++)
             {
                 var tuftIndex = Math.Clamp(centerTuft + tuftDelta, 0, tuftCount - 1);
                 var previousStrokeIndex = sampleStrokeIndex;

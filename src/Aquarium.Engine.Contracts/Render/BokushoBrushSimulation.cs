@@ -81,67 +81,111 @@ public static class BokushoBrushSimulation
                 var edge = MathF.Abs(restOffset);
                 var laneHash = LaneHash(chainStart, tuft, 17);
                 var laneLoad = 0.76f + laneHash * 0.34f;
-                var split = Saturate((0.20f - LaneHash(chainStart, tuft, 53)) * 4.0f) * Saturate((edge - 0.18f) * 1.7f) * stroke.SplitScale;
-                var initialCohesion = LaneCohesion(edge, split, wetness, pressure);
-                var tip = StrokePoint(stroke, 0.0f);
-                var poseBias = poseTilt * 0.18f + poseRotation * 0.08f;
-                var offset = (restOffset + poseBias * (1.0f - edge * 0.35f)) * normalRadius * (0.42f + splay * 0.38f) + (laneHash - 0.5f) * normalRadius * 0.05f;
-                var sourceCarry = 1.0f - strokeStart;
-                var stateLoad = load * (0.62f + initialCohesion * 0.46f) * (1.0f - edge * 0.18f) * laneLoad * (1.0f - split * 0.36f) * (0.52f + sourceCarry * 0.48f);
-                var stateWet = wetness * (0.74f + initialCohesion * 0.24f - split * 0.08f) * (0.78f + sourceCarry * 0.22f);
+                var seedStroke = strokes[chainStart];
+                var seedPressure = Saturate(frame.Pressure * seedStroke.PressureScale * 0.5f) * 2.0f;
+                var seedRadius = MathF.Max(frame.BrushRadius * seedStroke.RadiusScale, 0.0001f);
+                var seedNormalRadius = MathF.Max(seedRadius * seedStroke.NormalScale, 0.0001f);
+                var seedSplit = Saturate((0.20f - LaneHash(chainStart, tuft, 53)) * 4.0f) * Saturate((edge - 0.18f) * 1.7f) * seedStroke.SplitScale;
+                var initialCohesion = LaneCohesion(edge, seedSplit, wetness, seedPressure);
+                var tip = StrokePoint(seedStroke, 0.0f);
+                var poseBias = seedStroke.ShaftTilt * 0.18f + seedStroke.ShaftRotation * 0.08f;
+                var offset = (restOffset + poseBias * (1.0f - edge * 0.35f)) * seedNormalRadius * (0.42f + splay * 0.38f) + (laneHash - 0.5f) * seedNormalRadius * 0.05f;
+                var stateLoad = load * (0.62f + initialCohesion * 0.46f) * (1.0f - edge * 0.18f) * laneLoad * (1.0f - seedSplit * 0.36f);
+                var stateWet = wetness * (0.74f + initialCohesion * 0.24f - seedSplit * 0.08f);
 
-                for (var sample = 0; sample < sampleCount; sample++)
+                for (var replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex++)
                 {
-                    var t = sampleCount <= 1 ? 0.0f : sample / (float)(sampleCount - 1);
-                    var center = StrokePoint(stroke, t);
-                    var tangent = StrokeTangent(stroke, t, sampleCount);
-                    var normal = new Vector2(-tangent.Y, tangent.X);
-                    var strokeT = StrokeProgress(stroke, t);
-                    var taper = StrokeTaper(strokeT, stroke.EntryTaper, stroke.ExitTaper);
-                    var normalShape = StrokeNormalRadiusShape(taper);
-                    var tangentShape = StrokeTangentRadiusShape(taper);
-                    var pressureShape = StrokePressureShape(strokeT, stroke.EntryTaper, stroke.ExitTaper);
-                    var gesturePressure = StrokeGesturePressureShape(stroke, t, sampleCount);
-                    var gestureWidth = StrokeGestureWidthShape(stroke, t, sampleCount);
-                    var localPressure = pressure * taper * pressureShape * gesturePressure;
-                    var cohesion = LaneCohesion(edge, split, stateWet, localPressure);
-                    var poseSpread = Saturate(0.92f + MathF.Abs(poseTilt) * 0.22f + compliance * 0.10f - gripHeight * 0.04f);
-                    var localNormalRadius = MathF.Max(normalRadius * normalShape * gestureWidth * poseSpread, 0.0001f);
-                    var localTangentRadius = MathF.Max(tangentRadius * tangentShape * (0.86f + gestureWidth * 0.08f + gripHeight * 0.10f), 0.0001f);
-                    var turn = MathF.Sin(t * MathF.Tau + strokeIndex * 0.37f);
-                    var rotatedRest = restOffset + poseRotation * 0.10f * (1.0f - edge);
-                    var targetOffset = rotatedRest * localNormalRadius * (0.38f + splay * 0.52f + localPressure * 0.08f - wetness * 0.10f) + (turn + poseRotation * 0.22f) * localNormalRadius * 0.14f * (1.0f - edge);
-                    var recovery = Saturate(0.06f + stateWet * 0.10f + localPressure * 0.07f + (1.0f - edge) * 0.06f + compliance * 0.07f);
-                    offset = Lerp(offset, targetOffset, recovery);
-
-                    var lag = localTangentRadius * (0.04f + bend * 0.32f + gripHeight * 0.10f + friction * localPressure * 0.16f + edge * 0.08f);
-                    var desiredTip = center + normal * offset - tangent * lag;
-                    var slip = desiredTip - tip;
-                    var poseContact = 0.90f + compliance * 0.10f + (1.0f - Saturate(gripHeight / 2.4f)) * 0.10f;
-                    var contact = Saturate(localPressure * poseContact * stateWet * stateLoad * (0.58f + cohesion * 0.40f + (1.0f - edge) * 0.18f));
-                    var drag = contact * friction * (0.38f + stateWet * 0.22f + edge * 0.18f);
-                    tip += slip * (1.0f - drag);
-
-                    var velocity = slip.Length() * frame.PhysicsHz / MathF.Max(radius, 0.001f);
-                    var tension = Saturate(MathF.Abs(targetOffset - offset) / MathF.Max(localNormalRadius, 0.001f) * 0.38f + velocity * 0.018f + drag * 0.46f);
-                    var separation = Saturate(edge * 0.18f + tension * (0.24f + split * 0.18f) + velocity * 0.008f - stateWet * (0.12f + cohesion * 0.10f));
-                    var adhesion = Saturate(stateWet * (0.44f + cohesion * 0.28f + localPressure * 0.20f) - separation * 0.16f - tension * 0.07f);
-                    var deposition = contact * stateLoad * stateWet * Saturate(0.10f + drag * 0.72f + velocity * 0.010f) * (0.74f + separation * 0.18f + cohesion * 0.26f);
-                    stateLoad = MathF.Max(0.0f, stateLoad - deposition * (0.032f + localPressure * 0.020f - cohesion * 0.008f));
-                    stateWet = MathF.Max(0.0f, stateWet - deposition * 0.010f);
-
-                    var index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
-                    var pigmentSurvival = 0.74f + cohesion * 0.36f - split * 0.08f;
-                    var joinBlend = SegmentJoinBlend(stroke, t);
-                    var localPigment = Saturate((deposition * (7.5f + contact * 2.5f) + contact * stateLoad * stateWet * 0.24f + adhesion * contact * 0.10f) * pigmentSurvival * stroke.PigmentScale * joinBlend);
-                    trace[index] = Saturate((contact * (0.30f + stateLoad * 0.42f + adhesion * 0.20f) + deposition * 1.8f) * joinBlend);
-                    canvas[index] = localPigment;
-                    tips[index] = new Vector4(
-                        tip.X,
-                        tip.Y,
-                        localNormalRadius * (0.70f + localPressure * 0.22f + splay * 0.24f),
-                        localTangentRadius * (0.84f + drag * 0.34f + bend * 0.18f));
+                    SimulateTuftSegment(strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, tuftCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, wetness, load, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, Span<float>.Empty, Span<float>.Empty, Span<Vector4>.Empty, writeOutput: false);
                 }
+
+                SimulateTuftSegment(stroke, strokeIndex, chainStart, tuft, sampleCount, tuftCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, wetness, load, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, trace, canvas, tips, writeOutput: true);
+            }
+        }
+    }
+
+    private static void SimulateTuftSegment(
+        AquariumBokushoBrushStroke stroke,
+        int strokeIndex,
+        int laneKey,
+        int tuft,
+        int sampleCount,
+        int tuftCount,
+        float physicsHz,
+        float framePressure,
+        float frameBrushRadius,
+        float wetness,
+        float load,
+        float splay,
+        float bend,
+        float friction,
+        float restOffset,
+        float edge,
+        ref float offset,
+        ref Vector2 tip,
+        ref float stateLoad,
+        ref float stateWet,
+        Span<float> trace,
+        Span<float> canvas,
+        Span<Vector4> tips,
+        bool writeOutput)
+    {
+        var pressure = Saturate(framePressure * stroke.PressureScale * 0.5f) * 2.0f;
+        var radius = MathF.Max(frameBrushRadius * stroke.RadiusScale, 0.0001f);
+        var normalRadius = MathF.Max(radius * stroke.NormalScale, 0.0001f);
+        var tangentRadius = MathF.Max(radius * stroke.TangentScale, 0.0001f);
+        var split = Saturate((0.20f - LaneHash(laneKey, tuft, 53)) * 4.0f) * Saturate((edge - 0.18f) * 1.7f) * stroke.SplitScale;
+        for (var sample = 0; sample < sampleCount; sample++)
+        {
+            var t = sampleCount <= 1 ? 0.0f : sample / (float)(sampleCount - 1);
+            var center = StrokePoint(stroke, t);
+            var tangent = StrokeTangent(stroke, t, sampleCount);
+            var normal = new Vector2(-tangent.Y, tangent.X);
+            var strokeT = StrokeProgress(stroke, t);
+            var taper = StrokeTaper(strokeT, stroke.EntryTaper, stroke.ExitTaper);
+            var normalShape = StrokeNormalRadiusShape(taper);
+            var tangentShape = StrokeTangentRadiusShape(taper);
+            var pressureShape = StrokePressureShape(strokeT, stroke.EntryTaper, stroke.ExitTaper);
+            var gesturePressure = StrokeGesturePressureShape(stroke, t, sampleCount);
+            var gestureWidth = StrokeGestureWidthShape(stroke, t, sampleCount);
+            var localPressure = pressure * taper * pressureShape * gesturePressure;
+            var cohesion = LaneCohesion(edge, split, stateWet, localPressure);
+            var poseSpread = Saturate(0.92f + MathF.Abs(stroke.ShaftTilt) * 0.22f + stroke.Compliance * 0.10f - stroke.GripHeight * 0.04f);
+            var localNormalRadius = MathF.Max(normalRadius * normalShape * gestureWidth * poseSpread, 0.0001f);
+            var localTangentRadius = MathF.Max(tangentRadius * tangentShape * (0.86f + gestureWidth * 0.08f + stroke.GripHeight * 0.10f), 0.0001f);
+            var turn = MathF.Sin(t * MathF.Tau + strokeIndex * 0.37f);
+            var rotatedRest = restOffset + stroke.ShaftRotation * 0.10f * (1.0f - edge);
+            var targetOffset = rotatedRest * localNormalRadius * (0.38f + splay * 0.52f + localPressure * 0.08f - wetness * 0.10f) + (turn + stroke.ShaftRotation * 0.22f) * localNormalRadius * 0.14f * (1.0f - edge);
+            var recovery = Saturate(0.06f + stateWet * 0.10f + localPressure * 0.07f + (1.0f - edge) * 0.06f + stroke.Compliance * 0.07f);
+            offset = Lerp(offset, targetOffset, recovery);
+
+            var lag = localTangentRadius * (0.04f + bend * 0.32f + stroke.GripHeight * 0.10f + friction * localPressure * 0.16f + edge * 0.08f);
+            var desiredTip = center + normal * offset - tangent * lag;
+            var slip = desiredTip - tip;
+            var poseContact = 0.90f + stroke.Compliance * 0.10f + (1.0f - Saturate(stroke.GripHeight / 2.4f)) * 0.10f;
+            var contact = Saturate(localPressure * poseContact * stateWet * stateLoad * (0.58f + cohesion * 0.40f + (1.0f - edge) * 0.18f));
+            var drag = contact * friction * (0.38f + stateWet * 0.22f + edge * 0.18f);
+            tip += slip * (1.0f - drag);
+
+            var velocity = slip.Length() * physicsHz / MathF.Max(radius, 0.001f);
+            var tension = Saturate(MathF.Abs(targetOffset - offset) / MathF.Max(localNormalRadius, 0.001f) * 0.38f + velocity * 0.018f + drag * 0.46f);
+            var separation = Saturate(edge * 0.18f + tension * (0.24f + split * 0.18f) + velocity * 0.008f - stateWet * (0.12f + cohesion * 0.10f));
+            var adhesion = Saturate(stateWet * (0.44f + cohesion * 0.28f + localPressure * 0.20f) - separation * 0.16f - tension * 0.07f);
+            var deposition = contact * stateLoad * stateWet * Saturate(0.10f + drag * 0.72f + velocity * 0.010f) * (0.74f + separation * 0.18f + cohesion * 0.26f);
+            stateLoad = MathF.Max(0.0f, stateLoad - deposition * (0.032f + localPressure * 0.020f - cohesion * 0.008f));
+            stateWet = MathF.Max(0.0f, stateWet - deposition * 0.010f);
+
+            if (writeOutput)
+            {
+                var index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
+                var pigmentSurvival = 0.74f + cohesion * 0.36f - split * 0.08f;
+                var joinBlend = SegmentJoinBlend(stroke, t);
+                canvas[index] = Saturate((deposition * (7.5f + contact * 2.5f) + contact * stateLoad * stateWet * 0.24f + adhesion * contact * 0.10f) * pigmentSurvival * stroke.PigmentScale * joinBlend);
+                trace[index] = Saturate((contact * (0.30f + stateLoad * 0.42f + adhesion * 0.20f) + deposition * 1.8f) * joinBlend);
+                tips[index] = new Vector4(
+                    tip.X,
+                    tip.Y,
+                    localNormalRadius * (0.70f + localPressure * 0.22f + splay * 0.24f),
+                    localTangentRadius * (0.84f + drag * 0.34f + bend * 0.18f));
             }
         }
     }

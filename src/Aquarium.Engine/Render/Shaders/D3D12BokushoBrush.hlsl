@@ -172,49 +172,30 @@ uint StrokeChainStart(uint strokeIndex)
     return chainStart;
 }
 
-[numthreads(128, 1, 1)]
-void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+void SimulateBokushoTuftSegment(
+    BokushoBrushStroke stroke,
+    uint outputStrokeIndex,
+    uint laneKey,
+    uint tuft,
+    uint sampleCount,
+    uint tuftCount,
+    float restOffset,
+    float edge,
+    inout float offset,
+    inout float2 tip,
+    inout float stateLoad,
+    inout float stateWet,
+    bool writeOutput)
 {
-    uint sampleCount = max((uint)round(brushShape.x), 2u);
-    uint tuftCount = max((uint)round(brushShape.y), 1u);
-    uint strokeCount = max((uint)round(brushShape.w), 1u);
-    uint globalIndex = dispatchThreadId.x;
-    uint strokeIndex = globalIndex / tuftCount;
-    uint tuft = globalIndex - strokeIndex * tuftCount;
-    if (strokeIndex >= strokeCount || tuft >= tuftCount)
-    {
-        return;
-    }
-
-    BokushoBrushStroke stroke = BokushoBrushStrokes[strokeIndex];
-    uint chainStart = StrokeChainStart(strokeIndex);
-    float strokeStart = saturate(stroke.p0.z);
-    float laneT = tuftCount <= 1u ? 0.5 : (float)tuft / (float)(tuftCount - 1u);
-    float restOffset = laneT * 2.0 - 1.0;
-    float edge = abs(restOffset);
-    float laneHash = LaneHash(chainStart, tuft, 17u);
-    float laneLoad = 0.76 + laneHash * 0.34;
-    float split = saturate((0.20 - LaneHash(chainStart, tuft, 53u)) * 4.0) * saturate((edge - 0.18) * 1.7) * stroke.dynamics.w;
     float pressure = saturate(brushMaterial.y * stroke.profile.y * 0.5) * 2.0;
     float wetness = saturate(brushMaterial.w / 1.6);
-    float initialCohesion = LaneCohesion(edge, split, wetness, pressure);
-    float load = saturate(brushMaterial.z / 2.0);
     float splay = saturate(brushDynamics.x / 2.0);
     float bend = saturate(brushDynamics.y / 2.4);
     float friction = saturate(brushDynamics.z);
     float radius = max(brushMaterial.x * stroke.profile.x, 0.0001);
     float normalRadius = max(radius * stroke.profile.z, 0.0001);
     float tangentRadius = max(radius * stroke.profile.w, 0.0001);
-    float poseTilt = stroke.pose.x;
-    float poseRotation = stroke.pose.y;
-    float gripHeight = stroke.pose.z;
-    float compliance = stroke.pose.w;
-    float2 tip = StrokePoint(stroke, 0.0);
-    float poseBias = poseTilt * 0.18 + poseRotation * 0.08;
-    float offset = (restOffset + poseBias * (1.0 - edge * 0.35)) * normalRadius * (0.42 + splay * 0.38) + (laneHash - 0.5) * normalRadius * 0.05;
-    float sourceCarry = 1.0 - strokeStart;
-    float stateLoad = load * (0.62 + initialCohesion * 0.46) * (1.0 - edge * 0.18) * laneLoad * (1.0 - split * 0.36) * (0.52 + sourceCarry * 0.48);
-    float stateWet = wetness * (0.74 + initialCohesion * 0.24 - split * 0.08) * (0.78 + sourceCarry * 0.22);
+    float split = saturate((0.20 - LaneHash(laneKey, tuft, 53u)) * 4.0) * saturate((edge - 0.18) * 1.7) * stroke.dynamics.w;
 
     [loop]
     for (uint sample = 0u; sample < sampleCount; sample += 1u)
@@ -231,19 +212,19 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         float gestureWidth = StrokeGestureWidthShape(stroke, t);
         float localPressure = pressure * taper * pressureShape * gesturePressure;
         float cohesion = LaneCohesion(edge, split, stateWet, localPressure);
-        float poseSpread = saturate(0.92 + abs(poseTilt) * 0.22 + compliance * 0.10 - gripHeight * 0.04);
+        float poseSpread = saturate(0.92 + abs(stroke.pose.x) * 0.22 + stroke.pose.w * 0.10 - stroke.pose.z * 0.04);
         float localNormalRadius = max(normalRadius * normalShape * gestureWidth * poseSpread, 0.0001);
-        float localTangentRadius = max(tangentRadius * tangentShape * (0.86 + gestureWidth * 0.08 + gripHeight * 0.10), 0.0001);
-        float turn = sin(t * 6.28318530718 + (float)strokeIndex * 0.37);
-        float rotatedRest = restOffset + poseRotation * 0.10 * (1.0 - edge);
-        float targetOffset = rotatedRest * localNormalRadius * (0.38 + splay * 0.52 + localPressure * 0.08 - wetness * 0.10) + (turn + poseRotation * 0.22) * localNormalRadius * 0.14 * (1.0 - edge);
-        float recovery = saturate(0.06 + stateWet * 0.10 + localPressure * 0.07 + (1.0 - edge) * 0.06 + compliance * 0.07);
+        float localTangentRadius = max(tangentRadius * tangentShape * (0.86 + gestureWidth * 0.08 + stroke.pose.z * 0.10), 0.0001);
+        float turn = sin(t * 6.28318530718 + (float)outputStrokeIndex * 0.37);
+        float rotatedRest = restOffset + stroke.pose.y * 0.10 * (1.0 - edge);
+        float targetOffset = rotatedRest * localNormalRadius * (0.38 + splay * 0.52 + localPressure * 0.08 - wetness * 0.10) + (turn + stroke.pose.y * 0.22) * localNormalRadius * 0.14 * (1.0 - edge);
+        float recovery = saturate(0.06 + stateWet * 0.10 + localPressure * 0.07 + (1.0 - edge) * 0.06 + stroke.pose.w * 0.07);
         offset = cultmath_lerp(offset, targetOffset, recovery);
 
-        float lag = localTangentRadius * (0.04 + bend * 0.32 + gripHeight * 0.10 + friction * localPressure * 0.16 + edge * 0.08);
+        float lag = localTangentRadius * (0.04 + bend * 0.32 + stroke.pose.z * 0.10 + friction * localPressure * 0.16 + edge * 0.08);
         float2 desiredTip = center + normal * offset - tangent * lag;
         float2 slip = desiredTip - tip;
-        float poseContact = 0.90 + compliance * 0.10 + (1.0 - saturate(gripHeight / 2.4)) * 0.10;
+        float poseContact = 0.90 + stroke.pose.w * 0.10 + (1.0 - saturate(stroke.pose.z / 2.4)) * 0.10;
         float contact = saturate(localPressure * poseContact * stateWet * stateLoad * (0.58 + cohesion * 0.40 + (1.0 - edge) * 0.18));
         float drag = contact * friction * (0.38 + stateWet * 0.22 + edge * 0.18);
         tip = tip + slip * (1.0 - drag);
@@ -256,13 +237,61 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         stateLoad = max(0.0, stateLoad - deposition * (0.032 + localPressure * 0.020 - cohesion * 0.008));
         stateWet = max(0.0, stateWet - deposition * 0.010);
 
-        uint index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
-        float pigmentSurvival = 0.74 + cohesion * 0.36 - split * 0.08;
-        float joinBlend = SegmentJoinBlend(stroke, t);
-        float localPigment = saturate((deposition * (7.5 + contact * 2.5) + contact * stateLoad * stateWet * 0.24 + adhesion * contact * 0.10) * pigmentSurvival * stroke.dynamics.z * joinBlend);
-        float trace = saturate((contact * (0.30 + stateLoad * 0.42 + adhesion * 0.20) + deposition * 1.8) * joinBlend);
-        BokushoTraceField[index] = trace;
-        BokushoCanvasField[index] = localPigment;
-        BokushoTipField[index] = float4(tip, localNormalRadius * (0.70 + localPressure * 0.22 + splay * 0.24), localTangentRadius * (0.84 + drag * 0.34 + bend * 0.18));
+        if (writeOutput)
+        {
+            uint index = ((outputStrokeIndex * tuftCount) + tuft) * sampleCount + sample;
+            float pigmentSurvival = 0.74 + cohesion * 0.36 - split * 0.08;
+            float joinBlend = SegmentJoinBlend(stroke, t);
+            float localPigment = saturate((deposition * (7.5 + contact * 2.5) + contact * stateLoad * stateWet * 0.24 + adhesion * contact * 0.10) * pigmentSurvival * stroke.dynamics.z * joinBlend);
+            float trace = saturate((contact * (0.30 + stateLoad * 0.42 + adhesion * 0.20) + deposition * 1.8) * joinBlend);
+            BokushoTraceField[index] = trace;
+            BokushoCanvasField[index] = localPigment;
+            BokushoTipField[index] = float4(tip, localNormalRadius * (0.70 + localPressure * 0.22 + splay * 0.24), localTangentRadius * (0.84 + drag * 0.34 + bend * 0.18));
+        }
     }
+}
+
+[numthreads(128, 1, 1)]
+void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint sampleCount = max((uint)round(brushShape.x), 2u);
+    uint tuftCount = max((uint)round(brushShape.y), 1u);
+    uint strokeCount = max((uint)round(brushShape.w), 1u);
+    uint globalIndex = dispatchThreadId.x;
+    uint strokeIndex = globalIndex / tuftCount;
+    uint tuft = globalIndex - strokeIndex * tuftCount;
+    if (strokeIndex >= strokeCount || tuft >= tuftCount)
+    {
+        return;
+    }
+
+    BokushoBrushStroke stroke = BokushoBrushStrokes[strokeIndex];
+    uint chainStart = StrokeChainStart(strokeIndex);
+    BokushoBrushStroke seedStroke = BokushoBrushStrokes[chainStart];
+    float laneT = tuftCount <= 1u ? 0.5 : (float)tuft / (float)(tuftCount - 1u);
+    float restOffset = laneT * 2.0 - 1.0;
+    float edge = abs(restOffset);
+    float laneHash = LaneHash(chainStart, tuft, 17u);
+    float laneLoad = 0.76 + laneHash * 0.34;
+    float seedPressure = saturate(brushMaterial.y * seedStroke.profile.y * 0.5) * 2.0;
+    float wetness = saturate(brushMaterial.w / 1.6);
+    float load = saturate(brushMaterial.z / 2.0);
+    float splay = saturate(brushDynamics.x / 2.0);
+    float seedRadius = max(brushMaterial.x * seedStroke.profile.x, 0.0001);
+    float seedNormalRadius = max(seedRadius * seedStroke.profile.z, 0.0001);
+    float seedSplit = saturate((0.20 - LaneHash(chainStart, tuft, 53u)) * 4.0) * saturate((edge - 0.18) * 1.7) * seedStroke.dynamics.w;
+    float initialCohesion = LaneCohesion(edge, seedSplit, wetness, seedPressure);
+    float2 tip = StrokePoint(seedStroke, 0.0);
+    float poseBias = seedStroke.pose.x * 0.18 + seedStroke.pose.y * 0.08;
+    float offset = (restOffset + poseBias * (1.0 - edge * 0.35)) * seedNormalRadius * (0.42 + splay * 0.38) + (laneHash - 0.5) * seedNormalRadius * 0.05;
+    float stateLoad = load * (0.62 + initialCohesion * 0.46) * (1.0 - edge * 0.18) * laneLoad * (1.0 - seedSplit * 0.36);
+    float stateWet = wetness * (0.74 + initialCohesion * 0.24 - seedSplit * 0.08);
+
+    [loop]
+    for (uint replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex += 1u)
+    {
+        SimulateBokushoTuftSegment(BokushoBrushStrokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, tuftCount, restOffset, edge, offset, tip, stateLoad, stateWet, false);
+    }
+
+    SimulateBokushoTuftSegment(stroke, strokeIndex, chainStart, tuft, sampleCount, tuftCount, restOffset, edge, offset, tip, stateLoad, stateWet, true);
 }

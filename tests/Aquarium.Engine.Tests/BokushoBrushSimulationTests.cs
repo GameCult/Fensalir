@@ -342,6 +342,26 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushLaneCoreCarriesLoadedBodyWhileEdgesBreakDry()
+    {
+        var frame = LaneCohesionFrame(wetness: 0.68f, inkLoad: 1.46f, splay: 1.08f);
+
+        var result = BokushoBrushSimulation.Evaluate(frame);
+        var centerTuft = result.TuftCount / 2;
+        var edgeTuft = 0;
+        var center = result.Canvas.Skip(centerTuft * result.SampleCount).Take(result.SampleCount).ToArray();
+        var edge = result.Canvas.Skip(edgeTuft * result.SampleCount).Take(result.SampleCount).ToArray();
+        var centerSum = center.Sum();
+        var edgeSum = edge.Sum();
+        var centerBodySamples = center.Count(value => value > 0.10f);
+        var edgeDryBreaks = edge.Count(value => value < 0.035f);
+
+        Assert.True(centerSum > edgeSum * 2.2f);
+        Assert.True(centerBodySamples > result.SampleCount / 3);
+        Assert.True(edgeDryBreaks > result.SampleCount / 2);
+    }
+
+    [Fact]
     public void CpuBrushGeometryEnrichesCurvedStrokePressureAndWidth()
     {
         var straight = GestureFrame(curved: false);
@@ -484,7 +504,7 @@ public sealed class BokushoBrushSimulationTests
         };
     }
 
-    private static AquariumBokushoBrushFrame LaneCohesionFrame(float wetness)
+    private static AquariumBokushoBrushFrame LaneCohesionFrame(float wetness, float inkLoad = 1.32f, float splay = 0.92f)
     {
         return new AquariumBokushoBrushFrame
         {
@@ -493,9 +513,9 @@ public sealed class BokushoBrushSimulationTests
             PhysicsHz = 500.0f,
             BrushRadius = 1.2f,
             Pressure = 0.88f,
-            InkLoad = 1.32f,
+            InkLoad = inkLoad,
             Wetness = wetness,
-            Splay = 0.92f,
+            Splay = splay,
             Bend = 0.78f,
             Friction = 0.70f,
             Strokes =

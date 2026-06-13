@@ -170,21 +170,29 @@ public static class BokushoBrushSimulation
             var tension = Saturate(MathF.Abs(targetOffset - offset) / MathF.Max(localNormalRadius, 0.001f) * 0.38f + velocity * 0.018f + drag * 0.46f);
             var separation = Saturate(edge * 0.18f + tension * (0.24f + split * 0.18f) + velocity * 0.008f - stateWet * (0.12f + cohesion * 0.10f));
             var adhesion = Saturate(stateWet * (0.44f + cohesion * 0.28f + localPressure * 0.20f) - separation * 0.16f - tension * 0.07f);
-            var deposition = contact * stateLoad * stateWet * Saturate(0.10f + drag * 0.72f + velocity * 0.010f) * (0.74f + separation * 0.18f + cohesion * 0.26f);
+            var laneCore = SmoothStep(0.0f, 0.74f, 1.0f - edge);
+            var edgeComb = Saturate(edge * 1.08f + split * 0.26f + separation * 0.34f - cohesion * 0.12f);
+            var dryMemory = Saturate((1.0f - stateWet) * 0.68f + edgeComb * 0.42f + velocity * 0.004f - localPressure * 0.10f);
+            var fiberNoise = LaneHash(laneKey + sample * 13, tuft, 101);
+            var fiberGate = SmoothStep(0.20f + dryMemory * 0.24f, 0.96f, fiberNoise);
+            var depositBody = 0.70f + laneCore * 0.58f - edgeComb * 0.14f;
+            var depositIntermittency = 1.0f - fiberGate * dryMemory * (0.48f + edge * 0.24f);
+            var deposition = contact * stateLoad * stateWet * Saturate(0.10f + drag * 0.72f + velocity * 0.010f) * (0.74f + separation * 0.18f + cohesion * 0.26f) * depositBody * depositIntermittency;
             stateLoad = MathF.Max(0.0f, stateLoad - deposition * (0.032f + localPressure * 0.020f - cohesion * 0.008f));
-            stateWet = MathF.Max(0.0f, stateWet - deposition * 0.010f);
+            stateWet = MathF.Max(0.0f, stateWet - deposition * (0.010f + dryMemory * 0.004f + edgeComb * 0.003f));
 
             if (writeOutput)
             {
                 var index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
-                var pigmentSurvival = 0.74f + cohesion * 0.36f - split * 0.08f;
+                var pigmentSurvival = 0.62f + cohesion * 0.30f + laneCore * 0.36f - split * 0.08f - dryMemory * 0.12f;
                 var joinBlend = SegmentJoinBlend(stroke, t);
-                canvas[index] = Saturate((deposition * (7.5f + contact * 2.5f) + contact * stateLoad * stateWet * 0.24f + adhesion * contact * 0.10f) * pigmentSurvival * stroke.PigmentScale * joinBlend);
-                trace[index] = Saturate((contact * (0.30f + stateLoad * 0.42f + adhesion * 0.20f) + deposition * 1.8f) * joinBlend);
+                var pigment = deposition * (8.4f + contact * 2.8f) + contact * stateLoad * stateWet * (0.14f + laneCore * 0.18f) + adhesion * contact * 0.08f;
+                canvas[index] = Saturate(pigment * pigmentSurvival * stroke.PigmentScale * joinBlend);
+                trace[index] = Saturate((contact * (0.24f + stateLoad * 0.36f + adhesion * 0.18f + laneCore * 0.12f) + deposition * 1.9f) * joinBlend);
                 tips[index] = new Vector4(
                     tip.X,
                     tip.Y,
-                    localNormalRadius * (0.70f + localPressure * 0.22f + splay * 0.24f),
+                    localNormalRadius * (0.54f + laneCore * 0.24f + localPressure * 0.22f + splay * 0.20f - split * 0.04f),
                     localTangentRadius * (0.84f + drag * 0.34f + bend * 0.18f));
             }
         }

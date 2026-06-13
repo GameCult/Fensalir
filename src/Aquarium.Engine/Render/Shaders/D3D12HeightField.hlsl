@@ -316,8 +316,6 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float gestureWidth = bokushoStrokeGestureWidthShape(stroke, bestT);
     float poseSpread = saturate(0.92 + abs(stroke.pose.x) * 0.22 + stroke.pose.w * 0.10 - stroke.pose.z * 0.04);
     float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * bokushoStrokeNormalRadiusShape(taper) * gestureWidth * poseSpread, 0.0001);
-    float strokeExtent = length(stroke.p3.xy - stroke.p0.xy);
-    float releaseSpan = smoothstep(0.42, 1.18, strokeExtent);
     float splay = saturate(bokushoDynamics.x / 2.0);
     float poseContact = 0.90 + stroke.pose.w * 0.10 + (1.0 - saturate(stroke.pose.z / 2.4)) * 0.10;
     float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper * bokushoStrokePressureShape(stroke, bestT) * bokushoStrokeGesturePressureShape(stroke, bestT) * poseContact;
@@ -330,7 +328,6 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     uint paperKey = stroke.p3.w >= 0.0 ? (uint)round(stroke.p3.w) : strokeIndex;
     float tooth = bokushoPaperTooth(world, paperKey);
     float edge = saturate(distance / max(footprint * 0.96, 0.001));
-    float dryIslandLift = smoothstep(0.66, 0.20, saturate(bokushoMaterial.w / 1.6));
     float dryBreak = smoothstep(0.18 + tooth * 0.18, 0.92, edge)
         * (1.0 - saturate(bokushoMaterial.w / 1.6))
         * (0.34 + stroke.dynamics.w * 0.12);
@@ -339,8 +336,6 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     uint centerTuft = min((uint)round(tuftT * (float)max((int)tuftCount - 1, 0)), tuftCount - 1u);
     float pigmentPeak = 0.0;
     float pigmentFlow = 0.0;
-    float dryIslandPeak = 0.0;
-    float dryFleckPeak = 0.0;
 
     [unroll]
     for (int sampleDelta = -3; sampleDelta <= 3; sampleDelta += 1)
@@ -403,12 +398,8 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
 
             uint previousSampleIndex = min((uint)max(previousSampleIndexValue, 0), sampleCount - 1u);
             float4 previousTip = bokushoTipSample(previousStrokeIndex, previousSampleIndex, tuftIndex);
-            uint nextSampleIndex = min(sampleIndex + 1u, sampleCount - 1u);
-            float previousPigment = BokushoCanvasField[((previousStrokeIndex * tuftCount) + tuftIndex) * sampleCount + previousSampleIndex];
-            float nextPigment = BokushoCanvasField[((sampleStrokeIndex * tuftCount) + tuftIndex) * sampleCount + nextSampleIndex];
             float2 sweep = tip.xy - previousTip.xy;
             float sweepLengthSquared = dot(sweep, sweep);
-            float sweepLength = sqrt(sweepLengthSquared);
             float sweepT = sweepLengthSquared <= 0.000001 ? 1.0 : saturate(dot(world - previousTip.xy, sweep) / sweepLengthSquared);
             float2 contactPoint = previousTip.xy + sweep * sweepT;
             float sweepDistance = length(world - contactPoint);
@@ -420,8 +411,6 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
             float tipContact = max(smoothstep(1.0, 0.0, ellipse), sweepContact * 0.86);
             float longitudinalGate = smoothstep(1.0, 0.0, abs(tangentDistance) * 0.62);
             float pigment = BokushoCanvasField[((sampleStrokeIndex * tuftCount) + tuftIndex) * sampleCount + sampleIndex];
-            float neighborPigment = max(previousPigment, nextPigment);
-            float releasePigment = smoothstep(0.12, 0.68, pigment) * smoothstep(0.030, 0.16, pigment - neighborPigment);
             float contribution = pigment
                 * tipContact
                 * (0.006 + contactCore * 0.994)
@@ -430,98 +419,11 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
                 * (0.82 + sweepContact * 0.24);
             pigmentPeak = max(pigmentPeak, contribution);
             pigmentFlow += contribution;
-
-            float laneT = tuftCount <= 1u ? 0.5 : (float)tuftIndex / (float)(tuftCount - 1u);
-            float laneEdge = abs(laneT * 2.0 - 1.0);
-            float2 islandSeedPoint = contactPoint * 34.0 + float2((float)tuftIndex * 0.19, (float)sampleIndex * 0.13);
-            float islandSeed = bokushoHashNoiseCell(islandSeedPoint, paperKey, 0x510E527Fu);
-            float thinPigment = smoothstep(0.006, 0.075, pigment) * (1.0 - smoothstep(0.22, 0.55, pigment));
-            float islandPigment = max(thinPigment, releasePigment * 0.72);
-            float sweepStride = sweepLength / max(tip.z, 0.001);
-            float releaseMotion = smoothstep(0.10, 0.42, sweepStride);
-            float releaseAuthority = releaseSpan * releaseMotion;
-            float islandGate = smoothstep(0.38, 0.88, laneEdge)
-                * dryIslandLift
-                * islandPigment
-                * smoothstep(0.25, 0.88, tooth)
-                * smoothstep(0.42, 0.92, islandSeed);
-            if (islandGate > 0.0)
-            {
-                float side = islandSeed < 0.78 ? -1.0 : 1.0;
-                float2 islandCenter = contactPoint
-                    + sampleNormal * side * tip.z * (0.88 + laneEdge * 0.55)
-                    + sampleTangent * (islandSeed - 0.5) * tip.w * 0.22;
-                float islandRadius = max(tip.z * (0.30 + laneEdge * 0.22), 0.060);
-                float islandDistance = length(world - islandCenter);
-                float islandContact = smoothstep(1.0, 0.0, islandDistance / islandRadius);
-                dryIslandPeak = max(dryIslandPeak, pigment * islandGate * islandContact * 5.2);
-
-                float2 fleckSeedPoint = contactPoint * 61.0 + float2((float)sampleIndex * 0.17, (float)tuftIndex * 0.23);
-                float fleckSeed = bokushoHashNoiseCell(fleckSeedPoint, paperKey, 0xF1E57A2Du);
-                float fleckGate = islandGate
-                    * smoothstep(0.44 - releasePigment * 0.18, 0.88, fleckSeed)
-                    * smoothstep(0.56, 1.0, laneEdge)
-                    * (0.12 + releaseAuthority * 0.88)
-                    * (1.0 + releasePigment * 1.15);
-                if (fleckGate > 0.0)
-                {
-                    float fleckSide = fleckSeed < 0.86 ? side : -side;
-                    float fleckReach = 0.72 + releaseAuthority * 0.28;
-                    float2 fleckCenter = contactPoint
-                        + sampleNormal * fleckSide * tip.z * (1.92 + laneEdge * 0.82 + fleckSeed * 0.36) * fleckReach
-                        + sampleTangent * (fleckSeed - 0.5) * tip.w * 0.42 * fleckReach;
-                    float fleckRadius = max(tip.z * (0.12 + laneEdge * 0.05), 0.030);
-                    float fleckDistance = length(world - fleckCenter);
-                    float fleckContact = smoothstep(1.0, 0.0, fleckDistance / fleckRadius);
-                    dryFleckPeak = max(dryFleckPeak, pigment * fleckGate * fleckContact * 22.0);
-                }
-
-                float2 fraySeedPoint = contactPoint * 47.0 + float2((float)sampleIndex * 0.29, (float)tuftIndex * 0.37);
-                float fraySeed = bokushoHashNoiseCell(fraySeedPoint, paperKey, 0x8D3F9A21u);
-                float frayGate = islandGate
-                    * releasePigment
-                    * (0.40 + releaseAuthority * 0.60)
-                    * smoothstep(0.28, 0.82, fraySeed);
-                if (frayGate > 0.0)
-                {
-                    float fraySide = fraySeed < 0.70 ? side : -side;
-                    float frayReach = 0.78 + releaseAuthority * 0.22;
-                    float2 frayCenter = contactPoint
-                        + sampleNormal * fraySide * tip.z * (1.48 + laneEdge * 0.62 + fraySeed * 0.30) * frayReach
-                        + sampleTangent * (fraySeed - 0.5) * tip.w * 0.34 * frayReach;
-                    float frayRadius = max(tip.z * (0.095 + laneEdge * 0.040), 0.024);
-                    float frayDistance = length(world - frayCenter);
-                    float frayContact = smoothstep(1.0, 0.0, frayDistance / frayRadius);
-                    dryFleckPeak = max(dryFleckPeak, pigment * frayGate * frayContact * 26.0);
-                }
-
-                float2 satelliteSeedPoint = contactPoint * 83.0 + float2((float)tuftIndex * 0.31, (float)sampleIndex * 0.11);
-                float satelliteSeed = bokushoHashNoiseCell(satelliteSeedPoint, paperKey, 0x5A771EAFu);
-                float satelliteGate = islandGate
-                    * releasePigment
-                    * releaseAuthority
-                    * smoothstep(0.66, 1.0, laneEdge)
-                    * smoothstep(0.36, 0.86, satelliteSeed);
-                if (satelliteGate > 0.0)
-                {
-                    float satelliteSide = satelliteSeed < 0.52 ? side : -side;
-                    float satelliteReach = 0.62 + releaseAuthority * 0.38;
-                    float2 satelliteCenter = contactPoint
-                        + sampleNormal * satelliteSide * tip.z * (2.02 + laneEdge * 0.78 + satelliteSeed * 0.34) * satelliteReach
-                        + sampleTangent * (satelliteSeed - 0.5) * tip.w * 0.50 * satelliteReach;
-                    float satelliteRadius = max(tip.z * (0.075 + laneEdge * 0.035), 0.020);
-                    float satelliteDistance = length(world - satelliteCenter);
-                    float satelliteContact = smoothstep(1.0, 0.0, satelliteDistance / satelliteRadius);
-                    dryFleckPeak = max(dryFleckPeak, pigment * satelliteGate * satelliteContact * 38.0);
-                }
-            }
         }
     }
 
     float decisiveInk = saturate((pigmentPeak - 0.012) * 2.25 + pigmentFlow * 0.002);
-    float islandInk = saturate((dryIslandPeak - 0.001) * 14.0);
-    float fleckInk = saturate((dryFleckPeak - 0.001) * 36.0);
-    return saturate(decisiveInk + islandInk + fleckInk) * hold * projectionGate * (0.36 + pressure * 0.44 + saturate(bokushoMaterial.z * 0.5) * 0.20);
+    return decisiveInk * hold * projectionGate * (0.36 + pressure * 0.44 + saturate(bokushoMaterial.z * 0.5) * 0.20);
 }
 
 float bokushoPageHeight(float2 world)

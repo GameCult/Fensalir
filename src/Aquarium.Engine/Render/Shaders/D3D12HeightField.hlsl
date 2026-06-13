@@ -316,6 +316,8 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float gestureWidth = bokushoStrokeGestureWidthShape(stroke, bestT);
     float poseSpread = saturate(0.92 + abs(stroke.pose.x) * 0.22 + stroke.pose.w * 0.10 - stroke.pose.z * 0.04);
     float radius = max(bokushoMaterial.x * stroke.profile.x * stroke.profile.z * bokushoStrokeNormalRadiusShape(taper) * gestureWidth * poseSpread, 0.0001);
+    float strokeExtent = length(stroke.p3.xy - stroke.p0.xy);
+    float releaseSpan = smoothstep(0.42, 1.18, strokeExtent);
     float splay = saturate(bokushoDynamics.x / 2.0);
     float poseContact = 0.90 + stroke.pose.w * 0.10 + (1.0 - saturate(stroke.pose.z / 2.4)) * 0.10;
     float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper * bokushoStrokePressureShape(stroke, bestT) * bokushoStrokeGesturePressureShape(stroke, bestT) * poseContact;
@@ -405,6 +407,7 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
             float nextPigment = BokushoCanvasField[((sampleStrokeIndex * tuftCount) + tuftIndex) * sampleCount + nextSampleIndex];
             float2 sweep = tip.xy - previousTip.xy;
             float sweepLengthSquared = dot(sweep, sweep);
+            float sweepLength = sqrt(sweepLengthSquared);
             float sweepT = sweepLengthSquared <= 0.000001 ? 1.0 : saturate(dot(world - previousTip.xy, sweep) / sweepLengthSquared);
             float2 contactPoint = previousTip.xy + sweep * sweepT;
             float sweepDistance = length(world - contactPoint);
@@ -433,6 +436,9 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
             float islandSeed = bokushoHashNoiseCell(islandSeedPoint, paperKey, 0x510E527Fu);
             float thinPigment = smoothstep(0.006, 0.075, pigment) * (1.0 - smoothstep(0.22, 0.55, pigment));
             float islandPigment = max(thinPigment, releasePigment * 0.72);
+            float sweepStride = sweepLength / max(tip.z, 0.001);
+            float releaseMotion = smoothstep(0.10, 0.42, sweepStride);
+            float releaseAuthority = releaseSpan * releaseMotion;
             float islandGate = smoothstep(0.38, 0.88, laneEdge)
                 * dryIslandLift
                 * islandPigment
@@ -454,13 +460,15 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
                 float fleckGate = islandGate
                     * smoothstep(0.44 - releasePigment * 0.18, 0.88, fleckSeed)
                     * smoothstep(0.56, 1.0, laneEdge)
+                    * (0.12 + releaseAuthority * 0.88)
                     * (1.0 + releasePigment * 1.15);
                 if (fleckGate > 0.0)
                 {
                     float fleckSide = fleckSeed < 0.86 ? side : -side;
+                    float fleckReach = 0.72 + releaseAuthority * 0.28;
                     float2 fleckCenter = contactPoint
-                        + sampleNormal * fleckSide * tip.z * (1.92 + laneEdge * 0.82 + fleckSeed * 0.36)
-                        + sampleTangent * (fleckSeed - 0.5) * tip.w * 0.42;
+                        + sampleNormal * fleckSide * tip.z * (1.92 + laneEdge * 0.82 + fleckSeed * 0.36) * fleckReach
+                        + sampleTangent * (fleckSeed - 0.5) * tip.w * 0.42 * fleckReach;
                     float fleckRadius = max(tip.z * (0.12 + laneEdge * 0.05), 0.030);
                     float fleckDistance = length(world - fleckCenter);
                     float fleckContact = smoothstep(1.0, 0.0, fleckDistance / fleckRadius);
@@ -471,13 +479,15 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
                 float fraySeed = bokushoHashNoiseCell(fraySeedPoint, paperKey, 0x8D3F9A21u);
                 float frayGate = islandGate
                     * releasePigment
+                    * (0.40 + releaseAuthority * 0.60)
                     * smoothstep(0.28, 0.82, fraySeed);
                 if (frayGate > 0.0)
                 {
                     float fraySide = fraySeed < 0.70 ? side : -side;
+                    float frayReach = 0.78 + releaseAuthority * 0.22;
                     float2 frayCenter = contactPoint
-                        + sampleNormal * fraySide * tip.z * (1.48 + laneEdge * 0.62 + fraySeed * 0.30)
-                        + sampleTangent * (fraySeed - 0.5) * tip.w * 0.34;
+                        + sampleNormal * fraySide * tip.z * (1.48 + laneEdge * 0.62 + fraySeed * 0.30) * frayReach
+                        + sampleTangent * (fraySeed - 0.5) * tip.w * 0.34 * frayReach;
                     float frayRadius = max(tip.z * (0.095 + laneEdge * 0.040), 0.024);
                     float frayDistance = length(world - frayCenter);
                     float frayContact = smoothstep(1.0, 0.0, frayDistance / frayRadius);
@@ -488,14 +498,16 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
                 float satelliteSeed = bokushoHashNoiseCell(satelliteSeedPoint, paperKey, 0x5A771EAFu);
                 float satelliteGate = islandGate
                     * releasePigment
+                    * releaseAuthority
                     * smoothstep(0.66, 1.0, laneEdge)
                     * smoothstep(0.36, 0.86, satelliteSeed);
                 if (satelliteGate > 0.0)
                 {
                     float satelliteSide = satelliteSeed < 0.52 ? side : -side;
+                    float satelliteReach = 0.62 + releaseAuthority * 0.38;
                     float2 satelliteCenter = contactPoint
-                        + sampleNormal * satelliteSide * tip.z * (2.02 + laneEdge * 0.78 + satelliteSeed * 0.34)
-                        + sampleTangent * (satelliteSeed - 0.5) * tip.w * 0.50;
+                        + sampleNormal * satelliteSide * tip.z * (2.02 + laneEdge * 0.78 + satelliteSeed * 0.34) * satelliteReach
+                        + sampleTangent * (satelliteSeed - 0.5) * tip.w * 0.50 * satelliteReach;
                     float satelliteRadius = max(tip.z * (0.075 + laneEdge * 0.035), 0.020);
                     float satelliteDistance = length(world - satelliteCenter);
                     float satelliteContact = smoothstep(1.0, 0.0, satelliteDistance / satelliteRadius);

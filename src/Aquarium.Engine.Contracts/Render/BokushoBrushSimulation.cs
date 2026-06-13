@@ -410,6 +410,8 @@ public static class BokushoBrushSimulation
         var gestureWidth = StrokeGestureWidthShape(stroke, bestT, sampleCount);
         var poseSpread = Saturate(0.92f + MathF.Abs(stroke.ShaftTilt) * 0.22f + stroke.Compliance * 0.10f - stroke.GripHeight * 0.04f);
         var radius = MathF.Max(frame.BrushRadius * stroke.RadiusScale * stroke.NormalScale * StrokeNormalRadiusShape(taper) * gestureWidth * poseSpread, 0.0001f);
+        var strokeExtent = Vector2.Distance(new Vector2(stroke.StrokeP3.X, stroke.StrokeP3.Y), new Vector2(stroke.StrokeP0.X, stroke.StrokeP0.Y));
+        var releaseSpan = SmoothStep(0.42f, 1.18f, strokeExtent);
         var splay = Saturate(frame.Splay / 2.0f);
         var pressure = Saturate(frame.Pressure * stroke.PressureScale * 0.5f) * taper;
         var poseContact = 0.90f + stroke.Compliance * 0.10f + (1.0f - Saturate(stroke.GripHeight / 2.4f)) * 0.10f;
@@ -501,6 +503,7 @@ public static class BokushoBrushSimulation
                 var previousTipPoint = new Vector2(previousTip.X, previousTip.Y);
                 var sweep = tipPoint - previousTipPoint;
                 var sweepLengthSquared = sweep.LengthSquared();
+                var sweepLength = MathF.Sqrt(sweepLengthSquared);
                 var sweepT = sweepLengthSquared <= 0.000001f
                     ? 1.0f
                     : Saturate(Vector2.Dot(world - previousTipPoint, sweep) / sweepLengthSquared);
@@ -528,6 +531,9 @@ public static class BokushoBrushSimulation
                 var islandSeed = HashNoiseCell(islandSeedPoint, paperKey, 0x510E527Fu);
                 var thinPigment = SmoothStep(0.006f, 0.075f, pigment) * (1.0f - SmoothStep(0.22f, 0.55f, pigment));
                 var islandPigment = MathF.Max(thinPigment, releasePigment * 0.72f);
+                var sweepStride = sweepLength / MathF.Max(tip.Z, 0.001f);
+                var releaseMotion = SmoothStep(0.10f, 0.42f, sweepStride);
+                var releaseAuthority = releaseSpan * releaseMotion;
                 var islandGate = SmoothStep(0.38f, 0.88f, laneEdge)
                     * dryIslandLift
                     * islandPigment
@@ -549,13 +555,15 @@ public static class BokushoBrushSimulation
                     var fleckGate = islandGate
                         * SmoothStep(0.44f - releasePigment * 0.18f, 0.88f, fleckSeed)
                         * SmoothStep(0.56f, 1.0f, laneEdge)
+                        * (0.12f + releaseAuthority * 0.88f)
                         * (1.0f + releasePigment * 1.15f);
                     if (fleckGate > 0.0f)
                     {
                         var fleckSide = fleckSeed < 0.86f ? side : -side;
+                        var fleckReach = 0.72f + releaseAuthority * 0.28f;
                         var fleckCenter = contactPoint
-                            + sampleNormal * fleckSide * tip.Z * (1.92f + laneEdge * 0.82f + fleckSeed * 0.36f)
-                            + sampleTangent * (fleckSeed - 0.5f) * tip.W * 0.42f;
+                            + sampleNormal * fleckSide * tip.Z * (1.92f + laneEdge * 0.82f + fleckSeed * 0.36f) * fleckReach
+                            + sampleTangent * (fleckSeed - 0.5f) * tip.W * 0.42f * fleckReach;
                         var fleckRadius = MathF.Max(tip.Z * (0.12f + laneEdge * 0.05f), 0.030f);
                         var fleckDistance = MathF.Sqrt(Vector2.DistanceSquared(world, fleckCenter));
                         var fleckContact = SmoothStep(1.0f, 0.0f, fleckDistance / fleckRadius);
@@ -566,13 +574,15 @@ public static class BokushoBrushSimulation
                     var fraySeed = HashNoiseCell(fraySeedPoint, paperKey, 0x8D3F9A21u);
                     var frayGate = islandGate
                         * releasePigment
+                        * (0.40f + releaseAuthority * 0.60f)
                         * SmoothStep(0.28f, 0.82f, fraySeed);
                     if (frayGate > 0.0f)
                     {
                         var fraySide = fraySeed < 0.70f ? side : -side;
+                        var frayReach = 0.78f + releaseAuthority * 0.22f;
                         var frayCenter = contactPoint
-                            + sampleNormal * fraySide * tip.Z * (1.48f + laneEdge * 0.62f + fraySeed * 0.30f)
-                            + sampleTangent * (fraySeed - 0.5f) * tip.W * 0.34f;
+                            + sampleNormal * fraySide * tip.Z * (1.48f + laneEdge * 0.62f + fraySeed * 0.30f) * frayReach
+                            + sampleTangent * (fraySeed - 0.5f) * tip.W * 0.34f * frayReach;
                         var frayRadius = MathF.Max(tip.Z * (0.095f + laneEdge * 0.040f), 0.024f);
                         var frayDistance = MathF.Sqrt(Vector2.DistanceSquared(world, frayCenter));
                         var frayContact = SmoothStep(1.0f, 0.0f, frayDistance / frayRadius);
@@ -583,14 +593,16 @@ public static class BokushoBrushSimulation
                     var satelliteSeed = HashNoiseCell(satelliteSeedPoint, paperKey, 0x5A771EAFu);
                     var satelliteGate = islandGate
                         * releasePigment
+                        * releaseAuthority
                         * SmoothStep(0.66f, 1.0f, laneEdge)
                         * SmoothStep(0.36f, 0.86f, satelliteSeed);
                     if (satelliteGate > 0.0f)
                     {
                         var satelliteSide = satelliteSeed < 0.52f ? side : -side;
+                        var satelliteReach = 0.62f + releaseAuthority * 0.38f;
                         var satelliteCenter = contactPoint
-                            + sampleNormal * satelliteSide * tip.Z * (2.02f + laneEdge * 0.78f + satelliteSeed * 0.34f)
-                            + sampleTangent * (satelliteSeed - 0.5f) * tip.W * 0.50f;
+                            + sampleNormal * satelliteSide * tip.Z * (2.02f + laneEdge * 0.78f + satelliteSeed * 0.34f) * satelliteReach
+                            + sampleTangent * (satelliteSeed - 0.5f) * tip.W * 0.50f * satelliteReach;
                         var satelliteRadius = MathF.Max(tip.Z * (0.075f + laneEdge * 0.035f), 0.020f);
                         var satelliteDistance = MathF.Sqrt(Vector2.DistanceSquared(world, satelliteCenter));
                         var satelliteContact = SmoothStep(1.0f, 0.0f, satelliteDistance / satelliteRadius);

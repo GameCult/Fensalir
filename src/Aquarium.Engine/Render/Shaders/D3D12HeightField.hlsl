@@ -216,7 +216,7 @@ float D3D12HeightFieldBasePS(VertexOut input) : SV_Target
     float2 world = viewWorld(saturate(input.uv));
     float slow = sin((world.x * 0.08 + world.y * 0.06) + timeSeconds * 0.27)
         * sin((world.x * -0.04 + world.y * 0.07) - timeSeconds * 0.19) * 0.035;
-    return slow + bokushoPageHeight(world);
+    return slow + bokushoPageHeight(world) * 3.0;
 }
 
 BrushVertexOut D3D12HeightFieldBrushVS(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)

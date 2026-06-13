@@ -336,12 +336,18 @@ float3 fractalStarClusters(float3 direction)
 
 float3 surfaceMirrorRadiance(float3 p, float3 direction, out float3 normal)
 {
+    float height = terrainHeight(p.xy);
     float2 gradient = terrainGradient(p.xy);
     normal = normalize(float3(-gradient.x, -gradient.y, 1.0));
+    float slope = length(gradient);
     float3 reflectionDirection = reflect(direction, normal);
-    float flatness = 1.0 - smoothstep(SURFACE_FLAT_SLOPE_START, SURFACE_FLAT_SLOPE_END, length(gradient));
+    float flatness = 1.0 - smoothstep(SURFACE_FLAT_SLOPE_START, SURFACE_FLAT_SLOPE_END, slope);
     float lod = flatness * SURFACE_FLAT_REFLECTION_MAX_LOD;
-    return studioPmremConeSample(reflectionDirection, lod, flatness * 0.055);
+    float3 reflected = studioPmremConeSample(reflectionDirection, lod, flatness * 0.055);
+    float inkMass = saturate((height - 0.028) * 14.0 + smoothstep(0.04, 0.20, slope) * 0.42);
+    float3 paper = float3(0.78, 0.68, 0.48) * (0.46 + flatness * 0.22);
+    float3 ink = float3(0.010, 0.008, 0.006);
+    return lerp(reflected + paper * 0.28, ink, inkMass * 0.86);
 }
 
 float3 backgroundRadiance(float3 direction)

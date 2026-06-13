@@ -138,9 +138,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootBokushoBrushTrace = 1;
     private const int RootBokushoBrushCanvas = 2;
     private const int RootBokushoBrushStrokes = 3;
-    private const int RootBokushoPageConstants = 23;
-    private const int RootBokushoPageCanvas = 24;
-    private const int RootBokushoPageStrokes = 25;
+    private const int RootBokushoPageConstants = 24;
+    private const int RootBokushoPageCanvas = 25;
+    private const int RootBokushoPageStrokes = 26;
     private static readonly DebugUi.DebugUiOption[] RenderDebugOptions =
     [
         new(0, "Final"),

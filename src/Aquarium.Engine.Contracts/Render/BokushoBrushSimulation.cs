@@ -501,7 +501,8 @@ public static class BokushoBrushSimulation
             }
         }
 
-        return Saturate(pigmentPeak * 1.75f + pigmentFlow * 0.004f) * hold * projectionGate * (0.36f + pressure * 0.44f + Saturate(frame.InkLoad * 0.5f) * 0.20f);
+        var decisiveInk = Saturate((pigmentPeak - 0.012f) * 2.25f + pigmentFlow * 0.002f);
+        return decisiveInk * hold * projectionGate * (0.36f + pressure * 0.44f + Saturate(frame.InkLoad * 0.5f) * 0.20f);
     }
 
     private static bool CanBorrowSourceSample(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex, int candidateIndex)

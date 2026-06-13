@@ -417,7 +417,8 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
         }
     }
 
-    return saturate(pigmentPeak * 1.75 + pigmentFlow * 0.004) * hold * projectionGate * (0.36 + pressure * 0.44 + saturate(bokushoMaterial.z * 0.5) * 0.20);
+    float decisiveInk = saturate((pigmentPeak - 0.012) * 2.25 + pigmentFlow * 0.002);
+    return decisiveInk * hold * projectionGate * (0.36 + pressure * 0.44 + saturate(bokushoMaterial.z * 0.5) * 0.20);
 }
 
 float bokushoPageHeight(float2 world)

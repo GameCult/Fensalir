@@ -169,7 +169,8 @@ public static class BokushoBrushSimulation
             var desiredTip = center + normal * offset - dragVector * lag;
             var slip = desiredTip - tip;
             var poseContact = 0.90f + stroke.Compliance * 0.10f + (1.0f - Saturate(stroke.GripHeight / 2.4f)) * 0.10f;
-            var contact = Saturate(localPressure * poseContact * stateWet * stateLoad * (0.58f + cohesion * 0.40f + (1.0f - edge) * 0.18f));
+            var wetContact = Saturate(stateWet + (1.0f - stateWet) * (0.10f + edge * 0.22f + split * 0.12f));
+            var contact = Saturate(localPressure * poseContact * wetContact * stateLoad * (0.58f + cohesion * 0.40f + (1.0f - edge) * 0.18f));
             var drag = contact * friction * (0.38f + stateWet * 0.22f + edge * 0.18f);
             tip += slip * (1.0f - drag);
 
@@ -188,7 +189,8 @@ public static class BokushoBrushSimulation
             var bristleContinuity = 1.0f - bristleTear * (0.42f + dryMemory * 0.24f + edge * 0.16f);
             var depositBody = 0.70f + laneCore * 0.58f - edgeComb * 0.14f;
             var depositIntermittency = (1.0f - fiberGate * dryMemory * (0.48f + edge * 0.24f)) * bristleContinuity;
-            var deposition = contact * stateLoad * stateWet * Saturate(0.10f + drag * 0.72f + velocity * 0.010f) * (0.74f + separation * 0.18f + cohesion * 0.26f) * depositBody * depositIntermittency;
+            var wetFlow = Saturate(stateWet + (1.0f - stateWet) * (0.10f + edgeComb * 0.24f + separation * 0.18f));
+            var deposition = contact * stateLoad * wetFlow * Saturate(0.10f + drag * 0.72f + velocity * 0.010f) * (0.74f + separation * 0.18f + cohesion * 0.26f) * depositBody * depositIntermittency;
             var releaseNoise = LaneHash(laneKey + sample * 41, tuft, 307);
             var releaseGate = SmoothStep(0.38f, 0.92f, releaseNoise)
                 * bristleTear
@@ -197,7 +199,7 @@ public static class BokushoBrushSimulation
                 * (1.0f - laneCore * 0.72f);
             var dryRelease = contact
                 * stateLoad
-                * stateWet
+                * wetFlow
                 * releaseGate
                 * Saturate(0.18f + velocity * 0.012f + separation * 0.32f)
                 * (0.18f + edge * 0.34f);
@@ -416,14 +418,15 @@ public static class BokushoBrushSimulation
         var pressure = Saturate(frame.Pressure * stroke.PressureScale * 0.5f) * taper;
         var poseContact = 0.90f + stroke.Compliance * 0.10f + (1.0f - Saturate(stroke.GripHeight / 2.4f)) * 0.10f;
         pressure *= StrokePressureShape(strokeT, stroke.EntryTaper, stroke.ExitTaper) * StrokeGesturePressureShape(stroke, bestT, sampleCount) * poseContact;
-        var footprint = radius * (0.42f + splay * 0.74f + pressure * 0.18f);
+        var wetSpread = 0.86f + Saturate(frame.Wetness / 1.6f) * 0.18f;
+        var footprint = radius * wetSpread * (0.62f + splay * 0.88f + pressure * 0.34f + gestureWidth * 0.20f);
         var tuftT = Saturate(lateral / MathF.Max(footprint, 0.001f) * 0.5f + 0.5f);
         var distance = MathF.Sqrt(bestDistance);
-        var contact = SmoothStep(1.0f, 0.0f, distance / MathF.Max(footprint * 0.80f, 0.001f));
+        var contact = SmoothStep(1.0f, 0.0f, distance / MathF.Max(footprint * 0.96f, 0.001f));
         var contactCore = contact * contact * (3.0f - 2.0f * contact);
         var paperKey = stroke.SourceStrokeId >= 0 ? stroke.SourceStrokeId : strokeIndex;
         var tooth = PaperTooth(world, paperKey);
-        var edge = Saturate(distance / MathF.Max(footprint * 0.80f, 0.001f));
+        var edge = Saturate(distance / MathF.Max(footprint * 0.96f, 0.001f));
         var dryIslandLift = SmoothStep(0.66f, 0.20f, Saturate(frame.Wetness / 1.6f));
         var dryBreak = SmoothStep(0.18f + tooth * 0.18f, 0.92f, edge) * (1.0f - Saturate(frame.Wetness / 1.6f)) * (0.34f + stroke.SplitScale * 0.12f);
         var hold = Saturate(0.52f + tooth * 0.42f + pressure * 0.28f - dryBreak);

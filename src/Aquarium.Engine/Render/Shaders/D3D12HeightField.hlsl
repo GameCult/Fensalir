@@ -321,14 +321,15 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
     float splay = saturate(bokushoDynamics.x / 2.0);
     float poseContact = 0.90 + stroke.pose.w * 0.10 + (1.0 - saturate(stroke.pose.z / 2.4)) * 0.10;
     float pressure = saturate(bokushoMaterial.y * stroke.profile.y * 0.5) * taper * bokushoStrokePressureShape(stroke, bestT) * bokushoStrokeGesturePressureShape(stroke, bestT) * poseContact;
-    float footprint = radius * (0.42 + splay * 0.74 + pressure * 0.18);
+    float wetSpread = 0.86 + saturate(bokushoMaterial.w / 1.6) * 0.18;
+    float footprint = radius * wetSpread * (0.62 + splay * 0.88 + pressure * 0.34 + gestureWidth * 0.20);
     float tuftT = saturate(lateral / max(footprint, 0.001) * 0.5 + 0.5);
     float distance = sqrt(bestDistance);
-    float contact = smoothstep(1.0, 0.0, distance / max(footprint * 0.80, 0.001));
+    float contact = smoothstep(1.0, 0.0, distance / max(footprint * 0.96, 0.001));
     float contactCore = contact * contact * (3.0 - 2.0 * contact);
     uint paperKey = stroke.p3.w >= 0.0 ? (uint)round(stroke.p3.w) : strokeIndex;
     float tooth = bokushoPaperTooth(world, paperKey);
-    float edge = saturate(distance / max(footprint * 0.80, 0.001));
+    float edge = saturate(distance / max(footprint * 0.96, 0.001));
     float dryIslandLift = smoothstep(0.66, 0.20, saturate(bokushoMaterial.w / 1.6));
     float dryBreak = smoothstep(0.18 + tooth * 0.18, 0.92, edge)
         * (1.0 - saturate(bokushoMaterial.w / 1.6))

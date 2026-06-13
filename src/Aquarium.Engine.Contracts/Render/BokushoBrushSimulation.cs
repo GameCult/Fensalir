@@ -558,6 +558,23 @@ public static class BokushoBrushSimulation
                         var fleckContact = SmoothStep(1.0f, 0.0f, fleckDistance / fleckRadius);
                         dryFleckPeak = MathF.Max(dryFleckPeak, pigment * fleckGate * fleckContact * 22.0f);
                     }
+
+                    var satelliteSeedPoint = contactPoint * 83.0f + new Vector2(tuftIndex * 0.31f, sampleIndex * 0.11f);
+                    var satelliteSeed = HashNoiseCell(satelliteSeedPoint, paperKey, 0x5A771EAFu);
+                    var satelliteGate = islandGate
+                        * releasePigment
+                        * SmoothStep(0.36f, 0.86f, satelliteSeed);
+                    if (satelliteGate > 0.0f)
+                    {
+                        var satelliteSide = satelliteSeed < 0.52f ? side : -side;
+                        var satelliteCenter = contactPoint
+                            + sampleNormal * satelliteSide * tip.Z * (2.90f + laneEdge * 1.35f + satelliteSeed * 0.72f)
+                            + sampleTangent * (satelliteSeed - 0.5f) * tip.W * 0.82f;
+                        var satelliteRadius = MathF.Max(tip.Z * (0.075f + laneEdge * 0.035f), 0.020f);
+                        var satelliteDistance = MathF.Sqrt(Vector2.DistanceSquared(world, satelliteCenter));
+                        var satelliteContact = SmoothStep(1.0f, 0.0f, satelliteDistance / satelliteRadius);
+                        dryFleckPeak = MathF.Max(dryFleckPeak, pigment * satelliteGate * satelliteContact * 38.0f);
+                    }
                 }
             }
         }

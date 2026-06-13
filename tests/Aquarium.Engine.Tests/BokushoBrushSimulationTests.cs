@@ -402,7 +402,7 @@ public sealed class BokushoBrushSimulationTests
         var isolatedPage = BokushoBrushSimulation.ProjectCanvasToPage(dry, isolatedCanvas, result.Tips, 128, 128, Vector2.Zero, 4.0f);
         var isolatedSmallComponents = CountSmallPageComponents(isolatedPage, 128, 128, threshold: 0.018f, maxSize: 28);
 
-        Assert.True(isolatedSmallComponents > 12, $"isolated={isolatedSmallComponents}");
+        Assert.True(isolatedSmallComponents > 18, $"isolated={isolatedSmallComponents}");
     }
 
     [Fact]

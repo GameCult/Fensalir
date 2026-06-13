@@ -459,6 +459,23 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
                     float fleckContact = smoothstep(1.0, 0.0, fleckDistance / fleckRadius);
                     dryFleckPeak = max(dryFleckPeak, pigment * fleckGate * fleckContact * 22.0);
                 }
+
+                float2 satelliteSeedPoint = contactPoint * 83.0 + float2((float)tuftIndex * 0.31, (float)sampleIndex * 0.11);
+                float satelliteSeed = bokushoHashNoiseCell(satelliteSeedPoint, paperKey, 0x5A771EAFu);
+                float satelliteGate = islandGate
+                    * releasePigment
+                    * smoothstep(0.36, 0.86, satelliteSeed);
+                if (satelliteGate > 0.0)
+                {
+                    float satelliteSide = satelliteSeed < 0.52 ? side : -side;
+                    float2 satelliteCenter = contactPoint
+                        + sampleNormal * satelliteSide * tip.z * (2.90 + laneEdge * 1.35 + satelliteSeed * 0.72)
+                        + sampleTangent * (satelliteSeed - 0.5) * tip.w * 0.82;
+                    float satelliteRadius = max(tip.z * (0.075 + laneEdge * 0.035), 0.020);
+                    float satelliteDistance = length(world - satelliteCenter);
+                    float satelliteContact = smoothstep(1.0, 0.0, satelliteDistance / satelliteRadius);
+                    dryFleckPeak = max(dryFleckPeak, pigment * satelliteGate * satelliteContact * 38.0);
+                }
             }
         }
     }

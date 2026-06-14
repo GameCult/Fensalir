@@ -159,7 +159,10 @@ void SimulateBokushoTuftSegment(
         float velocity = length(slip) * brushShape.z * segmentVelocityScale / max(radius, 0.001);
         float contact = saturate(localPressure * stateLoad * (0.24 + stateWet * 0.62 + laneCore * 0.18));
         float drag = contact * friction * (0.28 + stateWet * 0.34);
+        float2 previousTip = tip;
         tip = tip + slip * (0.18 + recovery * 0.82) * (1.0 - drag * 0.52);
+        float sweptDistance = length(tip - previousTip);
+        float sweptPatch = saturate(sweptDistance / max(localTangentRadius, 0.001) * 0.42);
 
         float tension = saturate(velocity * 0.014 + abs(targetOffset - offset) / max(localNormalRadius, 0.001) * 0.22 + edge * 0.12);
         float separation = saturate(split * 0.34 + tension * 0.46 + edge * 0.20 - cohesion * 0.24);
@@ -167,24 +170,24 @@ void SimulateBokushoTuftSegment(
         float dryMemory = saturate((1.0 - stateWet) * 0.62 + separation * 0.32 + velocity * 0.004);
         float fiberNoise = LaneHash(laneKey + sample * 13u, tuft, 101u);
         float continuity = 1.0 - smoothstep(0.18 + dryMemory * 0.28, 0.96, fiberNoise) * dryMemory * (0.38 + edge * 0.22);
-        float contactTransfer = contact * stateLoad * (0.12 + stateWet * 0.88) * (0.24 + drag * 0.62 + localPressure * 0.18) * (0.62 + laneCore * 0.48 - separation * 0.18) * continuity;
+        float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * continuity;
         float airborneRelease = (1.0 - contact) * stateLoad * stateWet * saturate(velocity * 0.010 - adhesion * 0.16) * (0.20 + separation * 0.42 + edge * 0.18);
         float consumedPigment = contactTransfer + airborneRelease;
-        stateLoad = max(0.0, stateLoad - consumedPigment * segmentSpan * (0.028 + localPressure * 0.018));
-        stateWet = max(0.0, stateWet - consumedPigment * segmentSpan * (0.012 + dryMemory * 0.006));
+        stateLoad = max(0.0, stateLoad - consumedPigment * segmentSpan * (0.010 + localPressure * 0.006));
+        stateWet = max(0.0, stateWet - consumedPigment * segmentSpan * (0.006 + dryMemory * 0.003));
 
         if (writeOutput)
         {
             uint index = ((outputStrokeIndex * tuftCount) + tuft) * sampleCount + sample;
-            float pigment = (contactTransfer * (1.8 + localPressure * 0.6) + airborneRelease * (2.8 + velocity * 0.003)) * stroke.dynamics.z;
+            float pigment = (contactTransfer * (0.95 + localPressure * 0.34 + sweptPatch * 0.24) + airborneRelease * (1.6 + velocity * 0.002)) * stroke.dynamics.z;
             float localPigment = saturate(pigment);
             float trace = saturate(contact * 0.70 + airborneRelease * 2.0 + stateLoad * 0.18);
             BokushoTraceField[index] = trace;
             BokushoCanvasField[index] = localPigment;
             BokushoTipField[index] = float4(
                 tip,
-                localNormalRadius * (0.72 + laneCore * 0.18 + localPressure * 0.12 - separation * 0.12),
-                localTangentRadius * (0.82 + bend * 0.20 + drag * 0.14));
+                localNormalRadius * (0.84 + laneCore * 0.20 + localPressure * 0.14 + sweptPatch * 0.08 - separation * 0.10),
+                localTangentRadius * (0.92 + bend * 0.22 + drag * 0.16) + sweptDistance * 0.36);
         }
     }
 }
@@ -213,16 +216,16 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float laneLoad = 0.76 + laneHash * 0.34;
     float seedPressure = saturate(brushMaterial.y * seedStroke.profile.y * 0.5) * 2.0;
     float wetness = saturate(brushMaterial.w / 1.6);
-    float load = saturate(brushMaterial.z / 2.0);
+    float load = clamp(brushMaterial.z / 1.25, 0.0, 1.8);
     float splay = saturate(brushDynamics.x / 2.0);
     float seedRadius = max(brushMaterial.x * seedStroke.profile.x, 0.0001);
     float seedNormalRadius = max(seedRadius * seedStroke.profile.z, 0.0001);
-    float seedSplit = saturate((0.20 - LaneHash(chainStart, tuft, 53u)) * 4.0) * saturate((edge - 0.18) * 1.7) * seedStroke.dynamics.w;
+    float seedSplit = saturate((0.28 - LaneHash(chainStart, tuft, 53u)) * 3.0) * saturate((edge - 0.20) * 1.5) * seedStroke.dynamics.w;
     float initialCohesion = LaneCohesion(edge, seedSplit, wetness, seedPressure);
     float2 tip = StrokePoint(seedStroke, 0.0);
     float poseBias = seedStroke.pose.x * 0.18 + seedStroke.pose.y * 0.08;
     float offset = (restOffset + poseBias * (1.0 - edge * 0.35)) * seedNormalRadius * (0.42 + splay * 0.38) + (laneHash - 0.5) * seedNormalRadius * 0.05;
-    float stateLoad = load * (0.62 + initialCohesion * 0.46) * (1.0 - edge * 0.18) * laneLoad * (1.0 - seedSplit * 0.36);
+    float stateLoad = load * (0.86 + initialCohesion * 0.48) * (1.0 - edge * 0.08) * laneLoad * (1.0 - seedSplit * 0.18);
     float stateWet = wetness * (0.74 + initialCohesion * 0.24 - seedSplit * 0.08);
 
     [loop]

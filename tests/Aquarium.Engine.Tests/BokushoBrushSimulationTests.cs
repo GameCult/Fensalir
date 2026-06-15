@@ -210,6 +210,88 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuPageEvaluationDecodesSharedDensityComposition()
+    {
+        var frame = new AquariumBokushoBrushFrame
+        {
+            TuftCount = 17,
+            SampleCount = 64,
+            PhysicsHz = 500.0f,
+            BrushRadius = 0.82f,
+            Pressure = 1.04f,
+            InkLoad = 1.42f,
+            Wetness = 1.12f,
+            Splay = 0.76f,
+            Bend = 0.70f,
+            Friction = 0.64f,
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-3.10f, -0.10f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-2.20f, 0.16f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(0.28f, 0.24f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(1.24f, -0.24f, 0.0f, 0.0f),
+                    RadiusScale = 0.94f,
+                    PressureScale = 1.06f,
+                    NormalScale = 0.62f,
+                    TangentScale = 1.18f,
+                    ShaftTilt = 0.12f,
+                    ShaftRotation = 0.22f,
+                    GripHeight = 0.88f,
+                    Compliance = 1.08f,
+                    EntryTaper = 0.05f,
+                    ExitTaper = 0.18f,
+                    PigmentScale = 1.30f,
+                    SplitScale = 0.82f,
+                    SegmentStart = 0.0f,
+                    SegmentEnd = 0.55f,
+                    SourceStrokeId = 7,
+                },
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-0.28f, 0.24f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(0.28f, 0.24f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(1.82f, -0.18f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(2.76f, -0.48f, 0.0f, 0.0f),
+                    RadiusScale = 0.90f,
+                    PressureScale = 0.98f,
+                    NormalScale = 0.58f,
+                    TangentScale = 1.24f,
+                    ShaftTilt = 0.10f,
+                    ShaftRotation = 0.18f,
+                    GripHeight = 0.90f,
+                    Compliance = 1.10f,
+                    EntryTaper = 0.05f,
+                    ExitTaper = 0.24f,
+                    PigmentScale = 1.18f,
+                    SplitScale = 0.92f,
+                    SegmentStart = 0.55f,
+                    SegmentEnd = 1.0f,
+                    SourceStrokeId = 7,
+                },
+            ],
+        };
+
+        var width = 96;
+        var height = 72;
+        var page = BokushoBrushSimulation.EvaluatePage(frame, width, height, Vector2.Zero, 4.0f);
+        var density = BokushoBrushSimulation.EvaluatePageDensity(frame, width, height, Vector2.Zero, 4.0f);
+        var decodedInkPixels = 0;
+        for (var index = 0; index < page.Length; index++)
+        {
+            var decoded = BokushoBrushSimulation.DecodePageDensity(density[index]);
+            Assert.Equal(decoded, page[index]);
+            if (decoded > 0.001f)
+            {
+                decodedInkPixels++;
+            }
+        }
+
+        Assert.True(decodedInkPixels > 0);
+    }
+
+    [Fact]
     public void PagePatchRadiiIncludeBristleFootprintAndSweepDistance()
     {
         var (tangentRadius, normalRadius) = BokushoBrushSimulation.PagePatchRadii(

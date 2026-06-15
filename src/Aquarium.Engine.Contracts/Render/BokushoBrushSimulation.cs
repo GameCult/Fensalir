@@ -119,16 +119,55 @@ public static class BokushoBrushSimulation
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(height, 1);
+        var page = new float[checked(width * height)];
+        var densityPage = EvaluatePageDensity(source, width, height, viewCenter, viewRadius);
+        for (var index = 0; index < page.Length; index++)
+        {
+            page[index] = DecodePageDensity(densityPage[index]);
+        }
+
+        return page;
+    }
+
+    public static uint[] EvaluatePageDensity(
+        AquariumBokushoBrushFrame source,
+        int width,
+        int height,
+        Vector2 viewCenter,
+        float viewRadius)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(height, 1);
+        var densityPage = new uint[checked(width * height)];
+        EvaluatePageDensity(source, width, height, viewCenter, viewRadius, densityPage);
+        return densityPage;
+    }
+
+    private static void EvaluatePageDensity(
+        AquariumBokushoBrushFrame source,
+        int width,
+        int height,
+        Vector2 viewCenter,
+        float viewRadius,
+        Span<uint> densityPage)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(height, 1);
+        var valueCount = checked(width * height);
+        if (densityPage.Length < valueCount)
+        {
+            throw new ArgumentException("Density page buffer is smaller than the brush simulation page.", nameof(densityPage));
+        }
+
         var frame = source.HasInput ? source.Normalized() : AquariumBokushoBrushFrame.Empty;
         if (!frame.HasInput)
         {
-            return new float[checked(width * height)];
+            return;
         }
 
         var sampleCount = Math.Clamp(frame.SampleCount, 2, 4096);
         var tuftCount = Math.Clamp(frame.TuftCount, 1, 4096);
         var strokes = EffectiveStrokes(frame);
-        var page = new float[checked(width * height)];
         var wetness = Saturate(frame.Wetness / 1.6f);
         var load = Math.Clamp(frame.InkLoad / 1.05f, 0.0f, 2.7f);
         var splay = Saturate(frame.Splay / 2.0f);
@@ -162,14 +201,12 @@ public static class BokushoBrushSimulation
 
                 for (var replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex++)
                 {
-                    SimulateTuftSegmentToPage(strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, page, width, height, viewCenter, safeRadius, writeOutput: false);
+                    SimulateTuftSegmentToPage(strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, densityPage, width, height, viewCenter, safeRadius, writeOutput: false);
                 }
 
-                SimulateTuftSegmentToPage(stroke, strokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, page, width, height, viewCenter, safeRadius, writeOutput: true);
+                SimulateTuftSegmentToPage(stroke, strokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, densityPage, width, height, viewCenter, safeRadius, writeOutput: true);
             }
         }
-
-        return page;
     }
 
     private static void SimulateTuftSegment(
@@ -281,7 +318,7 @@ public static class BokushoBrushSimulation
         ref Vector2 tip,
         ref float stateLoad,
         ref float stateWet,
-        Span<float> page,
+        Span<uint> densityPage,
         int width,
         int height,
         Vector2 viewCenter,
@@ -344,7 +381,7 @@ public static class BokushoBrushSimulation
                 var pigment = (contactTransfer * (0.95f + localPressure * 0.34f + sweptPatch * 0.24f) + airborneRelease * (1.6f + velocity * 0.002f)) * stroke.PigmentScale;
                 var patchNormalRadius = localNormalRadius * (0.84f + laneCore * 0.20f + localPressure * 0.14f + sweptPatch * 0.08f - separation * 0.10f);
                 var patchTangentRadius = localTangentRadius * (0.92f + bend * 0.22f + drag * 0.16f) + sweptDistance * 0.36f;
-                DepositSweptPatch(page, width, height, viewCenter, viewRadius, previousTip, tip, patchNormalRadius, patchTangentRadius, pigment);
+                DepositSweptPatch(densityPage, width, height, viewCenter, viewRadius, previousTip, tip, patchNormalRadius, patchTangentRadius, pigment);
             }
         }
     }
@@ -598,7 +635,7 @@ public static class BokushoBrushSimulation
     }
 
     private static void DepositSweptPatch(
-        Span<float> page,
+        Span<uint> densityPage,
         int width,
         int height,
         Vector2 viewCenter,
@@ -652,7 +689,7 @@ public static class BokushoBrushSimulation
 
                 var sampleIndex = y * width + x;
                 var contribution = PagePatchContribution(ink, coverage);
-                page[sampleIndex] = 1.0f - (1.0f - page[sampleIndex]) * (1.0f - contribution);
+                densityPage[sampleIndex] += EncodePageDensityContribution(contribution);
             }
         }
     }

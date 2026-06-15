@@ -3900,7 +3900,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeFieldResourceUploadCount = 0;
         activeFieldResourceUploadSkippedCount = 0;
         tubeFieldDrawBatches.Clear();
-        if (tubeFieldComputePipelineState is null)
+        if (tubeFieldComputePipelineState is null &&
+            (!activeBokushoBrushFrame.HasInput ||
+                bokushoBrushPipelineState is null ||
+                bokushoPageClearPipelineState is null ||
+                bokushoPageDepositPipelineState is null))
         {
             return;
         }
@@ -3913,6 +3917,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
             var segmentBase = 0;
             DispatchBokushoBrushField(activeCommandList, frameResources, ref segmentBase);
+
+            if (tubeFieldComputePipelineState is null)
+            {
+                activeTubeFieldDrawIndexCount = activeTubeFieldDispatchedSegments * 6;
+                return;
+            }
 
             if (activeFieldEvidenceFrame.TubeSplineLowerings.Count == 0)
             {
@@ -4063,9 +4073,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         if (!activeBokushoBrushFrame.HasInput ||
             bokushoBrushPipelineState is null ||
             bokushoPageClearPipelineState is null ||
-            bokushoPageDepositPipelineState is null ||
-            tubeFieldComputePipelineState is null ||
-            tubeFieldDrawBatches.Count >= MaxTubeFieldDrawBatches)
+            bokushoPageDepositPipelineState is null)
         {
             return;
         }
@@ -4114,6 +4122,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCommandList.SetPipelineState(bokushoPageDepositPipelineState);
         activeCommandList.Dispatch((uint)(((tuftCount * strokeCount) + 127) / 128), 1, 1);
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoPageDensityBuffer.Resource));
+
+        if (tubeFieldComputePipelineState is null ||
+            tubeFieldDrawBatches.Count >= MaxTubeFieldDrawBatches)
+        {
+            return;
+        }
 
         var subdivisions = 2;
         var requestedSegments = checked((sampleCount - 1) * subdivisions * tuftCount * strokeCount);

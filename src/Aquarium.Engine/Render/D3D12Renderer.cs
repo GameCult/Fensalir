@@ -47,7 +47,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int MaxTubeFieldReplaySources = 16;
     private const int MaxBokushoBrushTufts = 1024;
     private const int MaxBokushoBrushSamples = 512;
-    private const int MaxBokushoBrushStrokes = 64;
+    private const int MaxBokushoBrushStrokes = 256;
     private const int MaxBokushoBrushValues = MaxBokushoBrushTufts * MaxBokushoBrushSamples;
     private const int FieldReservoirSlotsPerPixel = 4;
     private const int FieldReservoirCandidateStrideBytes = 144;
@@ -4082,11 +4082,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var sampleCount = Math.Clamp(frame.SampleCount, 2, MaxBokushoBrushSamples);
         var tuftCount = Math.Clamp(frame.TuftCount, 1, MaxBokushoBrushTufts);
         var strokes = PackBokushoBrushStrokes(frame);
-        var maxStrokeCountForBuffer = Math.Max(1, MaxBokushoBrushValues / checked(sampleCount * tuftCount));
-        var strokeCount = Math.Min(strokes.Length, Math.Min(MaxBokushoBrushStrokes, maxStrokeCountForBuffer));
-        var valueCount = checked(sampleCount * tuftCount * strokeCount);
-        var constants = new D3D12BokushoBrushConstants(
-            new Vector4(sampleCount, tuftCount, frame.PhysicsHz, strokeCount),
+        var debugStrokeCount = BoundedBokushoDebugStrokeCount(strokes.Length, sampleCount, tuftCount);
+        var pageStrokeCount = Math.Min(strokes.Length, MaxBokushoBrushStrokes);
+        var valueCount = checked(sampleCount * tuftCount * debugStrokeCount);
+        var debugConstants = new D3D12BokushoBrushConstants(
+            new Vector4(sampleCount, tuftCount, frame.PhysicsHz, debugStrokeCount),
             new Vector4(frame.BrushRadius, frame.Pressure, frame.InkLoad, frame.Wetness),
             new Vector4(frame.Splay, frame.Bend, frame.Friction, 0.0f),
             new Vector4(frame.RadiusScale, frame.PressureScale, frame.NormalScale, frame.TangentScale),
@@ -4095,8 +4095,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
             frame.StrokeP2,
             frame.StrokeP3,
             new Vector4(activeViewCenter.X, activeViewCenter.Y, Math.Max(activeViewRadius, 0.001f), HeightFieldTextureSize));
-        var constantsUpload = frameResources.UploadRing.WriteConstant(constants);
-        bokushoBrushStrokeBuffer.UploadPartial(activeCommandList, frameResources.UploadRing, strokes.AsSpan(0, strokeCount));
+        var pageConstants = debugConstants with { Shape = new Vector4(sampleCount, tuftCount, frame.PhysicsHz, pageStrokeCount) };
+        var debugConstantsUpload = frameResources.UploadRing.WriteConstant(debugConstants);
+        var pageConstantsUpload = frameResources.UploadRing.WriteConstant(pageConstants);
+        bokushoBrushStrokeBuffer.UploadPartial(activeCommandList, frameResources.UploadRing, strokes.AsSpan(0, pageStrokeCount));
 
         bokushoBrushTraceBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         bokushoBrushCanvasBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
@@ -4105,22 +4107,23 @@ public sealed class D3D12Renderer : IAquariumRenderer
         bokushoBrushStrokeBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
         activeCommandList.SetComputeRootSignature(bokushoBrushRootSignature);
         activeCommandList.SetPipelineState(bokushoBrushPipelineState);
-        activeCommandList.SetComputeRootConstantBufferView(RootBokushoBrushConstants, constantsUpload.GpuVirtualAddress);
+        activeCommandList.SetComputeRootConstantBufferView(RootBokushoBrushConstants, debugConstantsUpload.GpuVirtualAddress);
         activeCommandList.SetComputeRootUnorderedAccessView(RootBokushoBrushTrace, bokushoBrushTraceBuffer.Resource.GPUVirtualAddress);
         activeCommandList.SetComputeRootUnorderedAccessView(RootBokushoBrushCanvas, bokushoBrushCanvasBuffer.Resource.GPUVirtualAddress);
         activeCommandList.SetComputeRootUnorderedAccessView(RootBokushoBrushTips, bokushoBrushTipBuffer.Resource.GPUVirtualAddress);
         activeCommandList.SetComputeRootShaderResourceView(RootBokushoBrushStrokes, bokushoBrushStrokeBuffer.Resource.GPUVirtualAddress);
         activeCommandList.SetComputeRootUnorderedAccessView(RootBokushoBrushPage, bokushoPageDensityBuffer.Resource.GPUVirtualAddress);
-        activeCommandList.Dispatch((uint)(((tuftCount * strokeCount) + 127) / 128), 1, 1);
+        activeCommandList.Dispatch((uint)(((tuftCount * debugStrokeCount) + 127) / 128), 1, 1);
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoBrushTraceBuffer.Resource));
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoBrushCanvasBuffer.Resource));
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoBrushTipBuffer.Resource));
 
         activeCommandList.SetPipelineState(bokushoPageClearPipelineState);
+        activeCommandList.SetComputeRootConstantBufferView(RootBokushoBrushConstants, pageConstantsUpload.GpuVirtualAddress);
         activeCommandList.Dispatch((uint)(((HeightFieldTextureSize * HeightFieldTextureSize) + 127) / 128), 1, 1);
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoPageDensityBuffer.Resource));
         activeCommandList.SetPipelineState(bokushoPageDepositPipelineState);
-        activeCommandList.Dispatch((uint)(((tuftCount * strokeCount) + 127) / 128), 1, 1);
+        activeCommandList.Dispatch((uint)(((tuftCount * pageStrokeCount) + 127) / 128), 1, 1);
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoPageDensityBuffer.Resource));
 
         if (tubeFieldComputePipelineState is null ||
@@ -4130,7 +4133,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         }
 
         var subdivisions = 2;
-        var requestedSegments = checked((sampleCount - 1) * subdivisions * tuftCount * strokeCount);
+        var requestedSegments = checked((sampleCount - 1) * subdivisions * tuftCount * debugStrokeCount);
         activeTubeFieldRequestedSegments += requestedSegments;
         var remainingSegments = MaxTubeFieldSegments - segmentBase;
         if (remainingSegments <= 0)
@@ -4145,7 +4148,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var fieldId = StableFieldId("bokusho.brush.direct-compute", 5600.0f, 1024);
         var tubeConstants = new D3D12TubeFieldConstants(
             new Vector4(sampleCount, tuftCount, sizeof(float), 0.0f),
-            new Vector4(tuftCount * strokeCount, 1.0f, 0.0f, 0.0f),
+            new Vector4(tuftCount * debugStrokeCount, 1.0f, 0.0f, 0.0f),
             new Vector4(1.0f, 2.8f, 0.0f, 1.0f),
             new Vector4(0.010f, 0.030f, 0.92f, 0.14f),
             new Vector4(2.8f, subdivisions, segmentBase, dispatchSegments),
@@ -4154,7 +4157,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             0.0f,
             new Vector3(14.0f / Math.Max(1, sampleCount - 1), 0.0f, 0.0f),
             0.0f,
-            new Vector3(0.0f, 0.0f, 0.9f / Math.Max(1, tuftCount * strokeCount - 1)),
+            new Vector3(0.0f, 0.0f, 0.9f / Math.Max(1, tuftCount * debugStrokeCount - 1)),
             0.0f);
         var tubeConstantsUpload = frameResources.UploadRing.WriteConstant(tubeConstants);
 
@@ -4812,7 +4815,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var frame = activeBokushoBrushFrame.Normalized();
         var sampleCount = Math.Clamp(frame.SampleCount, 2, MaxBokushoBrushSamples);
         var tuftCount = Math.Clamp(frame.TuftCount, 1, MaxBokushoBrushTufts);
-        var strokeCount = BoundedBokushoStrokeCount(frame, sampleCount, tuftCount);
+        var strokeCount = Math.Min(PackBokushoBrushStrokes(frame).Length, MaxBokushoBrushStrokes);
         return new D3D12BokushoBrushConstants(
             new Vector4(sampleCount, tuftCount, frame.PhysicsHz, strokeCount),
             new Vector4(frame.BrushRadius, frame.Pressure, frame.InkLoad, frame.Wetness),
@@ -4825,9 +4828,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new Vector4(activeViewCenter.X, activeViewCenter.Y, Math.Max(activeViewRadius, 0.001f), HeightFieldTextureSize));
     }
 
-    private int BoundedBokushoStrokeCount(AquariumBokushoBrushFrame frame, int sampleCount, int tuftCount)
+    private static int BoundedBokushoDebugStrokeCount(int strokeCount, int sampleCount, int tuftCount)
     {
-        var strokeCount = PackBokushoBrushStrokes(frame).Length;
         var maxStrokeCountForBuffer = Math.Max(1, MaxBokushoBrushValues / checked(sampleCount * tuftCount));
         return Math.Min(strokeCount, Math.Min(MaxBokushoBrushStrokes, maxStrokeCountForBuffer));
     }

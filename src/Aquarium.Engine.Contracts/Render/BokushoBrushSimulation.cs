@@ -6,6 +6,10 @@ public static class BokushoBrushSimulation
 {
     public const float PageDensityScale = 65535.0f;
     public const float PagePatchTransferGain = 0.0032f;
+    public const float PagePatchTangentRadiusScale = 0.26f;
+    public const float PagePatchSweepRadiusScale = 0.5f;
+    public const float PagePatchNormalRadiusScale = 0.20f;
+    public const float PagePatchMinimumRadius = 0.001f;
 
     public static BokushoBrushSimulationResult Evaluate(AquariumBokushoBrushFrame source)
     {
@@ -615,8 +619,7 @@ public static class BokushoBrushSimulation
         var sweepLength = sweep.Length();
         var tangent = sweepLength > 0.000001f ? sweep / sweepLength : Vector2.UnitX;
         var normal = new Vector2(-tangent.Y, tangent.X);
-        var patchTangentRadius = MathF.Max(tangentRadius * 0.26f + sweepLength * 0.5f, 0.001f);
-        var patchNormalRadius = MathF.Max(normalRadius * 0.20f, 0.001f);
+        var (patchTangentRadius, patchNormalRadius) = PagePatchRadii(tangentRadius, normalRadius, sweepLength);
         var center = (previousTip + tip) * 0.5f;
         var extents = new Vector2(
             MathF.Abs(tangent.X) * patchTangentRadius + MathF.Abs(normal.X) * patchNormalRadius,
@@ -737,6 +740,13 @@ public static class BokushoBrushSimulation
     private static float CanvasPigment(float value) => 0.96f * (1.0f - MathF.Exp(-MathF.Max(value, 0.0f) * 0.82f));
 
     public static float PagePatchContribution(float ink, float coverage) => Saturate(ink) * Saturate(coverage) * PagePatchTransferGain;
+
+    public static (float TangentRadius, float NormalRadius) PagePatchRadii(float tangentRadius, float normalRadius, float sweepLength)
+    {
+        return (
+            MathF.Max(tangentRadius * PagePatchTangentRadiusScale + sweepLength * PagePatchSweepRadiusScale, PagePatchMinimumRadius),
+            MathF.Max(normalRadius * PagePatchNormalRadiusScale, PagePatchMinimumRadius));
+    }
 
     public static uint EncodePageDensityContribution(float contribution)
     {

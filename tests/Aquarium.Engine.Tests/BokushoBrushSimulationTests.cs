@@ -210,6 +210,22 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void PagePatchRadiiIncludeBristleFootprintAndSweepDistance()
+    {
+        var (tangentRadius, normalRadius) = BokushoBrushSimulation.PagePatchRadii(
+            tangentRadius: 0.42f,
+            normalRadius: 0.35f,
+            sweepLength: 0.18f);
+
+        Assert.Equal(0.42f * BokushoBrushSimulation.PagePatchTangentRadiusScale + 0.18f * BokushoBrushSimulation.PagePatchSweepRadiusScale, tangentRadius, precision: 6);
+        Assert.Equal(0.35f * BokushoBrushSimulation.PagePatchNormalRadiusScale, normalRadius, precision: 6);
+
+        var tiny = BokushoBrushSimulation.PagePatchRadii(0.0f, 0.0f, 0.0f);
+        Assert.Equal(BokushoBrushSimulation.PagePatchMinimumRadius, tiny.TangentRadius);
+        Assert.Equal(BokushoBrushSimulation.PagePatchMinimumRadius, tiny.NormalRadius);
+    }
+
+    [Fact]
     public void CpuBrushProfileControlsPageFootprint()
     {
         var narrow = new AquariumBokushoBrushFrame

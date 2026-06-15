@@ -2,6 +2,10 @@
 
 static const float BOKUSHO_PAGE_DENSITY_SCALE = 65535.0;
 static const float BOKUSHO_PAGE_PATCH_TRANSFER_GAIN = 0.0032;
+static const float BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE = 0.26;
+static const float BOKUSHO_PAGE_PATCH_SWEEP_RADIUS_SCALE = 0.5;
+static const float BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE = 0.20;
+static const float BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS = 0.001;
 
 cbuffer BokushoBrushConstants : register(b4)
 {
@@ -81,15 +85,6 @@ float CanvasPigment(float value)
     return 0.96 * (1.0 - exp(-max(value, 0.0) * 0.82));
 }
 
-uint PagePixelIndex(float2 world, out bool inside)
-{
-    float pageSize = max(pageView.w, 1.0);
-    float2 uv = (world - pageView.xy) / max(pageView.z, 0.001) * 0.5 + 0.5;
-    int2 pixel = int2(floor(uv * (pageSize - 1.0) + 0.5));
-    inside = all(pixel >= int2(0, 0)) && all(pixel < int2((int)pageSize, (int)pageSize));
-    return (uint)(pixel.y * (int)pageSize + pixel.x);
-}
-
 void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float tangentRadius, float pigment)
 {
     float ink = saturate(pigment);
@@ -102,8 +97,8 @@ void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float
     float sweepLength = length(sweep);
     float2 tangent = sweepLength > 0.000001 ? sweep / sweepLength : float2(1.0, 0.0);
     float2 normal = float2(-tangent.y, tangent.x);
-    float patchTangentRadius = max(tangentRadius * 0.26 + sweepLength * 0.5, 0.001);
-    float patchNormalRadius = max(normalRadius * 0.20, 0.001);
+    float patchTangentRadius = max(tangentRadius * BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE + sweepLength * BOKUSHO_PAGE_PATCH_SWEEP_RADIUS_SCALE, BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS);
+    float patchNormalRadius = max(normalRadius * BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE, BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS);
     float2 center = (previousTip + tip) * 0.5;
     float2 extents = float2(
         abs(tangent.x) * patchTangentRadius + abs(normal.x) * patchNormalRadius,

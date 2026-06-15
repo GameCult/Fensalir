@@ -59,6 +59,7 @@ struct BokushoBrushStroke
 StructuredBuffer<float> BokushoCanvasField : register(t77);
 StructuredBuffer<BokushoBrushStroke> BokushoBrushStrokes : register(t78);
 StructuredBuffer<float4> BokushoTipField : register(t79);
+StructuredBuffer<uint> BokushoPageDensityField : register(t80);
 
 #include "CultMath/CultMath.hlsl"
 
@@ -259,6 +260,19 @@ float bokushoStrokePageHeight(float2 world, BokushoBrushStroke stroke, uint stro
 
 float bokushoPageHeight(float2 world)
 {
+    if (bokushoShape.w > 0.5)
+    {
+        float pageSize = 512.0;
+        float2 uv = (world - viewCenter) / max(viewRadius, 0.001) * 0.5 + 0.5;
+        int2 pixel = int2(floor(uv * (pageSize - 1.0) + 0.5));
+        if (all(pixel >= int2(0, 0)) && all(pixel < int2((int)pageSize, (int)pageSize)))
+        {
+            uint densityValue = BokushoPageDensityField[(uint)(pixel.y * (int)pageSize + pixel.x)];
+            float density = (float)densityValue / 65535.0;
+            return saturate(1.0 - exp(-density));
+        }
+    }
+
     uint strokeCount = min(max((uint)round(bokushoShape.w), 0u), 64u);
     float height = 0.0;
     [loop]

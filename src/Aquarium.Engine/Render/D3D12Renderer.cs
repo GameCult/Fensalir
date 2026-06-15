@@ -139,10 +139,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootBokushoBrushCanvas = 2;
     private const int RootBokushoBrushTips = 3;
     private const int RootBokushoBrushStrokes = 4;
+    private const int RootBokushoBrushPage = 5;
     private const int RootBokushoPageConstants = 24;
     private const int RootBokushoPageCanvas = 25;
     private const int RootBokushoPageStrokes = 26;
     private const int RootBokushoPageTips = 27;
+    private const int RootBokushoPageDensity = 28;
     private static readonly DebugUi.DebugUiOption[] RenderDebugOptions =
     [
         new(0, "Final"),
@@ -231,6 +233,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private ID3D12PipelineState? tubeFieldComputePipelineState;
     private ID3D12PipelineState? tubeFieldRenderPipelineState;
     private ID3D12PipelineState? bokushoBrushPipelineState;
+    private ID3D12PipelineState? bokushoPageClearPipelineState;
+    private ID3D12PipelineState? bokushoPageDepositPipelineState;
     private ID3D12PipelineState? fieldReservoirResolvePipelineState;
     private ID3D12PipelineState?[] sdfProxyPipelineStates = [];
     private ID3D12PipelineState? bloomPrefilterPipelineState;
@@ -303,6 +307,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly D3D12StructuredBuffer bokushoBrushCanvasBuffer;
     private readonly D3D12StructuredBuffer bokushoBrushTipBuffer;
     private readonly D3D12StructuredBuffer bokushoBrushStrokeBuffer;
+    private readonly D3D12StructuredBuffer bokushoPageDensityBuffer;
     private D3D12StructuredBuffer fieldReservoirCandidateBuffer = null!;
     private D3D12StructuredBuffer fieldReservoirLockBuffer = null!;
     private readonly List<D3D12TubeFieldDrawBatch> tubeFieldDrawBatches = [];
@@ -389,6 +394,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private Vector3 previousCameraTarget;
     private Vector3 activeCameraPosition;
     private Vector3 activeCameraTarget;
+    private Vector2 activeViewCenter;
+    private float activeViewRadius;
     private Vector2 previousViewCenter;
     private Vector2 previousCursorWorld;
     private Vector2 previousJitterPixels;
@@ -525,6 +532,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         bokushoBrushCanvasBuffer = new D3D12StructuredBuffer(device, MaxBokushoBrushValues, sizeof(float), "Aquarium D3D12 Bokusho Brush Canvas Field", allowUnorderedAccess: true);
         bokushoBrushTipBuffer = new D3D12StructuredBuffer(device, MaxBokushoBrushValues, Marshal.SizeOf<Vector4>(), "Aquarium D3D12 Bokusho Brush Tip Field", allowUnorderedAccess: true);
         bokushoBrushStrokeBuffer = new D3D12StructuredBuffer(device, MaxBokushoBrushStrokes, Marshal.SizeOf<D3D12BokushoBrushStrokePacket>(), "Aquarium D3D12 Bokusho Brush Stroke Packet Buffer");
+        bokushoPageDensityBuffer = new D3D12StructuredBuffer(device, HeightFieldTextureSize * HeightFieldTextureSize, sizeof(uint), "Aquarium D3D12 Bokusho Page Density Field", allowUnorderedAccess: true);
         CreateFieldReservoirBuffers();
         resourceRegistry.Add("sdf-light-buffer", sdfLightBuffer);
         resourceRegistry.Add("sdf-object-buffer", sdfObjectBuffer);
@@ -543,6 +551,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         resourceRegistry.Add("bokusho-brush-canvas-buffer", bokushoBrushCanvasBuffer);
         resourceRegistry.Add("bokusho-brush-tip-buffer", bokushoBrushTipBuffer);
         resourceRegistry.Add("bokusho-brush-stroke-buffer", bokushoBrushStrokeBuffer);
+        resourceRegistry.Add("bokusho-page-density-buffer", bokushoPageDensityBuffer);
         commandList = device.CreateCommandList<ID3D12GraphicsCommandList>(0, CommandListType.Direct, frames[frameIndex].CommandAllocator, null);
         commandList.Name = "Aquarium D3D12 Graphics Command List";
         commandList.Close();
@@ -1307,6 +1316,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         CopySceneState(frame.Scene);
         activeCameraPosition = frame.CameraPosition;
         activeCameraTarget = frame.CameraTarget;
+        activeViewCenter = frame.View.Center;
+        activeViewRadius = frame.View.Radius;
         EnsureFractalReservoirBuffers(activeFractalReservoirField);
         EnsureFractalProgramTransformBuffer();
         EnsureBufferFieldProgramBuffers();
@@ -1615,6 +1626,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         && tubeFieldComputePipelineState is not null
         && tubeFieldRenderPipelineState is not null
         && bokushoBrushPipelineState is not null
+        && bokushoPageClearPipelineState is not null
+        && bokushoPageDepositPipelineState is not null
         && fieldReservoirResolvePipelineState is not null
         && sdfProxyPipelineStates.All(pipeline => pipeline is not null)
         && bloomPrefilterPipelineState is not null
@@ -1677,6 +1690,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         bokushoBrushTipBuffer.Dispose();
         bokushoBrushTraceBuffer.Dispose();
         bokushoBrushStrokeBuffer.Dispose();
+        bokushoPageDensityBuffer.Dispose();
         tubeFieldSegmentBuffer.Dispose();
         tubeFieldIndexBuffer.Dispose();
         tubeFieldVertexBuffer.Dispose();
@@ -2344,6 +2358,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Step("bokusho-brush");
         var bokushoBrush = CreateBokushoBrushPipelineState(paths.BokushoBrush);
         bokushoBrush.Name = "Aquarium D3D12 Bokusho Brush Compute Pipeline";
+        Step("bokusho-page-clear");
+        var bokushoPageClear = CreateBokushoBrushPipelineState(paths.BokushoBrush, "D3D12BokushoPageClearCS");
+        bokushoPageClear.Name = "Aquarium D3D12 Bokusho Page Clear Compute Pipeline";
+        Step("bokusho-page-deposit");
+        var bokushoPageDeposit = CreateBokushoBrushPipelineState(paths.BokushoBrush, "D3D12BokushoPageDepositCS");
+        bokushoPageDeposit.Name = "Aquarium D3D12 Bokusho Page Deposit Compute Pipeline";
         Step("field-reservoir-resolve");
         var fieldReservoirResolve = CreateFieldReservoirResolvePipelineState(paths.Post);
         fieldReservoirResolve.Name = "Aquarium D3D12 Field Reservoir Resolve Pipeline";
@@ -2401,6 +2421,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             tubeFieldCompute,
             tubeFieldRender,
             bokushoBrush,
+            bokushoPageClear,
+            bokushoPageDeposit,
             fieldReservoirResolve,
             sdfProxies,
             bloomPrefilter,
@@ -4040,6 +4062,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
     {
         if (!activeBokushoBrushFrame.HasInput ||
             bokushoBrushPipelineState is null ||
+            bokushoPageClearPipelineState is null ||
+            bokushoPageDepositPipelineState is null ||
             tubeFieldComputePipelineState is null ||
             tubeFieldDrawBatches.Count >= MaxTubeFieldDrawBatches)
         {
@@ -4061,13 +4085,15 @@ public sealed class D3D12Renderer : IAquariumRenderer
             frame.StrokeP0,
             frame.StrokeP1,
             frame.StrokeP2,
-            frame.StrokeP3);
+            frame.StrokeP3,
+            new Vector4(activeViewCenter.X, activeViewCenter.Y, Math.Max(activeViewRadius, 0.001f), HeightFieldTextureSize));
         var constantsUpload = frameResources.UploadRing.WriteConstant(constants);
         bokushoBrushStrokeBuffer.UploadPartial(activeCommandList, frameResources.UploadRing, strokes.AsSpan(0, strokeCount));
 
         bokushoBrushTraceBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         bokushoBrushCanvasBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         bokushoBrushTipBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
+        bokushoPageDensityBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         bokushoBrushStrokeBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
         activeCommandList.SetComputeRootSignature(bokushoBrushRootSignature);
         activeCommandList.SetPipelineState(bokushoBrushPipelineState);
@@ -4076,10 +4102,18 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCommandList.SetComputeRootUnorderedAccessView(RootBokushoBrushCanvas, bokushoBrushCanvasBuffer.Resource.GPUVirtualAddress);
         activeCommandList.SetComputeRootUnorderedAccessView(RootBokushoBrushTips, bokushoBrushTipBuffer.Resource.GPUVirtualAddress);
         activeCommandList.SetComputeRootShaderResourceView(RootBokushoBrushStrokes, bokushoBrushStrokeBuffer.Resource.GPUVirtualAddress);
+        activeCommandList.SetComputeRootUnorderedAccessView(RootBokushoBrushPage, bokushoPageDensityBuffer.Resource.GPUVirtualAddress);
         activeCommandList.Dispatch((uint)(((tuftCount * strokeCount) + 127) / 128), 1, 1);
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoBrushTraceBuffer.Resource));
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoBrushCanvasBuffer.Resource));
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoBrushTipBuffer.Resource));
+
+        activeCommandList.SetPipelineState(bokushoPageClearPipelineState);
+        activeCommandList.Dispatch((uint)(((HeightFieldTextureSize * HeightFieldTextureSize) + 127) / 128), 1, 1);
+        activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoPageDensityBuffer.Resource));
+        activeCommandList.SetPipelineState(bokushoPageDepositPipelineState);
+        activeCommandList.Dispatch((uint)(((tuftCount * strokeCount) + 127) / 128), 1, 1);
+        activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoPageDensityBuffer.Resource));
 
         var subdivisions = 2;
         var requestedSegments = checked((sampleCount - 1) * subdivisions * tuftCount * strokeCount);
@@ -4587,10 +4621,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
             bokushoBrushCanvasBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
             bokushoBrushTipBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
             bokushoBrushStrokeBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+            bokushoPageDensityBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
             activeCommandList.SetGraphicsRootConstantBufferView(RootBokushoPageConstants, pageConstantsUpload.GpuVirtualAddress);
             activeCommandList.SetGraphicsRootShaderResourceView(RootBokushoPageCanvas, bokushoBrushCanvasBuffer.Resource.GPUVirtualAddress);
             activeCommandList.SetGraphicsRootShaderResourceView(RootBokushoPageStrokes, bokushoBrushStrokeBuffer.Resource.GPUVirtualAddress);
             activeCommandList.SetGraphicsRootShaderResourceView(RootBokushoPageTips, bokushoBrushTipBuffer.Resource.GPUVirtualAddress);
+            activeCommandList.SetGraphicsRootShaderResourceView(RootBokushoPageDensity, bokushoPageDensityBuffer.Resource.GPUVirtualAddress);
             activeCommandList.RSSetViewports(viewport);
             activeCommandList.RSSetScissorRects(scissorRect);
             activeCommandList.OMSetRenderTargets(heightFieldRenderTarget.RenderTargetView.Cpu, null);
@@ -4755,6 +4791,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 Vector4.Zero,
                 Vector4.Zero,
                 Vector4.Zero,
+                Vector4.Zero,
                 Vector4.Zero);
         }
 
@@ -4770,7 +4807,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             frame.StrokeP0,
             frame.StrokeP1,
             frame.StrokeP2,
-            frame.StrokeP3);
+            frame.StrokeP3,
+            new Vector4(activeViewCenter.X, activeViewCenter.Y, Math.Max(activeViewRadius, 0.001f), HeightFieldTextureSize));
     }
 
     private int BoundedBokushoStrokeCount(AquariumBokushoBrushFrame frame, int sampleCount, int tuftCount)
@@ -5799,6 +5837,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 tubeFieldComputePipelineState!,
                 tubeFieldRenderPipelineState!,
                 bokushoBrushPipelineState!,
+                bokushoPageClearPipelineState!,
+                bokushoPageDepositPipelineState!,
                 fieldReservoirResolvePipelineState!,
                 sdfProxyPipelineStates.Select(pipeline => pipeline!).ToArray(),
                 bloomPrefilterPipelineState!,
@@ -5830,6 +5870,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldComputePipelineState = pipelines.TubeFieldCompute;
         tubeFieldRenderPipelineState = pipelines.TubeFieldRender;
         bokushoBrushPipelineState = pipelines.BokushoBrush;
+        bokushoPageClearPipelineState = pipelines.BokushoPageClear;
+        bokushoPageDepositPipelineState = pipelines.BokushoPageDeposit;
         fieldReservoirResolvePipelineState = pipelines.FieldReservoirResolve;
         for (var index = 0; index < sdfProxyPipelineStates.Length; index++)
         {
@@ -5863,6 +5905,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         tubeFieldComputePipelineState = null;
         tubeFieldRenderPipelineState = null;
         bokushoBrushPipelineState = null;
+        bokushoPageClearPipelineState = null;
+        bokushoPageDepositPipelineState = null;
         Array.Clear(sdfProxyPipelineStates);
         bloomPrefilterPipelineState = null;
         bloomDownsamplePipelineState = null;
@@ -6068,6 +6112,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(77, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(78, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(79, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(80, 0), ShaderVisibility.All),
         };
         var staticSamplers = new[]
         {
@@ -6296,6 +6341,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(21, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(22, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(78, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(23, 0), ShaderVisibility.All),
         };
         var description = new RootSignatureDescription(
             RootSignatureFlags.None,
@@ -6585,8 +6631,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
     }
 
     private ID3D12PipelineState CreateBokushoBrushPipelineState(string path)
+        => CreateBokushoBrushPipelineState(path, "D3D12BokushoBrushCS");
+
+    private ID3D12PipelineState CreateBokushoBrushPipelineState(string path, string entryPoint)
     {
-        var computeShader = CompileShader(path, "D3D12BokushoBrushCS", "cs_5_0");
+        var computeShader = CompileShader(path, entryPoint, "cs_5_0");
         var description = new ComputePipelineStateDescription
         {
             RootSignature = bokushoBrushRootSignature,
@@ -7035,7 +7084,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Vector4 StrokeP0,
         Vector4 StrokeP1,
         Vector4 StrokeP2,
-        Vector4 StrokeP3);
+        Vector4 StrokeP3,
+        Vector4 PageView);
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct D3D12BokushoBrushStrokePacket(
@@ -7197,6 +7247,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         ID3D12PipelineState TubeFieldCompute,
         ID3D12PipelineState TubeFieldRender,
         ID3D12PipelineState BokushoBrush,
+        ID3D12PipelineState BokushoPageClear,
+        ID3D12PipelineState BokushoPageDeposit,
         ID3D12PipelineState FieldReservoirResolve,
         IReadOnlyList<ID3D12PipelineState> SdfProxies,
         ID3D12PipelineState BloomPrefilter,
@@ -7215,6 +7267,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
             BloomDownsample.Dispose();
             BloomPrefilter.Dispose();
             FieldReservoirResolve.Dispose();
+            BokushoPageDeposit.Dispose();
+            BokushoPageClear.Dispose();
             BokushoBrush.Dispose();
             FractalRadiosityReservoir.Dispose();
             TubeFieldRender.Dispose();

@@ -123,6 +123,68 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushPageEvaluationDepositsSweptContactContinuously()
+    {
+        var frame = new AquariumBokushoBrushFrame
+        {
+            TuftCount = 64,
+            SampleCount = 96,
+            PhysicsHz = 500.0f,
+            BrushRadius = 0.72f,
+            Pressure = 1.08f,
+            InkLoad = 1.36f,
+            Wetness = 1.18f,
+            Splay = 0.70f,
+            Bend = 0.68f,
+            Friction = 0.62f,
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-3.20f, 0.02f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-2.20f, 0.00f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(2.20f, -0.02f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(3.20f, 0.00f, 0.0f, 0.0f),
+                    RadiusScale = 0.92f,
+                    PressureScale = 1.04f,
+                    NormalScale = 0.58f,
+                    TangentScale = 1.18f,
+                    ShaftTilt = 0.04f,
+                    ShaftRotation = 0.24f,
+                    GripHeight = 0.88f,
+                    Compliance = 1.06f,
+                    EntryTaper = 0.06f,
+                    ExitTaper = 0.16f,
+                    PigmentScale = 1.20f,
+                    SplitScale = 0.92f,
+                },
+            ],
+        };
+
+        var width = 160;
+        var height = 80;
+        var page = BokushoBrushSimulation.EvaluatePage(frame, width, height, Vector2.Zero, 4.2f);
+        var row = height / 2;
+        var longestRun = 0;
+        var currentRun = 0;
+        for (var x = 0; x < width; x++)
+        {
+            if (page[row * width + x] > 0.004f)
+            {
+                currentRun++;
+                longestRun = Math.Max(longestRun, currentRun);
+            }
+            else
+            {
+                currentRun = 0;
+            }
+        }
+
+        Assert.True(page.Max() > 0.05f);
+        Assert.True(longestRun > width / 4, $"longest continuous contact run={longestRun}");
+    }
+
+    [Fact]
     public void CpuBrushProfileControlsPageFootprint()
     {
         var narrow = new AquariumBokushoBrushFrame

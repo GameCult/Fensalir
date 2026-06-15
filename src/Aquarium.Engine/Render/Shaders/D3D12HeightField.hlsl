@@ -63,6 +63,8 @@ StructuredBuffer<uint> BokushoPageDensityField : register(t80);
 
 #include "CultMath/CultMath.hlsl"
 
+static const float BOKUSHO_PAGE_DENSITY_SCALE = 65535.0;
+
 struct VertexOut
 {
     float4 position : SV_Position;
@@ -268,7 +270,7 @@ float bokushoPageHeight(float2 world)
         if (all(pixel >= int2(0, 0)) && all(pixel < int2((int)pageSize, (int)pageSize)))
         {
             uint densityValue = BokushoPageDensityField[(uint)(pixel.y * (int)pageSize + pixel.x)];
-            float density = (float)densityValue / 65535.0;
+            float density = (float)densityValue / BOKUSHO_PAGE_DENSITY_SCALE;
             return saturate(1.0 - exp(-density));
         }
     }

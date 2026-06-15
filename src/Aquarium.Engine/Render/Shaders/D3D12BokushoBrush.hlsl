@@ -1,5 +1,8 @@
 #include "CultMath/CultMath.hlsl"
 
+static const float BOKUSHO_PAGE_DENSITY_SCALE = 65535.0;
+static const float BOKUSHO_PAGE_PATCH_TRANSFER_GAIN = 0.0032;
+
 cbuffer BokushoBrushConstants : register(b4)
 {
     float4 brushShape;     // sampleCount, tuftCount, physicsHz, strokeCount
@@ -132,9 +135,9 @@ void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float
                 continue;
             }
 
-            float contribution = ink * coverage * 0.0032;
+            float contribution = ink * coverage * BOKUSHO_PAGE_PATCH_TRANSFER_GAIN;
             float density = -log(max(1.0 - saturate(contribution), 0.000001));
-            uint fixedDensity = (uint)round(min(density * 65535.0, 65535.0));
+            uint fixedDensity = (uint)round(min(density * BOKUSHO_PAGE_DENSITY_SCALE, BOKUSHO_PAGE_DENSITY_SCALE));
             InterlockedAdd(BokushoPageDensityField[(uint)(y * (int)pageSize + x)], fixedDensity);
         }
     }

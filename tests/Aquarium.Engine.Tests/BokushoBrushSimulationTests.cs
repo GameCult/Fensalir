@@ -185,6 +185,31 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void PageDensityEncodingMatchesMultiplicativeInkComposition()
+    {
+        var cpuPage = 0.0f;
+        uint gpuDensity = 0;
+        var contacts = new (float Ink, float Coverage)[]
+        {
+            (0.84f, 0.95f),
+            (0.62f, 0.42f),
+            (0.30f, 0.80f),
+            (1.00f, 0.22f),
+            (0.18f, 0.66f),
+        };
+
+        foreach (var (ink, coverage) in contacts)
+        {
+            var contribution = BokushoBrushSimulation.PagePatchContribution(ink, coverage);
+            cpuPage = 1.0f - (1.0f - cpuPage) * (1.0f - contribution);
+            gpuDensity += BokushoBrushSimulation.EncodePageDensityContribution(contribution);
+        }
+
+        var gpuPage = BokushoBrushSimulation.DecodePageDensity(gpuDensity);
+        Assert.InRange(MathF.Abs(gpuPage - cpuPage), 0.0f, 0.00008f);
+    }
+
+    [Fact]
     public void CpuBrushProfileControlsPageFootprint()
     {
         var narrow = new AquariumBokushoBrushFrame

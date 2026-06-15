@@ -4,6 +4,9 @@ namespace Aquarium.Engine.Render;
 
 public static class BokushoBrushSimulation
 {
+    public const float PageDensityScale = 65535.0f;
+    public const float PagePatchTransferGain = 0.0032f;
+
     public static BokushoBrushSimulationResult Evaluate(AquariumBokushoBrushFrame source)
     {
         var frame = source.HasInput ? source.Normalized() : AquariumBokushoBrushFrame.Empty;
@@ -645,7 +648,7 @@ public static class BokushoBrushSimulation
                 }
 
                 var sampleIndex = y * width + x;
-                var contribution = ink * coverage * 0.0032f;
+                var contribution = PagePatchContribution(ink, coverage);
                 page[sampleIndex] = 1.0f - (1.0f - page[sampleIndex]) * (1.0f - contribution);
             }
         }
@@ -732,6 +735,19 @@ public static class BokushoBrushSimulation
     private static float Lerp(float left, float right, float t) => left + (right - left) * t;
 
     private static float CanvasPigment(float value) => 0.96f * (1.0f - MathF.Exp(-MathF.Max(value, 0.0f) * 0.82f));
+
+    public static float PagePatchContribution(float ink, float coverage) => Saturate(ink) * Saturate(coverage) * PagePatchTransferGain;
+
+    public static uint EncodePageDensityContribution(float contribution)
+    {
+        var density = -MathF.Log(MathF.Max(1.0f - Saturate(contribution), 0.000001f));
+        return (uint)MathF.Round(MathF.Min(density * PageDensityScale, PageDensityScale));
+    }
+
+    public static float DecodePageDensity(uint encodedDensity)
+    {
+        return 1.0f - MathF.Exp(-encodedDensity / PageDensityScale);
+    }
 
     private static float SmoothStep(float edge0, float edge1, float x)
     {

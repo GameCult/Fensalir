@@ -27,4 +27,6 @@ public interface IAquariumRenderer : IAquariumFieldResourceBroker, IDisposable
     void Render(AquariumFrame frame, int width, int height);
 
     void SaveFramePng(string path);
+
+    void SaveBokushoPageDensityRaw(string path);
 }

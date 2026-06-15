@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\CultMath\src\CultMath\CultMath.csproj" />
+  </ItemGroup>
+
 </Project>

@@ -1,4 +1,5 @@
 using System.Numerics;
+using CultMath;
 
 namespace Aquarium.Engine.Render;
 
@@ -758,18 +759,13 @@ public static class BokushoBrushSimulation
 
     private static Vector2 CatmullRom(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float t)
     {
-        var t2 = t * t;
-        var t3 = t2 * t;
-        return 0.5f * ((2.0f * p1) +
-            (-p0 + p2) * t +
-            (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
-            (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
+        return (Vector2)math.catmullrom((float2)p0, (float2)p1, (float2)p2, (float2)p3, t);
     }
 
     private static Vector2 Normalize(Vector2 value)
     {
         var length = value.Length();
-        return length > 0.000001f && float.IsFinite(length) ? value / length : Vector2.Zero;
+        return length > 0.000001f && float.IsFinite(length) ? (Vector2)math.normalize((float2)value) : Vector2.Zero;
     }
 
     private static float Lerp(float left, float right, float t) => left + (right - left) * t;
@@ -788,7 +784,7 @@ public static class BokushoBrushSimulation
     public static uint EncodePageDensityContribution(float contribution)
     {
         var density = -MathF.Log(MathF.Max(1.0f - Saturate(contribution), 0.000001f));
-        return (uint)MathF.Round(MathF.Min(density * PageDensityScale, PageDensityScale));
+        return (uint)MathF.Floor(MathF.Min(density * PageDensityScale, PageDensityScale) + 0.5f);
     }
 
     public static float DecodePageDensity(uint encodedDensity)
@@ -798,8 +794,7 @@ public static class BokushoBrushSimulation
 
     private static float SmoothStep(float edge0, float edge1, float x)
     {
-        var t = Saturate((x - edge0) / (edge1 - edge0));
-        return t * t * (3.0f - 2.0f * t);
+        return math.smoothstep(edge0, edge1, x);
     }
 
     private static float Saturate(float value) => Math.Clamp(value, 0.0f, 1.0f);

@@ -1585,6 +1585,45 @@ public sealed class D3D12Renderer : IAquariumRenderer
         PngImageWriter.WriteRgba(path, width, height, rgba);
     }
 
+    public unsafe void SaveBokushoPageDensityRaw(string path)
+    {
+        if (!hasPresentedReadyFrame)
+        {
+            throw new InvalidOperationException("No completed frame is available to save.");
+        }
+
+        WaitForGpu();
+
+        var bufferBytes = bokushoPageDensityBuffer.SizeBytes;
+        using var readback = device.CreateCommittedResource(
+            HeapType.Readback,
+            ResourceDescription.Buffer((ulong)bufferBytes),
+            ResourceStates.CopyDest,
+            null);
+        readback.Name = "Aquarium D3D12 Bokusho Page Density Readback";
+
+        using var captureAllocator = device.CreateCommandAllocator(CommandListType.Direct);
+        using var captureList = device.CreateCommandList<ID3D12GraphicsCommandList>(0, CommandListType.Direct, captureAllocator, null);
+        bokushoPageDensityBuffer.Transition(captureList, ResourceStates.CopySource);
+        captureList.CopyBufferRegion(readback, 0, bokushoPageDensityBuffer.Resource, 0, (ulong)bufferBytes);
+        bokushoPageDensityBuffer.Transition(captureList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+        captureList.Close();
+        commandQueue.ExecuteCommandList(captureList);
+        WaitForGpu();
+
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".");
+        var mapped = readback.Map<byte>(0);
+        try
+        {
+            using var stream = File.Create(path);
+            stream.Write(new ReadOnlySpan<byte>(mapped, bufferBytes));
+        }
+        finally
+        {
+            readback.Unmap(0, null);
+        }
+    }
+
     private static Vector2 TemporalJitterPixels(int index)
     {
         const float scale = 0.42f;

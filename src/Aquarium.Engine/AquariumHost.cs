@@ -76,7 +76,9 @@ public static class AquariumHost
         var readyFrames = 0;
         var requiredReadyFrames = ParseHeadlessReadyFrames();
         var captureFramePath = ParseCaptureFramePath(args);
+        var captureBokushoDensityPath = ParseCaptureBokushoDensityPath(args);
         var capturedFrame = false;
+        var capturedBokushoDensity = false;
         IAquariumRuntime? sceneReadyRuntime = null;
 
         try
@@ -149,7 +151,23 @@ public static class AquariumHost
                     capturedFrame = true;
                 }
 
-                if (runtime.Options.Headless && frames >= 2 && readyFrames >= requiredReadyFrames)
+                if (runtime.Options.Headless
+                    && !capturedBokushoDensity
+                    && !string.IsNullOrWhiteSpace(captureBokushoDensityPath)
+                    && readyFrames >= requiredReadyFrames)
+                {
+                    renderer.SaveBokushoPageDensityRaw(captureBokushoDensityPath);
+                    Console.WriteLine($"Headless Aquarium Bokusho density captured: {Path.GetFullPath(captureBokushoDensityPath)}");
+                    capturedBokushoDensity = true;
+                }
+
+                var needsFrameCapture = !string.IsNullOrWhiteSpace(captureFramePath) && !capturedFrame;
+                var needsBokushoDensityCapture = !string.IsNullOrWhiteSpace(captureBokushoDensityPath) && !capturedBokushoDensity;
+                if (runtime.Options.Headless
+                    && frames >= 2
+                    && readyFrames >= requiredReadyFrames
+                    && !needsFrameCapture
+                    && !needsBokushoDensityCapture)
                 {
                     Console.WriteLine("Headless Aquarium completed requested frames.");
                     break;
@@ -213,6 +231,20 @@ public static class AquariumHost
         }
 
         return Environment.GetEnvironmentVariable("AQUARIUM_CAPTURE_FRAME");
+    }
+
+    private static string? ParseCaptureBokushoDensityPath(IReadOnlyCollection<string> args)
+    {
+        var values = args.ToArray();
+        for (var index = 0; index < values.Length - 1; index++)
+        {
+            if (string.Equals(values[index], "--capture-bokusho-density", StringComparison.OrdinalIgnoreCase))
+            {
+                return values[index + 1];
+            }
+        }
+
+        return Environment.GetEnvironmentVariable("AQUARIUM_CAPTURE_BOKUSHO_DENSITY");
     }
 
     private static string? ParseCachePath(IReadOnlyCollection<string> args)

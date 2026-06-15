@@ -567,7 +567,7 @@ public sealed class AquariumBokushoBrushFrame
         PhysicsHz = Math.Clamp(PhysicsHz, 60.0f, 2000.0f),
         BrushRadius = MathF.Max(0.0001f, BrushRadius),
         Pressure = Math.Clamp(Pressure, 0.0f, 2.0f),
-        InkLoad = Math.Clamp(InkLoad, 0.0f, 2.0f),
+        InkLoad = Math.Clamp(InkLoad, 0.0f, 3.0f),
         Wetness = Math.Clamp(Wetness, 0.0f, 1.6f),
         Splay = Math.Clamp(Splay, 0.0f, 2.0f),
         Bend = Math.Clamp(Bend, 0.0f, 2.4f),

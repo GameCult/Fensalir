@@ -55,7 +55,7 @@ public static class BokushoBrushSimulation
         }
 
         var wetness = Saturate(frame.Wetness / 1.6f);
-        var load = Math.Clamp(frame.InkLoad / 1.25f, 0.0f, 1.8f);
+        var load = Math.Clamp(frame.InkLoad / 1.05f, 0.0f, 2.7f);
         var splay = Saturate(frame.Splay / 2.0f);
         var bend = Saturate(frame.Bend / 2.4f);
         var friction = Saturate(frame.Friction);
@@ -123,7 +123,7 @@ public static class BokushoBrushSimulation
         var strokes = EffectiveStrokes(frame);
         var page = new float[checked(width * height)];
         var wetness = Saturate(frame.Wetness / 1.6f);
-        var load = Math.Clamp(frame.InkLoad / 1.25f, 0.0f, 1.8f);
+        var load = Math.Clamp(frame.InkLoad / 1.05f, 0.0f, 2.7f);
         var splay = Saturate(frame.Splay / 2.0f);
         var bend = Saturate(frame.Bend / 2.4f);
         var friction = Saturate(frame.Friction);
@@ -245,7 +245,7 @@ public static class BokushoBrushSimulation
             {
                 var index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
                 var pigment = (contactTransfer * (0.95f + localPressure * 0.34f + sweptPatch * 0.24f) + airborneRelease * (1.6f + velocity * 0.002f)) * stroke.PigmentScale;
-                canvas[index] = Saturate(pigment);
+                canvas[index] = CanvasPigment(pigment);
                 trace[index] = Saturate(contact * 0.70f + airborneRelease * 2.0f + stateLoad * 0.18f);
                 tips[index] = new Vector4(
                     tip.X,
@@ -612,8 +612,8 @@ public static class BokushoBrushSimulation
         var sweepLength = sweep.Length();
         var tangent = sweepLength > 0.000001f ? sweep / sweepLength : Vector2.UnitX;
         var normal = new Vector2(-tangent.Y, tangent.X);
-        var patchTangentRadius = MathF.Max(tangentRadius * 0.22f + sweepLength * 0.5f, 0.001f);
-        var patchNormalRadius = MathF.Max(normalRadius * 0.16f, 0.001f);
+        var patchTangentRadius = MathF.Max(tangentRadius * 0.26f + sweepLength * 0.5f, 0.001f);
+        var patchNormalRadius = MathF.Max(normalRadius * 0.20f, 0.001f);
         var center = (previousTip + tip) * 0.5f;
         var extents = new Vector2(
             MathF.Abs(tangent.X) * patchTangentRadius + MathF.Abs(normal.X) * patchNormalRadius,
@@ -645,7 +645,7 @@ public static class BokushoBrushSimulation
                 }
 
                 var sampleIndex = y * width + x;
-                var contribution = ink * coverage * 0.002f;
+                var contribution = ink * coverage * 0.0032f;
                 page[sampleIndex] = 1.0f - (1.0f - page[sampleIndex]) * (1.0f - contribution);
             }
         }
@@ -730,6 +730,8 @@ public static class BokushoBrushSimulation
     }
 
     private static float Lerp(float left, float right, float t) => left + (right - left) * t;
+
+    private static float CanvasPigment(float value) => 0.96f * (1.0f - MathF.Exp(-MathF.Max(value, 0.0f) * 0.82f));
 
     private static float SmoothStep(float edge0, float edge1, float x)
     {

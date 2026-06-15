@@ -71,6 +71,11 @@ float StrokeSegmentSpan(BokushoBrushStroke stroke, uint sampleCount)
     return max(endValue - start, 1.0 / max((float)(sampleCount - 1u), 1.0));
 }
 
+float CanvasPigment(float value)
+{
+    return 0.96 * (1.0 - exp(-max(value, 0.0) * 0.82));
+}
+
 float LaneHash(uint strokeIndex, uint tuft, uint salt)
 {
     uint value = (strokeIndex + 1u) * 0x9E3779B9u ^ (tuft + 1u) * 0x85EBCA6Bu ^ salt;
@@ -180,7 +185,7 @@ void SimulateBokushoTuftSegment(
         {
             uint index = ((outputStrokeIndex * tuftCount) + tuft) * sampleCount + sample;
             float pigment = (contactTransfer * (0.95 + localPressure * 0.34 + sweptPatch * 0.24) + airborneRelease * (1.6 + velocity * 0.002)) * stroke.dynamics.z;
-            float localPigment = saturate(pigment);
+            float localPigment = CanvasPigment(pigment);
             float trace = saturate(contact * 0.70 + airborneRelease * 2.0 + stateLoad * 0.18);
             BokushoTraceField[index] = trace;
             BokushoCanvasField[index] = localPigment;
@@ -216,7 +221,7 @@ void D3D12BokushoBrushCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float laneLoad = 0.76 + laneHash * 0.34;
     float seedPressure = saturate(brushMaterial.y * seedStroke.profile.y * 0.5) * 2.0;
     float wetness = saturate(brushMaterial.w / 1.6);
-    float load = clamp(brushMaterial.z / 1.25, 0.0, 1.8);
+    float load = clamp(brushMaterial.z / 1.05, 0.0, 2.7);
     float splay = saturate(brushDynamics.x / 2.0);
     float seedRadius = max(brushMaterial.x * seedStroke.profile.x, 0.0001);
     float seedNormalRadius = max(seedRadius * seedStroke.profile.z, 0.0001);

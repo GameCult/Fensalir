@@ -11,8 +11,9 @@ public static class BokushoBrushSimulation
     public const float PagePatchNormalRadiusScale = 0.32f;
     public const float PagePatchMinimumRadius = 0.001f;
     public const float PagePatchWorldQuantum = 1.0f / 1024.0f;
-    public const float PagePatchInkQuantum = 1.0f / 2048.0f;
-    public const float PagePatchCoverageQuantum = 1.0f / 1024.0f;
+    public const uint PagePatchInkUnits = 2048u;
+    public const uint PagePatchCoverageUnits = 1024u;
+    public const uint PagePatchTransferEncodedGain = 288u;
     public const uint PageDensityContributionQuantum = 8u;
 
     public static BokushoBrushSimulationResult Evaluate(AquariumBokushoBrushFrame source)
@@ -650,8 +651,8 @@ public static class BokushoBrushSimulation
         float tangentRadius,
         float pigment)
     {
-        var ink = QuantizePositive(Saturate(pigment), PagePatchInkQuantum);
-        if (ink <= 0.000001f)
+        var inkUnits = QuantizePositiveUnits(Saturate(pigment), PagePatchInkUnits);
+        if (inkUnits == 0u)
         {
             return;
         }
@@ -691,15 +692,14 @@ public static class BokushoBrushSimulation
                 var tangentDistance = axialExcess / patchTangentRadius;
                 var normalDistance = Vector2.Dot(local, normal) / patchNormalRadius;
                 var ellipse = MathF.Sqrt(tangentDistance * tangentDistance + normalDistance * normalDistance);
-                var coverage = QuantizePositive(SmoothStep(1.0f, 0.0f, ellipse), PagePatchCoverageQuantum);
-                if (coverage <= 0.0f)
+                var coverageUnits = QuantizePositiveUnits(SmoothStep(1.0f, 0.0f, ellipse), PagePatchCoverageUnits);
+                if (coverageUnits == 0u)
                 {
                     continue;
                 }
 
                 var sampleIndex = y * width + x;
-                var contribution = PagePatchContribution(ink, coverage);
-                densityPage[sampleIndex] += EncodePageDensityContribution(contribution);
+                densityPage[sampleIndex] += EncodePageDensityContribution(inkUnits, coverageUnits);
             }
         }
     }
@@ -803,6 +803,14 @@ public static class BokushoBrushSimulation
         return QuantizeDensityContribution(encoded);
     }
 
+    public static uint EncodePageDensityContribution(uint inkUnits, uint coverageUnits)
+    {
+        var product = inkUnits * coverageUnits;
+        var denominator = PagePatchInkUnits * PagePatchCoverageUnits;
+        var encoded = (product * PagePatchTransferEncodedGain + denominator / 2u) / denominator;
+        return QuantizeDensityContribution(encoded);
+    }
+
     private static uint QuantizeDensityContribution(uint encoded)
         => PageDensityContributionQuantum > 1u
             ? ((encoded + (PageDensityContributionQuantum / 2u)) / PageDensityContributionQuantum) * PageDensityContributionQuantum
@@ -832,6 +840,9 @@ public static class BokushoBrushSimulation
 
     private static float QuantizePositive(float value, float quantum)
         => Quantize(MathF.Max(value, 0.0f), quantum);
+
+    private static uint QuantizePositiveUnits(float value, uint units)
+        => (uint)MathF.Floor(Saturate(value) * units + 0.5f);
 
     private static float Quantize(float value, float quantum)
         => quantum > 0.0f ? MathF.Floor((value / quantum) + 0.5f) * quantum : value;

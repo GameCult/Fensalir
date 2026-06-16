@@ -210,6 +210,20 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void PageDensityContributionUnitsAvoidFloatAddendDrift()
+    {
+        var full = BokushoBrushSimulation.EncodePageDensityContribution(
+            BokushoBrushSimulation.PagePatchInkUnits,
+            BokushoBrushSimulation.PagePatchCoverageUnits);
+        var halfInkHalfCoverage = BokushoBrushSimulation.EncodePageDensityContribution(
+            BokushoBrushSimulation.PagePatchInkUnits / 2u,
+            BokushoBrushSimulation.PagePatchCoverageUnits / 2u);
+
+        Assert.Equal(288u, full);
+        Assert.Equal(72u, halfInkHalfCoverage);
+    }
+
+    [Fact]
     public void CpuPageEvaluationDecodesSharedDensityComposition()
     {
         var frame = new AquariumBokushoBrushFrame

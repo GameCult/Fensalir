@@ -6,8 +6,9 @@ static const float BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE = 0.32;
 static const float BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE = 0.32;
 static const float BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS = 0.001;
 static const float BOKUSHO_PAGE_PATCH_WORLD_QUANTUM = 1.0 / 1024.0;
-static const float BOKUSHO_PAGE_PATCH_INK_QUANTUM = 1.0 / 2048.0;
-static const float BOKUSHO_PAGE_PATCH_COVERAGE_QUANTUM = 1.0 / 1024.0;
+static const uint BOKUSHO_PAGE_PATCH_INK_UNITS = 2048u;
+static const uint BOKUSHO_PAGE_PATCH_COVERAGE_UNITS = 1024u;
+static const uint BOKUSHO_PAGE_PATCH_TRANSFER_ENCODED_GAIN = 288u;
 static const uint BOKUSHO_PAGE_DENSITY_CONTRIBUTION_QUANTUM = 8u;
 
 cbuffer BokushoBrushConstants : register(b4)
@@ -112,6 +113,11 @@ float QuantizePositive(float value, float quantum)
     return QuantizeScalar(max(value, 0.0), quantum);
 }
 
+uint QuantizePositiveUnits(float value, uint units)
+{
+    return (uint)floor(saturate(value) * (float)units + 0.5);
+}
+
 uint EncodePageDensityContribution(float contribution)
 {
     float c = saturate(contribution);
@@ -125,10 +131,20 @@ uint EncodePageDensityContribution(float contribution)
         : encoded;
 }
 
+uint EncodePageDensityContribution(uint inkUnits, uint coverageUnits)
+{
+    uint product = inkUnits * coverageUnits;
+    uint denominator = BOKUSHO_PAGE_PATCH_INK_UNITS * BOKUSHO_PAGE_PATCH_COVERAGE_UNITS;
+    uint encoded = (product * BOKUSHO_PAGE_PATCH_TRANSFER_ENCODED_GAIN + denominator / 2u) / denominator;
+    return BOKUSHO_PAGE_DENSITY_CONTRIBUTION_QUANTUM > 1u
+        ? ((encoded + (BOKUSHO_PAGE_DENSITY_CONTRIBUTION_QUANTUM / 2u)) / BOKUSHO_PAGE_DENSITY_CONTRIBUTION_QUANTUM) * BOKUSHO_PAGE_DENSITY_CONTRIBUTION_QUANTUM
+        : encoded;
+}
+
 void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float tangentRadius, float pigment)
 {
-    float ink = QuantizePositive(saturate(pigment), BOKUSHO_PAGE_PATCH_INK_QUANTUM);
-    if (ink <= 0.000001)
+    uint inkUnits = QuantizePositiveUnits(pigment, BOKUSHO_PAGE_PATCH_INK_UNITS);
+    if (inkUnits == 0u)
     {
         return;
     }
@@ -170,14 +186,13 @@ void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float
             float tangentDistance = axialExcess / patchTangentRadius;
             float normalDistance = dot(local, normal) / patchNormalRadius;
             float ellipse = sqrt(tangentDistance * tangentDistance + normalDistance * normalDistance);
-            float coverage = QuantizePositive(cultmath_smoothstep(1.0, 0.0, ellipse), BOKUSHO_PAGE_PATCH_COVERAGE_QUANTUM);
-            if (coverage <= 0.0)
+            uint coverageUnits = QuantizePositiveUnits(cultmath_smoothstep(1.0, 0.0, ellipse), BOKUSHO_PAGE_PATCH_COVERAGE_UNITS);
+            if (coverageUnits == 0u)
             {
                 continue;
             }
 
-            float contribution = ink * coverage * BOKUSHO_PAGE_PATCH_TRANSFER_GAIN;
-            InterlockedAdd(BokushoPageDensityField[(uint)(y * (int)pageSize + x)], EncodePageDensityContribution(contribution));
+            InterlockedAdd(BokushoPageDensityField[(uint)(y * (int)pageSize + x)], EncodePageDensityContribution(inkUnits, coverageUnits));
         }
     }
 }

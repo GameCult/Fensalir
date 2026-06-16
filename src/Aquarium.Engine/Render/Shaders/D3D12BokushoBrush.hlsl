@@ -367,6 +367,8 @@ void SimulateBokushoTuftSegmentToPage(
     inout float2 tip,
     inout float stateLoad,
     inout float stateWet,
+    inout float previousPatchNormalRadius,
+    inout float previousPatchTangentRadius,
     bool writeOutput,
     bool writeInitialStep)
 {
@@ -381,8 +383,6 @@ void SimulateBokushoTuftSegmentToPage(
     uint stepCount = min(max((uint)ceil(segmentSpan * brushShape.z), 2u), 4096u);
     float segmentVelocityScale = 1.0 / segmentSpan;
     float split = saturate((0.28 - LaneHash(laneKey, tuft, 53u)) * 3.0) * saturate((edge - 0.20) * 1.5) * stroke.dynamics.w;
-    float previousPatchNormalRadius = 0.0;
-    float previousPatchTangentRadius = 0.0;
 
     [loop]
     for (uint step = 0u; step < stepCount; step += 1u)
@@ -536,12 +536,14 @@ void D3D12BokushoPageDepositCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float offset = (restOffset + poseBias * (1.0 - edge * 0.35)) * seedNormalRadius * (0.42 + splay * 0.38) + (laneHash - 0.5) * seedNormalRadius * 0.05;
     float stateLoad = load * (0.86 + initialCohesion * 0.48) * (1.0 - edge * 0.08) * laneLoad * (1.0 - seedSplit * 0.18);
     float stateWet = wetness * (0.74 + initialCohesion * 0.24 - seedSplit * 0.08);
+    float previousPatchNormalRadius = 0.0;
+    float previousPatchTangentRadius = 0.0;
 
     [loop]
     for (uint replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex += 1u)
     {
-        SimulateBokushoTuftSegmentToPage(BokushoBrushStrokes[replayStrokeIndex], chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, false, true);
+        SimulateBokushoTuftSegmentToPage(BokushoBrushStrokes[replayStrokeIndex], chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, previousPatchNormalRadius, previousPatchTangentRadius, false, true);
     }
 
-    SimulateBokushoTuftSegmentToPage(stroke, chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, true, strokeIndex == chainStart);
+    SimulateBokushoTuftSegmentToPage(stroke, chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, previousPatchNormalRadius, previousPatchTangentRadius, true, strokeIndex == chainStart);
 }

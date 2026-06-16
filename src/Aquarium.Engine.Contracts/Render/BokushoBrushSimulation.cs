@@ -203,13 +203,15 @@ public static class BokushoBrushSimulation
                 var offset = (restOffset + poseBias * (1.0f - edge * 0.35f)) * seedNormalRadius * (0.42f + splay * 0.38f) + (laneHash - 0.5f) * seedNormalRadius * 0.05f;
                 var stateLoad = load * (0.86f + initialCohesion * 0.48f) * (1.0f - edge * 0.08f) * laneLoad * (1.0f - seedSplit * 0.18f);
                 var stateWet = wetness * (0.74f + initialCohesion * 0.24f - seedSplit * 0.08f);
+                var previousPatchNormalRadius = 0.0f;
+                var previousPatchTangentRadius = 0.0f;
 
                 for (var replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex++)
                 {
-                    SimulateTuftSegmentToPage(strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, densityPage, width, height, viewCenter, safeRadius, writeOutput: false, writeInitialStep: true);
+                    SimulateTuftSegmentToPage(strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, ref previousPatchNormalRadius, ref previousPatchTangentRadius, densityPage, width, height, viewCenter, safeRadius, writeOutput: false, writeInitialStep: true);
                 }
 
-                SimulateTuftSegmentToPage(stroke, strokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, densityPage, width, height, viewCenter, safeRadius, writeOutput: true, writeInitialStep: strokeIndex == chainStart);
+                SimulateTuftSegmentToPage(stroke, strokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, ref previousPatchNormalRadius, ref previousPatchTangentRadius, densityPage, width, height, viewCenter, safeRadius, writeOutput: true, writeInitialStep: strokeIndex == chainStart);
             }
         }
     }
@@ -325,6 +327,8 @@ public static class BokushoBrushSimulation
         ref Vector2 tip,
         ref float stateLoad,
         ref float stateWet,
+        ref float previousPatchNormalRadius,
+        ref float previousPatchTangentRadius,
         Span<uint> densityPage,
         int width,
         int height,
@@ -341,8 +345,6 @@ public static class BokushoBrushSimulation
         var stepCount = Math.Clamp((int)MathF.Ceiling(segmentSpan * physicsHz), 2, 4096);
         var segmentVelocityScale = 1.0f / segmentSpan;
         var split = Saturate((0.28f - LaneHash(laneKey, tuft, 53)) * 3.0f) * Saturate((edge - 0.20f) * 1.5f) * stroke.SplitScale;
-        var previousPatchNormalRadius = 0.0f;
-        var previousPatchTangentRadius = 0.0f;
 
         for (var step = 0; step < stepCount; step++)
         {

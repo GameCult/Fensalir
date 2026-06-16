@@ -341,6 +341,8 @@ public static class BokushoBrushSimulation
         var stepCount = Math.Clamp((int)MathF.Ceiling(segmentSpan * physicsHz), 2, 4096);
         var segmentVelocityScale = 1.0f / segmentSpan;
         var split = Saturate((0.28f - LaneHash(laneKey, tuft, 53)) * 3.0f) * Saturate((edge - 0.20f) * 1.5f) * stroke.SplitScale;
+        var previousPatchNormalRadius = 0.0f;
+        var previousPatchTangentRadius = 0.0f;
 
         for (var step = 0; step < stepCount; step++)
         {
@@ -392,8 +394,13 @@ public static class BokushoBrushSimulation
                 var pigment = (contactTransfer * (0.95f + localPressure * 0.34f + sweptPatch * 0.24f) + airborneRelease * (1.6f + velocity * 0.002f)) * stroke.PigmentScale;
                 var patchNormalRadius = localNormalRadius * (0.74f + inkFilm * 0.10f + laneCore * 0.20f + localPressure * 0.14f + sweptPatch * 0.08f - separation * 0.10f);
                 var patchTangentRadius = localTangentRadius * (0.86f + inkFilm * 0.06f + bend * 0.22f + drag * 0.16f) + sweptDistance * 0.36f;
-                DepositSweptPatch(densityPage, width, height, viewCenter, viewRadius, previousTip, tip, patchNormalRadius, patchTangentRadius, pigment, paperTooth);
+                var sweepStartNormalRadius = previousPatchNormalRadius > 0.0f ? previousPatchNormalRadius : patchNormalRadius;
+                var sweepStartTangentRadius = previousPatchTangentRadius > 0.0f ? previousPatchTangentRadius : patchTangentRadius;
+                DepositSweptPatch(densityPage, width, height, viewCenter, viewRadius, previousTip, tip, sweepStartNormalRadius, sweepStartTangentRadius, patchNormalRadius, patchTangentRadius, pigment, paperTooth);
             }
+
+            previousPatchNormalRadius = localNormalRadius * (0.74f + inkFilm * 0.10f + laneCore * 0.20f + localPressure * 0.14f + sweptPatch * 0.08f - separation * 0.10f);
+            previousPatchTangentRadius = localTangentRadius * (0.86f + inkFilm * 0.06f + bend * 0.22f + drag * 0.16f) + sweptDistance * 0.36f;
         }
     }
 
@@ -653,6 +660,8 @@ public static class BokushoBrushSimulation
         float viewRadius,
         Vector2 previousTip,
         Vector2 tip,
+        float previousNormalRadius,
+        float previousTangentRadius,
         float normalRadius,
         float tangentRadius,
         float pigment,
@@ -666,13 +675,18 @@ public static class BokushoBrushSimulation
 
         previousTip = Quantize(previousTip, PagePatchWorldQuantum);
         tip = Quantize(tip, PagePatchWorldQuantum);
+        previousNormalRadius = QuantizePositive(previousNormalRadius, PagePatchWorldQuantum);
+        previousTangentRadius = QuantizePositive(previousTangentRadius, PagePatchWorldQuantum);
         normalRadius = QuantizePositive(normalRadius, PagePatchWorldQuantum);
         tangentRadius = QuantizePositive(tangentRadius, PagePatchWorldQuantum);
         var sweep = tip - previousTip;
         var sweepLength = sweep.Length();
         var tangent = sweepLength > 0.000001f ? sweep / sweepLength : Vector2.UnitX;
         var normal = new Vector2(-tangent.Y, tangent.X);
-        var (patchTangentRadius, patchNormalRadius) = PagePatchRadii(tangentRadius, normalRadius, sweepLength);
+        var (previousPatchTangentRadius, previousPatchNormalRadius) = PagePatchRadii(previousTangentRadius, previousNormalRadius, sweepLength);
+        var (currentPatchTangentRadius, currentPatchNormalRadius) = PagePatchRadii(tangentRadius, normalRadius, sweepLength);
+        var patchTangentRadius = MathF.Max(previousPatchTangentRadius, currentPatchTangentRadius);
+        var patchNormalRadius = MathF.Max(previousPatchNormalRadius, currentPatchNormalRadius);
         var center = (previousTip + tip) * 0.5f;
         var halfSweepLength = sweepLength * 0.5f;
         var extents = new Vector2(

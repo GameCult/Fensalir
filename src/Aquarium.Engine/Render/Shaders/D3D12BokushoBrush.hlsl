@@ -162,7 +162,7 @@ float PageToothHash(uint x, uint y)
     return (float)(value & 0x00FFFFFFu) / 16777215.0;
 }
 
-void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float tangentRadius, float pigment, float paperTooth)
+void DepositSweptPatch(float2 previousTip, float2 tip, float previousNormalRadius, float previousTangentRadius, float normalRadius, float tangentRadius, float pigment, float paperTooth)
 {
     uint inkUnits = QuantizePositiveUnits(pigment, BOKUSHO_PAGE_PATCH_INK_UNITS);
     if (inkUnits == 0u)
@@ -172,14 +172,20 @@ void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float
 
     previousTip = QuantizeFloat2(previousTip, BOKUSHO_PAGE_PATCH_WORLD_QUANTUM);
     tip = QuantizeFloat2(tip, BOKUSHO_PAGE_PATCH_WORLD_QUANTUM);
+    previousNormalRadius = QuantizePositive(previousNormalRadius, BOKUSHO_PAGE_PATCH_WORLD_QUANTUM);
+    previousTangentRadius = QuantizePositive(previousTangentRadius, BOKUSHO_PAGE_PATCH_WORLD_QUANTUM);
     normalRadius = QuantizePositive(normalRadius, BOKUSHO_PAGE_PATCH_WORLD_QUANTUM);
     tangentRadius = QuantizePositive(tangentRadius, BOKUSHO_PAGE_PATCH_WORLD_QUANTUM);
     float2 sweep = tip - previousTip;
     float sweepLength = length(sweep);
     float2 tangent = sweepLength > 0.000001 ? sweep / sweepLength : float2(1.0, 0.0);
     float2 normal = float2(-tangent.y, tangent.x);
-    float patchTangentRadius = max(tangentRadius * BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE, BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS);
-    float patchNormalRadius = max(normalRadius * BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE, BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS);
+    float previousPatchTangentRadius = max(previousTangentRadius * BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE, BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS);
+    float previousPatchNormalRadius = max(previousNormalRadius * BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE, BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS);
+    float currentPatchTangentRadius = max(tangentRadius * BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE, BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS);
+    float currentPatchNormalRadius = max(normalRadius * BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE, BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS);
+    float patchTangentRadius = max(previousPatchTangentRadius, currentPatchTangentRadius);
+    float patchNormalRadius = max(previousPatchNormalRadius, currentPatchNormalRadius);
     float2 center = (previousTip + tip) * 0.5;
     float halfSweepLength = sweepLength * 0.5;
     float2 extents = float2(
@@ -375,6 +381,8 @@ void SimulateBokushoTuftSegmentToPage(
     uint stepCount = min(max((uint)ceil(segmentSpan * brushShape.z), 2u), 4096u);
     float segmentVelocityScale = 1.0 / segmentSpan;
     float split = saturate((0.28 - LaneHash(laneKey, tuft, 53u)) * 3.0) * saturate((edge - 0.20) * 1.5) * stroke.dynamics.w;
+    float previousPatchNormalRadius = 0.0;
+    float previousPatchTangentRadius = 0.0;
 
     [loop]
     for (uint step = 0u; step < stepCount; step += 1u)
@@ -427,8 +435,13 @@ void SimulateBokushoTuftSegmentToPage(
             float pigment = (contactTransfer * (0.95 + localPressure * 0.34 + sweptPatch * 0.24) + airborneRelease * (1.6 + velocity * 0.002)) * stroke.dynamics.z;
             float patchNormalRadius = localNormalRadius * (0.74 + inkFilm * 0.10 + laneCore * 0.20 + localPressure * 0.14 + sweptPatch * 0.08 - separation * 0.10);
             float patchTangentRadius = localTangentRadius * (0.86 + inkFilm * 0.06 + bend * 0.22 + drag * 0.16) + sweptDistance * 0.36;
-            DepositSweptPatch(previousTip, tip, patchNormalRadius, patchTangentRadius, pigment, paperTooth);
+            float sweepStartNormalRadius = previousPatchNormalRadius > 0.0 ? previousPatchNormalRadius : patchNormalRadius;
+            float sweepStartTangentRadius = previousPatchTangentRadius > 0.0 ? previousPatchTangentRadius : patchTangentRadius;
+            DepositSweptPatch(previousTip, tip, sweepStartNormalRadius, sweepStartTangentRadius, patchNormalRadius, patchTangentRadius, pigment, paperTooth);
         }
+
+        previousPatchNormalRadius = localNormalRadius * (0.74 + inkFilm * 0.10 + laneCore * 0.20 + localPressure * 0.14 + sweptPatch * 0.08 - separation * 0.10);
+        previousPatchTangentRadius = localTangentRadius * (0.86 + inkFilm * 0.06 + bend * 0.22 + drag * 0.16) + sweptDistance * 0.36;
     }
 }
 

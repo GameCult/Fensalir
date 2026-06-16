@@ -868,10 +868,12 @@ public static class BokushoBrushSimulation
                 var normalDistance = Vector2.Dot(local, normal) / patchNormalRadius;
                 var ellipse = MathF.Sqrt(tangentDistance * tangentDistance + normalDistance * normalDistance);
                 var coverage = SmoothStep(1.0f, 0.0f, ellipse);
+                var tooth = PageToothHash((uint)x, (uint)y);
+                var interiorTooth = (1.0f - SmoothStep(0.0f, 0.34f, ellipse)) * Saturate(paperTooth);
+                coverage *= 1.0f - interiorTooth * (0.03f + tooth * 0.10f);
                 var edgeTooth = SmoothStep(0.38f, 1.0f, ellipse) * Saturate(paperTooth);
                 if (edgeTooth > 0.0f)
                 {
-                    var tooth = PageToothHash((uint)x, (uint)y);
                     coverage *= 1.0f - edgeTooth * (0.18f + tooth * 0.34f);
                 }
 

@@ -357,10 +357,12 @@ void DepositSweptPatch(float2 previousTip, float2 tip, float previousNormalRadiu
             float normalDistance = dot(local, normal) / patchNormalRadius;
             float ellipse = sqrt(tangentDistance * tangentDistance + normalDistance * normalDistance);
             float coverage = cultmath_smoothstep(1.0, 0.0, ellipse);
+            float tooth = PageToothHash((uint)x, (uint)y);
+            float interiorTooth = (1.0 - cultmath_smoothstep(0.0, 0.34, ellipse)) * saturate(paperTooth);
+            coverage *= 1.0 - interiorTooth * (0.03 + tooth * 0.10);
             float edgeTooth = cultmath_smoothstep(0.38, 1.0, ellipse) * saturate(paperTooth);
             if (edgeTooth > 0.0)
             {
-                float tooth = PageToothHash((uint)x, (uint)y);
                 coverage *= 1.0 - edgeTooth * (0.18 + tooth * 0.34);
             }
 

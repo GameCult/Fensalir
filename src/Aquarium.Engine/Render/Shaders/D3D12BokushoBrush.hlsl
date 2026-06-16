@@ -6,6 +6,7 @@ static const float BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE = 0.32;
 static const float BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE = 0.32;
 static const float BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS = 0.001;
 static const float BOKUSHO_PAGE_PATCH_WORLD_QUANTUM = 1.0 / 1024.0;
+static const float BOKUSHO_STROKE_RHYTHM_QUANTUM = 1.0 / 4096.0;
 static const uint BOKUSHO_PAGE_PATCH_INK_UNITS = 2048u;
 static const uint BOKUSHO_PAGE_PATCH_COVERAGE_UNITS = 1024u;
 static const uint BOKUSHO_PAGE_PATCH_TRANSFER_ENCODED_GAIN = 288u;
@@ -126,6 +127,19 @@ float QuantizePositive(float value, float quantum)
 uint QuantizePositiveUnits(float value, uint units)
 {
     return (uint)floor(saturate(value) * (float)units + 0.5);
+}
+
+float4 StrokeRhythm(BokushoBrushStroke stroke, float strokeT)
+{
+    float entry = cultmath_smoothstep(0.0, 0.18, strokeT);
+    float release = cultmath_smoothstep(0.74, 1.0, strokeT);
+    float belly = entry * (1.0 - cultmath_smoothstep(0.62, 0.94, strokeT));
+    float pose = saturate(abs(stroke.pose.x) * 0.34 + abs(stroke.pose.y) * 0.26 + (stroke.pose.w - 1.0) * 0.18);
+    return float4(
+        QuantizeScalar(0.90 + belly * (0.15 + pose * 0.04) + entry * 0.04 - release * (0.12 + pose * 0.03), BOKUSHO_STROKE_RHYTHM_QUANTUM),
+        QuantizeScalar(0.94 + belly * (0.09 + pose * 0.03) - release * 0.08, BOKUSHO_STROKE_RHYTHM_QUANTUM),
+        QuantizeScalar(0.96 + belly * 0.08 + pose * 0.02 - release * 0.04, BOKUSHO_STROKE_RHYTHM_QUANTUM),
+        QuantizeScalar(0.94 + belly * (0.12 + pose * 0.04) - release * 0.10, BOKUSHO_STROKE_RHYTHM_QUANTUM));
 }
 
 uint EncodePageDensityContribution(float contribution)
@@ -304,11 +318,12 @@ void SimulateBokushoTuftSegment(
         float2 normal = float2(-tangent.y, tangent.x);
         float strokeT = StrokeProgress(stroke, t);
         float taper = StrokeTaper(stroke, t);
-        float localPressure = pressure * taper;
+        float4 rhythm = StrokeRhythm(stroke, strokeT);
+        float localPressure = pressure * taper * rhythm.x;
         float laneCore = cultmath_smoothstep(0.0, 0.78, 1.0 - edge);
         float cohesion = saturate(0.28 + stateWet * 0.44 + laneCore * 0.24 + localPressure * 0.10 - split * 0.18);
-        float localNormalRadius = max(normalRadius * (0.18 + taper * 0.82) * (0.72 + splay * 0.34 + localPressure * 0.16 - cohesion * 0.08), 0.0001);
-        float localTangentRadius = max(tangentRadius * (0.24 + taper * 0.76) * (0.86 + bend * 0.18), 0.0001);
+        float localNormalRadius = max(normalRadius * rhythm.y * (0.18 + taper * 0.82) * (0.72 + splay * 0.34 + localPressure * 0.16 - cohesion * 0.08), 0.0001);
+        float localTangentRadius = max(tangentRadius * rhythm.z * (0.24 + taper * 0.76) * (0.86 + bend * 0.18), 0.0001);
         float targetOffset = (restOffset + stroke.pose.y * 0.12) * localNormalRadius * (0.58 + splay * 0.34 + localPressure * 0.18 - cohesion * 0.20);
         float recovery = saturate(0.05 + stroke.pose.w * 0.08 + stateWet * 0.08 + localPressure * 0.10);
         offset = cultmath_lerp(offset, targetOffset, recovery);
@@ -343,7 +358,7 @@ void SimulateBokushoTuftSegment(
         if (writeOutput)
         {
             uint index = ((outputStrokeIndex * tuftCount) + tuft) * sampleCount + sample;
-            float pigment = (contactTransfer * (0.95 + localPressure * 0.34 + sweptPatch * 0.24) + airborneRelease * (1.6 + velocity * 0.002)) * stroke.dynamics.z;
+            float pigment = (contactTransfer * (0.95 + localPressure * 0.34 + sweptPatch * 0.24) + airborneRelease * (1.6 + velocity * 0.002)) * stroke.dynamics.z * rhythm.w;
             float localPigment = CanvasPigment(pigment);
             float trace = saturate(contact * 0.70 + airborneRelease * 2.0 + stateLoad * 0.18);
             BokushoTraceField[index] = trace;
@@ -393,11 +408,12 @@ void SimulateBokushoTuftSegmentToPage(
         float2 normal = float2(-tangent.y, tangent.x);
         float strokeT = StrokeProgress(stroke, t);
         float taper = StrokeTaper(stroke, t);
-        float localPressure = pressure * taper;
+        float4 rhythm = StrokeRhythm(stroke, strokeT);
+        float localPressure = pressure * taper * rhythm.x;
         float laneCore = cultmath_smoothstep(0.0, 0.78, 1.0 - edge);
         float cohesion = saturate(0.28 + stateWet * 0.44 + laneCore * 0.24 + localPressure * 0.10 - split * 0.18);
-        float localNormalRadius = max(normalRadius * (0.18 + taper * 0.82) * (0.72 + splay * 0.34 + localPressure * 0.16 - cohesion * 0.08), 0.0001);
-        float localTangentRadius = max(tangentRadius * (0.24 + taper * 0.76) * (0.86 + bend * 0.18), 0.0001);
+        float localNormalRadius = max(normalRadius * rhythm.y * (0.18 + taper * 0.82) * (0.72 + splay * 0.34 + localPressure * 0.16 - cohesion * 0.08), 0.0001);
+        float localTangentRadius = max(tangentRadius * rhythm.z * (0.24 + taper * 0.76) * (0.86 + bend * 0.18), 0.0001);
         float targetOffset = (restOffset + stroke.pose.y * 0.12) * localNormalRadius * (0.58 + splay * 0.34 + localPressure * 0.18 - cohesion * 0.20);
         float recovery = saturate(0.05 + stroke.pose.w * 0.08 + stateWet * 0.08 + localPressure * 0.10);
         offset = cultmath_lerp(offset, targetOffset, recovery);
@@ -432,7 +448,7 @@ void SimulateBokushoTuftSegmentToPage(
 
         if (writeOutput && (writeInitialStep || step > 0u))
         {
-            float pigment = (contactTransfer * (0.95 + localPressure * 0.34 + sweptPatch * 0.24) + airborneRelease * (1.6 + velocity * 0.002)) * stroke.dynamics.z;
+            float pigment = (contactTransfer * (0.95 + localPressure * 0.34 + sweptPatch * 0.24) + airborneRelease * (1.6 + velocity * 0.002)) * stroke.dynamics.z * rhythm.w;
             float patchNormalRadius = localNormalRadius * (0.74 + inkFilm * 0.10 + laneCore * 0.20 + localPressure * 0.14 + sweptPatch * 0.08 - separation * 0.10);
             float patchTangentRadius = localTangentRadius * (0.86 + inkFilm * 0.06 + bend * 0.22 + drag * 0.16) + sweptDistance * 0.36;
             float sweepStartNormalRadius = previousPatchNormalRadius > 0.0 ? previousPatchNormalRadius : patchNormalRadius;

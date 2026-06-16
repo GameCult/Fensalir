@@ -11,6 +11,7 @@ public static class BokushoBrushSimulation
     public const float PagePatchNormalRadiusScale = 0.32f;
     public const float PagePatchMinimumRadius = 0.001f;
     public const float PagePatchWorldQuantum = 1.0f / 1024.0f;
+    private const float StrokeRhythmQuantum = 1.0f / 4096.0f;
     public const uint PagePatchInkUnits = 2048u;
     public const uint PagePatchCoverageUnits = 1024u;
     public const uint PagePatchTransferEncodedGain = 288u;
@@ -258,11 +259,12 @@ public static class BokushoBrushSimulation
             var normal = new Vector2(-tangent.Y, tangent.X);
             var strokeT = StrokeProgress(stroke, t);
             var taper = StrokeTaper(strokeT, stroke.EntryTaper, stroke.ExitTaper);
-            var localPressure = pressure * taper;
+            var rhythm = StrokeRhythm(stroke, strokeT);
+            var localPressure = pressure * taper * rhythm.Pressure;
             var laneCore = SmoothStep(0.0f, 0.78f, 1.0f - edge);
             var cohesion = Saturate(0.28f + stateWet * 0.44f + laneCore * 0.24f + localPressure * 0.10f - split * 0.18f);
-            var localNormalRadius = MathF.Max(normalRadius * (0.18f + taper * 0.82f) * (0.72f + splay * 0.34f + localPressure * 0.16f - cohesion * 0.08f), 0.0001f);
-            var localTangentRadius = MathF.Max(tangentRadius * (0.24f + taper * 0.76f) * (0.86f + bend * 0.18f), 0.0001f);
+            var localNormalRadius = MathF.Max(normalRadius * rhythm.NormalRadius * (0.18f + taper * 0.82f) * (0.72f + splay * 0.34f + localPressure * 0.16f - cohesion * 0.08f), 0.0001f);
+            var localTangentRadius = MathF.Max(tangentRadius * rhythm.TangentRadius * (0.24f + taper * 0.76f) * (0.86f + bend * 0.18f), 0.0001f);
             var targetOffset = (restOffset + stroke.ShaftRotation * 0.12f) * localNormalRadius * (0.58f + splay * 0.34f + localPressure * 0.18f - cohesion * 0.20f);
             var recovery = Saturate(0.05f + stroke.Compliance * 0.08f + stateWet * 0.08f + localPressure * 0.10f);
             offset = Lerp(offset, targetOffset, recovery);
@@ -297,7 +299,7 @@ public static class BokushoBrushSimulation
             if (writeOutput)
             {
                 var index = ((strokeIndex * tuftCount) + tuft) * sampleCount + sample;
-                var pigment = (contactTransfer * (0.95f + localPressure * 0.34f + sweptPatch * 0.24f) + airborneRelease * (1.6f + velocity * 0.002f)) * stroke.PigmentScale;
+                var pigment = (contactTransfer * (0.95f + localPressure * 0.34f + sweptPatch * 0.24f) + airborneRelease * (1.6f + velocity * 0.002f)) * stroke.PigmentScale * rhythm.Pigment;
                 canvas[index] = CanvasPigment(pigment);
                 trace[index] = Saturate(contact * 0.70f + airborneRelease * 2.0f + stateLoad * 0.18f);
                 tips[index] = new Vector4(
@@ -354,11 +356,12 @@ public static class BokushoBrushSimulation
             var normal = new Vector2(-tangent.Y, tangent.X);
             var strokeT = StrokeProgress(stroke, t);
             var taper = StrokeTaper(strokeT, stroke.EntryTaper, stroke.ExitTaper);
-            var localPressure = pressure * taper;
+            var rhythm = StrokeRhythm(stroke, strokeT);
+            var localPressure = pressure * taper * rhythm.Pressure;
             var laneCore = SmoothStep(0.0f, 0.78f, 1.0f - edge);
             var cohesion = Saturate(0.28f + stateWet * 0.44f + laneCore * 0.24f + localPressure * 0.10f - split * 0.18f);
-            var localNormalRadius = MathF.Max(normalRadius * (0.18f + taper * 0.82f) * (0.72f + splay * 0.34f + localPressure * 0.16f - cohesion * 0.08f), 0.0001f);
-            var localTangentRadius = MathF.Max(tangentRadius * (0.24f + taper * 0.76f) * (0.86f + bend * 0.18f), 0.0001f);
+            var localNormalRadius = MathF.Max(normalRadius * rhythm.NormalRadius * (0.18f + taper * 0.82f) * (0.72f + splay * 0.34f + localPressure * 0.16f - cohesion * 0.08f), 0.0001f);
+            var localTangentRadius = MathF.Max(tangentRadius * rhythm.TangentRadius * (0.24f + taper * 0.76f) * (0.86f + bend * 0.18f), 0.0001f);
             var targetOffset = (restOffset + stroke.ShaftRotation * 0.12f) * localNormalRadius * (0.58f + splay * 0.34f + localPressure * 0.18f - cohesion * 0.20f);
             var recovery = Saturate(0.05f + stroke.Compliance * 0.08f + stateWet * 0.08f + localPressure * 0.10f);
             offset = Lerp(offset, targetOffset, recovery);
@@ -393,7 +396,7 @@ public static class BokushoBrushSimulation
 
             if (writeOutput && (writeInitialStep || step > 0))
             {
-                var pigment = (contactTransfer * (0.95f + localPressure * 0.34f + sweptPatch * 0.24f) + airborneRelease * (1.6f + velocity * 0.002f)) * stroke.PigmentScale;
+                var pigment = (contactTransfer * (0.95f + localPressure * 0.34f + sweptPatch * 0.24f) + airborneRelease * (1.6f + velocity * 0.002f)) * stroke.PigmentScale * rhythm.Pigment;
                 var patchNormalRadius = localNormalRadius * (0.74f + inkFilm * 0.10f + laneCore * 0.20f + localPressure * 0.14f + sweptPatch * 0.08f - separation * 0.10f);
                 var patchTangentRadius = localTangentRadius * (0.86f + inkFilm * 0.06f + bend * 0.22f + drag * 0.16f) + sweptDistance * 0.36f;
                 var sweepStartNormalRadius = previousPatchNormalRadius > 0.0f ? previousPatchNormalRadius : patchNormalRadius;
@@ -755,6 +758,21 @@ public static class BokushoBrushSimulation
         var contact = TaperContact(entry * exit);
         return 0.018f + contact * 0.982f;
     }
+
+    private static StrokeRhythmFactors StrokeRhythm(AquariumBokushoBrushStroke stroke, float t)
+    {
+        var entry = SmoothStep(0.0f, 0.18f, t);
+        var release = SmoothStep(0.74f, 1.0f, t);
+        var belly = entry * (1.0f - SmoothStep(0.62f, 0.94f, t));
+        var pose = Saturate(MathF.Abs(stroke.ShaftTilt) * 0.34f + MathF.Abs(stroke.ShaftRotation) * 0.26f + (stroke.Compliance - 1.0f) * 0.18f);
+        return new StrokeRhythmFactors(
+            Pressure: Quantize(0.90f + belly * (0.15f + pose * 0.04f) + entry * 0.04f - release * (0.12f + pose * 0.03f), StrokeRhythmQuantum),
+            NormalRadius: Quantize(0.94f + belly * (0.09f + pose * 0.03f) - release * 0.08f, StrokeRhythmQuantum),
+            TangentRadius: Quantize(0.96f + belly * 0.08f + pose * 0.02f - release * 0.04f, StrokeRhythmQuantum),
+            Pigment: Quantize(0.94f + belly * (0.12f + pose * 0.04f) - release * 0.10f, StrokeRhythmQuantum));
+    }
+
+    private readonly record struct StrokeRhythmFactors(float Pressure, float NormalRadius, float TangentRadius, float Pigment);
 
     private static float TaperContact(float value)
     {

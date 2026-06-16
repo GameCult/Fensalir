@@ -1,10 +1,9 @@
 #include "CultMath/CultMath.hlsl"
 
 static const float BOKUSHO_PAGE_DENSITY_SCALE = 65535.0;
-static const float BOKUSHO_PAGE_PATCH_TRANSFER_GAIN = 0.0032;
-static const float BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE = 0.26;
-static const float BOKUSHO_PAGE_PATCH_SWEEP_RADIUS_SCALE = 0.5;
-static const float BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE = 0.20;
+static const float BOKUSHO_PAGE_PATCH_TRANSFER_GAIN = 0.0044;
+static const float BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE = 0.32;
+static const float BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE = 0.32;
 static const float BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS = 0.001;
 static const float BOKUSHO_PAGE_PATCH_WORLD_QUANTUM = 1.0 / 1024.0;
 static const float BOKUSHO_PAGE_PATCH_INK_QUANTUM = 1.0 / 2048.0;
@@ -142,12 +141,13 @@ void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float
     float sweepLength = length(sweep);
     float2 tangent = sweepLength > 0.000001 ? sweep / sweepLength : float2(1.0, 0.0);
     float2 normal = float2(-tangent.y, tangent.x);
-    float patchTangentRadius = max(tangentRadius * BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE + sweepLength * BOKUSHO_PAGE_PATCH_SWEEP_RADIUS_SCALE, BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS);
+    float patchTangentRadius = max(tangentRadius * BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE, BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS);
     float patchNormalRadius = max(normalRadius * BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE, BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS);
     float2 center = (previousTip + tip) * 0.5;
+    float halfSweepLength = sweepLength * 0.5;
     float2 extents = float2(
-        abs(tangent.x) * patchTangentRadius + abs(normal.x) * patchNormalRadius,
-        abs(tangent.y) * patchTangentRadius + abs(normal.y) * patchNormalRadius);
+        abs(tangent.x) * (halfSweepLength + patchTangentRadius) + abs(normal.x) * patchNormalRadius,
+        abs(tangent.y) * (halfSweepLength + patchTangentRadius) + abs(normal.y) * patchNormalRadius);
     float pageSize = max(pageView.w, 1.0);
     float2 minUv = (center - extents - pageView.xy) / max(pageView.z, 0.001) * 0.5 + 0.5;
     float2 maxUv = (center + extents - pageView.xy) / max(pageView.z, 0.001) * 0.5 + 0.5;
@@ -166,7 +166,8 @@ void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float
             float uvX = pageSize <= 1.0 ? 0.0 : (float)x / (pageSize - 1.0);
             float2 world = pageView.xy + (float2(uvX, uvY) * 2.0 - 1.0) * pageView.z;
             float2 local = world - center;
-            float tangentDistance = dot(local, tangent) / patchTangentRadius;
+            float axialExcess = max(abs(dot(local, tangent)) - halfSweepLength, 0.0);
+            float tangentDistance = axialExcess / patchTangentRadius;
             float normalDistance = dot(local, normal) / patchNormalRadius;
             float ellipse = sqrt(tangentDistance * tangentDistance + normalDistance * normalDistance);
             float coverage = QuantizePositive(cultmath_smoothstep(1.0, 0.0, ellipse), BOKUSHO_PAGE_PATCH_COVERAGE_QUANTUM);

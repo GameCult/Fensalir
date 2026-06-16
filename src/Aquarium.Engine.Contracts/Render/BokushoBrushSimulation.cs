@@ -6,10 +6,9 @@ namespace Aquarium.Engine.Render;
 public static class BokushoBrushSimulation
 {
     public const float PageDensityScale = 65535.0f;
-    public const float PagePatchTransferGain = 0.0032f;
-    public const float PagePatchTangentRadiusScale = 0.26f;
-    public const float PagePatchSweepRadiusScale = 0.5f;
-    public const float PagePatchNormalRadiusScale = 0.20f;
+    public const float PagePatchTransferGain = 0.0044f;
+    public const float PagePatchTangentRadiusScale = 0.32f;
+    public const float PagePatchNormalRadiusScale = 0.32f;
     public const float PagePatchMinimumRadius = 0.001f;
     public const float PagePatchWorldQuantum = 1.0f / 1024.0f;
     public const float PagePatchInkQuantum = 1.0f / 2048.0f;
@@ -667,9 +666,10 @@ public static class BokushoBrushSimulation
         var normal = new Vector2(-tangent.Y, tangent.X);
         var (patchTangentRadius, patchNormalRadius) = PagePatchRadii(tangentRadius, normalRadius, sweepLength);
         var center = (previousTip + tip) * 0.5f;
+        var halfSweepLength = sweepLength * 0.5f;
         var extents = new Vector2(
-            MathF.Abs(tangent.X) * patchTangentRadius + MathF.Abs(normal.X) * patchNormalRadius,
-            MathF.Abs(tangent.Y) * patchTangentRadius + MathF.Abs(normal.Y) * patchNormalRadius);
+            MathF.Abs(tangent.X) * (halfSweepLength + patchTangentRadius) + MathF.Abs(normal.X) * patchNormalRadius,
+            MathF.Abs(tangent.Y) * (halfSweepLength + patchTangentRadius) + MathF.Abs(normal.Y) * patchNormalRadius);
         var minWorld = center - extents;
         var maxWorld = center + extents;
         var minPixel = WorldToPixel(minWorld, width, height, viewCenter, viewRadius);
@@ -687,7 +687,8 @@ public static class BokushoBrushSimulation
                 var uvX = width <= 1 ? 0.0f : x / (float)(width - 1);
                 var world = viewCenter + (new Vector2(uvX, uvY) * 2.0f - Vector2.One) * viewRadius;
                 var local = world - center;
-                var tangentDistance = Vector2.Dot(local, tangent) / patchTangentRadius;
+                var axialExcess = MathF.Max(MathF.Abs(Vector2.Dot(local, tangent)) - halfSweepLength, 0.0f);
+                var tangentDistance = axialExcess / patchTangentRadius;
                 var normalDistance = Vector2.Dot(local, normal) / patchNormalRadius;
                 var ellipse = MathF.Sqrt(tangentDistance * tangentDistance + normalDistance * normalDistance);
                 var coverage = QuantizePositive(SmoothStep(1.0f, 0.0f, ellipse), PagePatchCoverageQuantum);
@@ -791,7 +792,7 @@ public static class BokushoBrushSimulation
     public static (float TangentRadius, float NormalRadius) PagePatchRadii(float tangentRadius, float normalRadius, float sweepLength)
     {
         return (
-            MathF.Max(tangentRadius * PagePatchTangentRadiusScale + sweepLength * PagePatchSweepRadiusScale, PagePatchMinimumRadius),
+            MathF.Max(tangentRadius * PagePatchTangentRadiusScale, PagePatchMinimumRadius),
             MathF.Max(normalRadius * PagePatchNormalRadiusScale, PagePatchMinimumRadius));
     }
 

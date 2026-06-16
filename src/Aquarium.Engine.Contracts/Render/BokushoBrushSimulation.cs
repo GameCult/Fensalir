@@ -11,6 +11,10 @@ public static class BokushoBrushSimulation
     public const float PagePatchSweepRadiusScale = 0.5f;
     public const float PagePatchNormalRadiusScale = 0.20f;
     public const float PagePatchMinimumRadius = 0.001f;
+    public const float PagePatchWorldQuantum = 1.0f / 1024.0f;
+    public const float PagePatchInkQuantum = 1.0f / 2048.0f;
+    public const float PagePatchCoverageQuantum = 1.0f / 1024.0f;
+    public const uint PageDensityContributionQuantum = 8u;
 
     public static BokushoBrushSimulationResult Evaluate(AquariumBokushoBrushFrame source)
     {
@@ -647,12 +651,16 @@ public static class BokushoBrushSimulation
         float tangentRadius,
         float pigment)
     {
-        var ink = Saturate(pigment);
+        var ink = QuantizePositive(Saturate(pigment), PagePatchInkQuantum);
         if (ink <= 0.000001f)
         {
             return;
         }
 
+        previousTip = Quantize(previousTip, PagePatchWorldQuantum);
+        tip = Quantize(tip, PagePatchWorldQuantum);
+        normalRadius = QuantizePositive(normalRadius, PagePatchWorldQuantum);
+        tangentRadius = QuantizePositive(tangentRadius, PagePatchWorldQuantum);
         var sweep = tip - previousTip;
         var sweepLength = sweep.Length();
         var tangent = sweepLength > 0.000001f ? sweep / sweepLength : Vector2.UnitX;
@@ -682,7 +690,7 @@ public static class BokushoBrushSimulation
                 var tangentDistance = Vector2.Dot(local, tangent) / patchTangentRadius;
                 var normalDistance = Vector2.Dot(local, normal) / patchNormalRadius;
                 var ellipse = MathF.Sqrt(tangentDistance * tangentDistance + normalDistance * normalDistance);
-                var coverage = SmoothStep(1.0f, 0.0f, ellipse);
+                var coverage = QuantizePositive(SmoothStep(1.0f, 0.0f, ellipse), PagePatchCoverageQuantum);
                 if (coverage <= 0.0f)
                 {
                     continue;
@@ -784,8 +792,14 @@ public static class BokushoBrushSimulation
     public static uint EncodePageDensityContribution(float contribution)
     {
         var density = PageOpticalDensity(contribution);
-        return (uint)MathF.Floor(MathF.Min(density * PageDensityScale, PageDensityScale) + 0.5f);
+        var encoded = (uint)MathF.Floor(MathF.Min(density * PageDensityScale, PageDensityScale) + 0.5f);
+        return QuantizeDensityContribution(encoded);
     }
+
+    private static uint QuantizeDensityContribution(uint encoded)
+        => PageDensityContributionQuantum > 1u
+            ? ((encoded + (PageDensityContributionQuantum / 2u)) / PageDensityContributionQuantum) * PageDensityContributionQuantum
+            : encoded;
 
     private static float PageOpticalDensity(float contribution)
     {
@@ -805,6 +819,15 @@ public static class BokushoBrushSimulation
     {
         return math.smoothstep(edge0, edge1, x);
     }
+
+    private static Vector2 Quantize(Vector2 value, float quantum)
+        => new(Quantize(value.X, quantum), Quantize(value.Y, quantum));
+
+    private static float QuantizePositive(float value, float quantum)
+        => Quantize(MathF.Max(value, 0.0f), quantum);
+
+    private static float Quantize(float value, float quantum)
+        => quantum > 0.0f ? MathF.Floor((value / quantum) + 0.5f) * quantum : value;
 
     private static float Saturate(float value) => Math.Clamp(value, 0.0f, 1.0f);
 }

@@ -6,6 +6,10 @@ static const float BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE = 0.26;
 static const float BOKUSHO_PAGE_PATCH_SWEEP_RADIUS_SCALE = 0.5;
 static const float BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE = 0.20;
 static const float BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS = 0.001;
+static const float BOKUSHO_PAGE_PATCH_WORLD_QUANTUM = 1.0 / 1024.0;
+static const float BOKUSHO_PAGE_PATCH_INK_QUANTUM = 1.0 / 2048.0;
+static const float BOKUSHO_PAGE_PATCH_COVERAGE_QUANTUM = 1.0 / 1024.0;
+static const uint BOKUSHO_PAGE_DENSITY_CONTRIBUTION_QUANTUM = 8u;
 
 cbuffer BokushoBrushConstants : register(b4)
 {
@@ -85,6 +89,21 @@ float CanvasPigment(float value)
     return 0.96 * (1.0 - exp(-max(value, 0.0) * 0.82));
 }
 
+float QuantizeScalar(float value, float quantum)
+{
+    return quantum > 0.0 ? floor((value / quantum) + 0.5) * quantum : value;
+}
+
+float2 QuantizeFloat2(float2 value, float quantum)
+{
+    return float2(QuantizeScalar(value.x, quantum), QuantizeScalar(value.y, quantum));
+}
+
+float QuantizePositive(float value, float quantum)
+{
+    return QuantizeScalar(max(value, 0.0), quantum);
+}
+
 uint EncodePageDensityContribution(float contribution)
 {
     float c = saturate(contribution);
@@ -92,17 +111,24 @@ uint EncodePageDensityContribution(float contribution)
     float c3 = c2 * c;
     float c4 = c2 * c2;
     float density = c + (c2 * 0.5) + (c3 * (1.0 / 3.0)) + (c4 * 0.25);
-    return (uint)floor(min(density * BOKUSHO_PAGE_DENSITY_SCALE, BOKUSHO_PAGE_DENSITY_SCALE) + 0.5);
+    uint encoded = (uint)floor(min(density * BOKUSHO_PAGE_DENSITY_SCALE, BOKUSHO_PAGE_DENSITY_SCALE) + 0.5);
+    return BOKUSHO_PAGE_DENSITY_CONTRIBUTION_QUANTUM > 1u
+        ? ((encoded + (BOKUSHO_PAGE_DENSITY_CONTRIBUTION_QUANTUM / 2u)) / BOKUSHO_PAGE_DENSITY_CONTRIBUTION_QUANTUM) * BOKUSHO_PAGE_DENSITY_CONTRIBUTION_QUANTUM
+        : encoded;
 }
 
 void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float tangentRadius, float pigment)
 {
-    float ink = saturate(pigment);
+    float ink = QuantizePositive(saturate(pigment), BOKUSHO_PAGE_PATCH_INK_QUANTUM);
     if (ink <= 0.000001)
     {
         return;
     }
 
+    previousTip = QuantizeFloat2(previousTip, BOKUSHO_PAGE_PATCH_WORLD_QUANTUM);
+    tip = QuantizeFloat2(tip, BOKUSHO_PAGE_PATCH_WORLD_QUANTUM);
+    normalRadius = QuantizePositive(normalRadius, BOKUSHO_PAGE_PATCH_WORLD_QUANTUM);
+    tangentRadius = QuantizePositive(tangentRadius, BOKUSHO_PAGE_PATCH_WORLD_QUANTUM);
     float2 sweep = tip - previousTip;
     float sweepLength = length(sweep);
     float2 tangent = sweepLength > 0.000001 ? sweep / sweepLength : float2(1.0, 0.0);
@@ -134,7 +160,7 @@ void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float
             float tangentDistance = dot(local, tangent) / patchTangentRadius;
             float normalDistance = dot(local, normal) / patchNormalRadius;
             float ellipse = sqrt(tangentDistance * tangentDistance + normalDistance * normalDistance);
-            float coverage = cultmath_smoothstep(1.0, 0.0, ellipse);
+            float coverage = QuantizePositive(cultmath_smoothstep(1.0, 0.0, ellipse), BOKUSHO_PAGE_PATCH_COVERAGE_QUANTUM);
             if (coverage <= 0.0)
             {
                 continue;

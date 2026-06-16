@@ -380,6 +380,7 @@ public static class BokushoBrushSimulation
             var continuity = 1.0f - SmoothStep(0.18f + dryMemory * 0.28f, 0.96f, fiberNoise) * dryMemory * (0.38f + edge * 0.22f);
             var inkFilm = Saturate(stateLoad * (0.28f + stateWet * 0.34f));
             var bristleTooth = (0.62f + continuity * (0.30f + inkFilm * 0.08f)) * (0.82f + inkFilm * 0.24f - edge * 0.06f);
+            var paperTooth = Saturate(dryMemory * 0.42f + separation * 0.22f + edge * 0.10f + (1.0f - inkFilm) * 0.18f);
             var contactTransfer = contact * stateLoad * (0.16f + stateWet * 0.92f) * (0.30f + drag * 0.64f + localPressure * 0.22f + sweptPatch * 0.18f) * (0.68f + laneCore * 0.50f - separation * 0.14f) * bristleTooth;
             var airborneRelease = (1.0f - contact) * stateLoad * stateWet * Saturate(velocity * 0.010f - adhesion * 0.16f) * (0.20f + separation * 0.42f + edge * 0.18f);
             var consumedPigment = contactTransfer + airborneRelease;
@@ -391,7 +392,7 @@ public static class BokushoBrushSimulation
                 var pigment = (contactTransfer * (0.95f + localPressure * 0.34f + sweptPatch * 0.24f) + airborneRelease * (1.6f + velocity * 0.002f)) * stroke.PigmentScale;
                 var patchNormalRadius = localNormalRadius * (0.74f + inkFilm * 0.10f + laneCore * 0.20f + localPressure * 0.14f + sweptPatch * 0.08f - separation * 0.10f);
                 var patchTangentRadius = localTangentRadius * (0.86f + inkFilm * 0.06f + bend * 0.22f + drag * 0.16f) + sweptDistance * 0.36f;
-                DepositSweptPatch(densityPage, width, height, viewCenter, viewRadius, previousTip, tip, patchNormalRadius, patchTangentRadius, pigment);
+                DepositSweptPatch(densityPage, width, height, viewCenter, viewRadius, previousTip, tip, patchNormalRadius, patchTangentRadius, pigment, paperTooth);
             }
         }
     }
@@ -654,7 +655,8 @@ public static class BokushoBrushSimulation
         Vector2 tip,
         float normalRadius,
         float tangentRadius,
-        float pigment)
+        float pigment,
+        float paperTooth)
     {
         var inkUnits = QuantizePositiveUnits(Saturate(pigment), PagePatchInkUnits);
         if (inkUnits == 0u)
@@ -697,7 +699,15 @@ public static class BokushoBrushSimulation
                 var tangentDistance = axialExcess / patchTangentRadius;
                 var normalDistance = Vector2.Dot(local, normal) / patchNormalRadius;
                 var ellipse = MathF.Sqrt(tangentDistance * tangentDistance + normalDistance * normalDistance);
-                var coverageUnits = QuantizePositiveUnits(SmoothStep(1.0f, 0.0f, ellipse), PagePatchCoverageUnits);
+                var coverage = SmoothStep(1.0f, 0.0f, ellipse);
+                var edgeTooth = SmoothStep(0.38f, 1.0f, ellipse) * Saturate(paperTooth);
+                if (edgeTooth > 0.0f)
+                {
+                    var tooth = PageToothHash((uint)x, (uint)y);
+                    coverage *= 1.0f - edgeTooth * (0.18f + tooth * 0.34f);
+                }
+
+                var coverageUnits = QuantizePositiveUnits(coverage, PagePatchCoverageUnits);
                 if (coverageUnits == 0u)
                 {
                     continue;
@@ -756,6 +766,17 @@ public static class BokushoBrushSimulation
     private static float LaneHash(int strokeIndex, int tuft, uint salt)
     {
         var value = (uint)(strokeIndex + 1) * 0x9E3779B9u ^ (uint)(tuft + 1) * 0x85EBCA6Bu ^ salt;
+        value ^= value >> 16;
+        value *= 0x7FEB352Du;
+        value ^= value >> 15;
+        value *= 0x846CA68Bu;
+        value ^= value >> 16;
+        return (value & 0x00FFFFFFu) / 16777215.0f;
+    }
+
+    private static float PageToothHash(uint x, uint y)
+    {
+        var value = (x + 1u) * 0x9E3779B9u ^ (y + 1u) * 0x85EBCA6Bu ^ 0xC2B2AE35u;
         value ^= value >> 16;
         value *= 0x7FEB352Du;
         value ^= value >> 15;

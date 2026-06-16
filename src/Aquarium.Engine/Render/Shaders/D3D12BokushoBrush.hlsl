@@ -151,7 +151,18 @@ uint EncodePageDensityContribution(uint inkUnits, uint coverageUnits)
         : encoded;
 }
 
-void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float tangentRadius, float pigment)
+float PageToothHash(uint x, uint y)
+{
+    uint value = (x + 1u) * 0x9E3779B9u ^ (y + 1u) * 0x85EBCA6Bu ^ 0xC2B2AE35u;
+    value ^= value >> 16;
+    value *= 0x7FEB352Du;
+    value ^= value >> 15;
+    value *= 0x846CA68Bu;
+    value ^= value >> 16;
+    return (float)(value & 0x00FFFFFFu) / 16777215.0;
+}
+
+void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float tangentRadius, float pigment, float paperTooth)
 {
     uint inkUnits = QuantizePositiveUnits(pigment, BOKUSHO_PAGE_PATCH_INK_UNITS);
     if (inkUnits == 0u)
@@ -196,7 +207,15 @@ void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float
             float tangentDistance = axialExcess / patchTangentRadius;
             float normalDistance = dot(local, normal) / patchNormalRadius;
             float ellipse = sqrt(tangentDistance * tangentDistance + normalDistance * normalDistance);
-            uint coverageUnits = QuantizePositiveUnits(cultmath_smoothstep(1.0, 0.0, ellipse), BOKUSHO_PAGE_PATCH_COVERAGE_UNITS);
+            float coverage = cultmath_smoothstep(1.0, 0.0, ellipse);
+            float edgeTooth = cultmath_smoothstep(0.38, 1.0, ellipse) * saturate(paperTooth);
+            if (edgeTooth > 0.0)
+            {
+                float tooth = PageToothHash((uint)x, (uint)y);
+                coverage *= 1.0 - edgeTooth * (0.18 + tooth * 0.34);
+            }
+
+            uint coverageUnits = QuantizePositiveUnits(coverage, BOKUSHO_PAGE_PATCH_COVERAGE_UNITS);
             if (coverageUnits == 0u)
             {
                 continue;
@@ -396,6 +415,7 @@ void SimulateBokushoTuftSegmentToPage(
         float continuity = 1.0 - cultmath_smoothstep(0.18 + dryMemory * 0.28, 0.96, fiberNoise) * dryMemory * (0.38 + edge * 0.22);
         float inkFilm = saturate(stateLoad * (0.28 + stateWet * 0.34));
         float bristleTooth = (0.62 + continuity * (0.30 + inkFilm * 0.08)) * (0.82 + inkFilm * 0.24 - edge * 0.06);
+        float paperTooth = saturate(dryMemory * 0.42 + separation * 0.22 + edge * 0.10 + (1.0 - inkFilm) * 0.18);
         float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * bristleTooth;
         float airborneRelease = (1.0 - contact) * stateLoad * stateWet * saturate(velocity * 0.010 - adhesion * 0.16) * (0.20 + separation * 0.42 + edge * 0.18);
         float consumedPigment = contactTransfer + airborneRelease;
@@ -407,7 +427,7 @@ void SimulateBokushoTuftSegmentToPage(
             float pigment = (contactTransfer * (0.95 + localPressure * 0.34 + sweptPatch * 0.24) + airborneRelease * (1.6 + velocity * 0.002)) * stroke.dynamics.z;
             float patchNormalRadius = localNormalRadius * (0.74 + inkFilm * 0.10 + laneCore * 0.20 + localPressure * 0.14 + sweptPatch * 0.08 - separation * 0.10);
             float patchTangentRadius = localTangentRadius * (0.86 + inkFilm * 0.06 + bend * 0.22 + drag * 0.16) + sweptDistance * 0.36;
-            DepositSweptPatch(previousTip, tip, patchNormalRadius, patchTangentRadius, pigment);
+            DepositSweptPatch(previousTip, tip, patchNormalRadius, patchTangentRadius, pigment, paperTooth);
         }
     }
 }

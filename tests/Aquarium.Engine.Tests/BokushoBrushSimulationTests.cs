@@ -185,6 +185,54 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushPageEvaluationDoesNotDryOutWhenPhysicsRateIncreases()
+    {
+        AquariumBokushoBrushFrame Frame(float physicsHz) => new()
+        {
+            TuftCount = 32,
+            SampleCount = 72,
+            PhysicsHz = physicsHz,
+            BrushRadius = 0.78f,
+            Pressure = 1.02f,
+            InkLoad = 1.20f,
+            Wetness = 1.04f,
+            Splay = 0.74f,
+            Bend = 0.70f,
+            Friction = 0.64f,
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-3.20f, 0.18f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-2.10f, -0.12f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(1.80f, -0.08f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(3.20f, 0.12f, 0.0f, 0.0f),
+                    RadiusScale = 0.96f,
+                    PressureScale = 1.04f,
+                    NormalScale = 0.60f,
+                    TangentScale = 1.16f,
+                    ShaftTilt = 0.10f,
+                    ShaftRotation = 0.18f,
+                    GripHeight = 0.86f,
+                    Compliance = 1.08f,
+                    EntryTaper = 0.05f,
+                    ExitTaper = 0.18f,
+                    PigmentScale = 1.22f,
+                    SplitScale = 0.88f,
+                },
+            ],
+        };
+
+        var lowRate = BokushoBrushSimulation.EvaluatePage(Frame(125.0f), 144, 72, Vector2.Zero, 4.2f);
+        var highRate = BokushoBrushSimulation.EvaluatePage(Frame(500.0f), 144, 72, Vector2.Zero, 4.2f);
+        var lowMass = lowRate.Sum();
+        var highMass = highRate.Sum();
+
+        Assert.True(lowMass > 0.0f);
+        Assert.True(highMass >= lowMass * 0.80f, $"500 Hz integration dried the brush out: low={lowMass} high={highMass}");
+    }
+
+    [Fact]
     public void PageDensityEncodingMatchesMultiplicativeInkComposition()
     {
         var cpuPage = 0.0f;

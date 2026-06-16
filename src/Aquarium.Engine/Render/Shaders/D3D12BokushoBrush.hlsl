@@ -437,6 +437,7 @@ void SimulateBokushoTuftSegment(
     float normalRadius = max(radius * stroke.profile.z, 0.0001);
     float tangentRadius = max(radius * stroke.profile.w, 0.0001);
     float segmentSpan = StrokeSegmentSpan(stroke, sampleCount);
+    float integrationSpan = segmentSpan / max((float)sampleCount - 1.0, 1.0);
     float segmentVelocityScale = 1.0 / segmentSpan;
     float split = saturate((0.28 - LaneHash(laneKey, tuft, 53u)) * 3.0) * saturate((edge - 0.20) * 1.5) * stroke.dynamics.w;
 
@@ -483,8 +484,8 @@ void SimulateBokushoTuftSegment(
         float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * bristleTooth;
         float airborneRelease = (1.0 - contact) * stateLoad * stateWet * saturate(velocity * 0.010 - adhesion * 0.16) * (0.20 + separation * 0.42 + edge * 0.18);
         float consumedPigment = contactTransfer + airborneRelease;
-        stateLoad = max(0.0, stateLoad - consumedPigment * segmentSpan * (0.014 + localPressure * 0.009 + dryMemory * 0.004));
-        stateWet = max(0.0, stateWet - consumedPigment * segmentSpan * (0.006 + dryMemory * 0.003));
+        stateLoad = max(0.0, stateLoad - consumedPigment * integrationSpan * (0.014 + localPressure * 0.009 + dryMemory * 0.004));
+        stateWet = max(0.0, stateWet - consumedPigment * integrationSpan * (0.006 + dryMemory * 0.003));
 
         if (writeOutput)
         {
@@ -528,6 +529,7 @@ void SimulateBokushoTuftSegmentToPage(
     float tangentRadius = max(radius * stroke.profile.w, 0.0001);
     float segmentSpan = StrokeSegmentSpan(stroke, sampleCount);
     uint stepCount = min(max((uint)ceil(segmentSpan * brushShape.z), 2u), 4096u);
+    float integrationSpan = segmentSpan / max((float)stepCount - 1.0, 1.0);
     float segmentVelocityScale = 1.0 / segmentSpan;
     float split = saturate((0.28 - LaneHash(laneKey, tuft, 53u)) * 3.0) * saturate((edge - 0.20) * 1.5) * stroke.dynamics.w;
 
@@ -575,8 +577,8 @@ void SimulateBokushoTuftSegmentToPage(
         float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * bristleTooth;
         float airborneRelease = (1.0 - contact) * stateLoad * stateWet * saturate(velocity * 0.010 - adhesion * 0.16) * (0.20 + separation * 0.42 + edge * 0.18);
         float consumedPigment = contactTransfer + airborneRelease;
-        stateLoad = max(0.0, stateLoad - consumedPigment * segmentSpan * (0.014 + localPressure * 0.009 + dryMemory * 0.004));
-        stateWet = max(0.0, stateWet - consumedPigment * segmentSpan * (0.006 + dryMemory * 0.003));
+        stateLoad = max(0.0, stateLoad - consumedPigment * integrationSpan * (0.014 + localPressure * 0.009 + dryMemory * 0.004));
+        stateWet = max(0.0, stateWet - consumedPigment * integrationSpan * (0.006 + dryMemory * 0.003));
 
         if (writeOutput && (writeInitialStep || step > 0u))
         {

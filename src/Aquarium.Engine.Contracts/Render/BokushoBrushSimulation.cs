@@ -253,6 +253,7 @@ public static class BokushoBrushSimulation
         var normalRadius = MathF.Max(radius * stroke.NormalScale, 0.0001f);
         var tangentRadius = MathF.Max(radius * stroke.TangentScale, 0.0001f);
         var segmentSpan = SegmentSpan(stroke, sampleCount);
+        var integrationSpan = segmentSpan / MathF.Max(sampleCount - 1.0f, 1.0f);
         var segmentVelocityScale = 1.0f / segmentSpan;
         var split = Saturate((0.28f - LaneHash(laneKey, tuft, 53)) * 3.0f) * Saturate((edge - 0.20f) * 1.5f) * stroke.SplitScale;
         for (var sample = 0; sample < sampleCount; sample++)
@@ -297,8 +298,8 @@ public static class BokushoBrushSimulation
             var contactTransfer = contact * stateLoad * (0.16f + stateWet * 0.92f) * (0.30f + drag * 0.64f + localPressure * 0.22f + sweptPatch * 0.18f) * (0.68f + laneCore * 0.50f - separation * 0.14f) * bristleTooth;
             var airborneRelease = (1.0f - contact) * stateLoad * stateWet * Saturate(velocity * 0.010f - adhesion * 0.16f) * (0.20f + separation * 0.42f + edge * 0.18f);
             var consumedPigment = contactTransfer + airborneRelease;
-            stateLoad = MathF.Max(0.0f, stateLoad - consumedPigment * segmentSpan * (0.014f + localPressure * 0.009f + dryMemory * 0.004f));
-            stateWet = MathF.Max(0.0f, stateWet - consumedPigment * segmentSpan * (0.006f + dryMemory * 0.003f));
+            stateLoad = MathF.Max(0.0f, stateLoad - consumedPigment * integrationSpan * (0.014f + localPressure * 0.009f + dryMemory * 0.004f));
+            stateWet = MathF.Max(0.0f, stateWet - consumedPigment * integrationSpan * (0.006f + dryMemory * 0.003f));
 
             if (writeOutput)
             {
@@ -351,6 +352,7 @@ public static class BokushoBrushSimulation
         var tangentRadius = MathF.Max(radius * stroke.TangentScale, 0.0001f);
         var segmentSpan = SegmentSpan(stroke, sampleCount);
         var stepCount = Math.Clamp((int)MathF.Ceiling(segmentSpan * physicsHz), 2, 4096);
+        var integrationSpan = segmentSpan / MathF.Max(stepCount - 1.0f, 1.0f);
         var segmentVelocityScale = 1.0f / segmentSpan;
         var split = Saturate((0.28f - LaneHash(laneKey, tuft, 53)) * 3.0f) * Saturate((edge - 0.20f) * 1.5f) * stroke.SplitScale;
 
@@ -397,8 +399,8 @@ public static class BokushoBrushSimulation
             var contactTransfer = contact * stateLoad * (0.16f + stateWet * 0.92f) * (0.30f + drag * 0.64f + localPressure * 0.22f + sweptPatch * 0.18f) * (0.68f + laneCore * 0.50f - separation * 0.14f) * bristleTooth;
             var airborneRelease = (1.0f - contact) * stateLoad * stateWet * Saturate(velocity * 0.010f - adhesion * 0.16f) * (0.20f + separation * 0.42f + edge * 0.18f);
             var consumedPigment = contactTransfer + airborneRelease;
-            stateLoad = MathF.Max(0.0f, stateLoad - consumedPigment * segmentSpan * (0.014f + localPressure * 0.009f + dryMemory * 0.004f));
-            stateWet = MathF.Max(0.0f, stateWet - consumedPigment * segmentSpan * (0.006f + dryMemory * 0.003f));
+            stateLoad = MathF.Max(0.0f, stateLoad - consumedPigment * integrationSpan * (0.014f + localPressure * 0.009f + dryMemory * 0.004f));
+            stateWet = MathF.Max(0.0f, stateWet - consumedPigment * integrationSpan * (0.006f + dryMemory * 0.003f));
 
             if (writeOutput && (writeInitialStep || step > 0))
             {

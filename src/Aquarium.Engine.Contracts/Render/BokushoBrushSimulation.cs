@@ -11,6 +11,7 @@ public static class BokushoBrushSimulation
     public const float PagePatchNormalRadiusScale = 0.32f;
     public const float PagePatchMinimumRadius = 0.001f;
     public const float PagePatchWorldQuantum = 1.0f / 1024.0f;
+    private const float BristleTangentWorldQuantum = 1.0f / 4096.0f;
     private const float StrokeRhythmQuantum = 1.0f / 4096.0f;
     public const uint PagePatchInkUnits = 2048u;
     public const uint PagePatchCoverageUnits = 1024u;
@@ -209,10 +210,10 @@ public static class BokushoBrushSimulation
 
                 for (var replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex++)
                 {
-                    SimulateTuftSegmentToPage(strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, ref previousPatchNormalRadius, ref previousPatchTangentRadius, densityPage, width, height, viewCenter, safeRadius, writeOutput: false, writeInitialStep: true);
+                    SimulateTuftSegmentToPage(strokes, strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, ref previousPatchNormalRadius, ref previousPatchTangentRadius, densityPage, width, height, viewCenter, safeRadius, writeOutput: false, writeInitialStep: true);
                 }
 
-                SimulateTuftSegmentToPage(stroke, strokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, ref previousPatchNormalRadius, ref previousPatchTangentRadius, densityPage, width, height, viewCenter, safeRadius, writeOutput: true, writeInitialStep: strokeIndex == chainStart);
+                SimulateTuftSegmentToPage(strokes, stroke, strokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, ref previousPatchNormalRadius, ref previousPatchTangentRadius, densityPage, width, height, viewCenter, safeRadius, writeOutput: true, writeInitialStep: strokeIndex == chainStart);
             }
         }
     }
@@ -255,7 +256,7 @@ public static class BokushoBrushSimulation
         {
             var t = sampleCount <= 1 ? 0.0f : sample / (float)(sampleCount - 1);
             var center = StrokePoint(stroke, t);
-            var tangent = StrokeTangent(stroke, t, sampleCount);
+            var tangent = StrokeTangent(strokes, strokeIndex, stroke, t, sampleCount);
             var normal = new Vector2(-tangent.Y, tangent.X);
             var strokeT = StrokeProgress(stroke, t);
             var taper = StrokeTaper(strokeT, stroke.EntryTaper, stroke.ExitTaper);
@@ -312,6 +313,7 @@ public static class BokushoBrushSimulation
     }
 
     private static void SimulateTuftSegmentToPage(
+        IReadOnlyList<AquariumBokushoBrushStroke> strokes,
         AquariumBokushoBrushStroke stroke,
         int strokeIndex,
         int laneKey,
@@ -352,7 +354,7 @@ public static class BokushoBrushSimulation
         {
             var t = stepCount <= 1 ? 0.0f : step / (float)(stepCount - 1);
             var center = StrokePoint(stroke, t);
-            var tangent = StrokeTangent(stroke, t, stepCount);
+            var tangent = StrokeTangent(strokes, strokeIndex, stroke, t, stepCount);
             var normal = new Vector2(-tangent.Y, tangent.X);
             var strokeT = StrokeProgress(stroke, t);
             var taper = StrokeTaper(strokeT, stroke.EntryTaper, stroke.ExitTaper);
@@ -545,6 +547,51 @@ public static class BokushoBrushSimulation
         var after = StrokePoint(stroke, Saturate(t + dt));
         return Normalize(after - before);
     }
+
+    private static Vector2 StrokeTangent(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex, AquariumBokushoBrushStroke stroke, float t, int sampleCount)
+    {
+        var dt = 1.0f / MathF.Max(sampleCount - 1.0f, 1.0f);
+        var beforeT = t - dt;
+        var afterT = t + dt;
+        var before = beforeT < 0.0f && PreviousSourcePacket(strokes, strokeIndex) is { } previous
+            ? StrokePoint(previous, Saturate(1.0f + beforeT))
+            : StrokePoint(stroke, Saturate(beforeT));
+        var after = afterT > 1.0f && NextSourcePacket(strokes, strokeIndex) is { } next
+            ? StrokePoint(next, Saturate(afterT - 1.0f))
+            : StrokePoint(stroke, Saturate(afterT));
+        before = Quantize(before, BristleTangentWorldQuantum);
+        after = Quantize(after, BristleTangentWorldQuantum);
+        return Normalize(after - before);
+    }
+
+    private static AquariumBokushoBrushStroke? PreviousSourcePacket(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex)
+    {
+        if (strokeIndex <= 0)
+        {
+            return null;
+        }
+
+        var stroke = strokes[strokeIndex];
+        var previous = strokes[strokeIndex - 1];
+        return SameSourceBoundary(previous, stroke) ? previous : null;
+    }
+
+    private static AquariumBokushoBrushStroke? NextSourcePacket(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex)
+    {
+        if (strokeIndex + 1 >= strokes.Count)
+        {
+            return null;
+        }
+
+        var stroke = strokes[strokeIndex];
+        var next = strokes[strokeIndex + 1];
+        return SameSourceBoundary(stroke, next) ? next : null;
+    }
+
+    private static bool SameSourceBoundary(AquariumBokushoBrushStroke previous, AquariumBokushoBrushStroke next)
+        => previous.SourceStrokeId >= 0 &&
+            previous.SourceStrokeId == next.SourceStrokeId &&
+            MathF.Abs(Math.Clamp(previous.SegmentEnd, 0.0f, 1.0f) - Math.Clamp(next.SegmentStart, 0.0f, 1.0f)) <= 0.001f;
 
     private static float ProjectCanvasSample(AquariumBokushoBrushFrame frame, IReadOnlyList<AquariumBokushoBrushStroke> strokes, ReadOnlySpan<float> canvas, ReadOnlySpan<Vector4> tips, int strokeIndex, Vector2 world)
     {

@@ -6,6 +6,7 @@ static const float BOKUSHO_PAGE_PATCH_TANGENT_RADIUS_SCALE = 0.32;
 static const float BOKUSHO_PAGE_PATCH_NORMAL_RADIUS_SCALE = 0.32;
 static const float BOKUSHO_PAGE_PATCH_MINIMUM_RADIUS = 0.001;
 static const float BOKUSHO_PAGE_PATCH_WORLD_QUANTUM = 1.0 / 1024.0;
+static const float BOKUSHO_BRISTLE_TANGENT_WORLD_QUANTUM = 1.0 / 4096.0;
 static const float BOKUSHO_STROKE_RHYTHM_QUANTUM = 1.0 / 4096.0;
 static const uint BOKUSHO_PAGE_PATCH_INK_UNITS = 2048u;
 static const uint BOKUSHO_PAGE_PATCH_COVERAGE_UNITS = 1024u;
@@ -42,6 +43,26 @@ RWStructuredBuffer<float4> BokushoTipField : register(u22);
 RWStructuredBuffer<uint> BokushoPageDensityField : register(u23);
 StructuredBuffer<BokushoBrushStroke> BokushoBrushStrokes : register(t78);
 
+float QuantizeScalar(float value, float quantum)
+{
+    return quantum > 0.0 ? floor((value / quantum) + 0.5) * quantum : value;
+}
+
+float2 QuantizeFloat2(float2 value, float quantum)
+{
+    return float2(QuantizeScalar(value.x, quantum), QuantizeScalar(value.y, quantum));
+}
+
+float QuantizePositive(float value, float quantum)
+{
+    return QuantizeScalar(max(value, 0.0), quantum);
+}
+
+uint QuantizePositiveUnits(float value, uint units)
+{
+    return (uint)floor(saturate(value) * (float)units + 0.5);
+}
+
 float2 StrokePoint(BokushoBrushStroke stroke, float t)
 {
     return cultmath_catmullrom(stroke.p0.xy, stroke.p1.xy, stroke.p2.xy, stroke.p3.xy, t);
@@ -60,6 +81,44 @@ float2 StrokeTangent(BokushoBrushStroke stroke, float t, uint stepCount)
     float dt = 1.0 / max((float)stepCount - 1.0, 1.0);
     float2 before = StrokePoint(stroke, saturate(t - dt));
     float2 after = StrokePoint(stroke, saturate(t + dt));
+    return cultmath_normalize(after - before);
+}
+
+bool SameSourceBoundary(BokushoBrushStroke previous, BokushoBrushStroke next)
+{
+    return previous.p3.w >= 0.0 &&
+        abs(previous.p3.w - next.p3.w) <= 0.5 &&
+        abs(saturate(previous.p0.w) - saturate(next.p0.z)) <= 0.001;
+}
+
+float2 StrokeTangent(BokushoBrushStroke stroke, uint strokeIndex, float t, uint stepCount)
+{
+    float dt = 1.0 / max((float)stepCount - 1.0, 1.0);
+    float beforeT = t - dt;
+    float afterT = t + dt;
+    float2 before = StrokePoint(stroke, saturate(beforeT));
+    float2 after = StrokePoint(stroke, saturate(afterT));
+    uint strokeCount = max((uint)round(brushShape.w), 1u);
+    if (beforeT < 0.0 && strokeIndex > 0u)
+    {
+        BokushoBrushStroke previous = BokushoBrushStrokes[strokeIndex - 1u];
+        if (SameSourceBoundary(previous, stroke))
+        {
+            before = StrokePoint(previous, saturate(1.0 + beforeT));
+        }
+    }
+
+    if (afterT > 1.0 && strokeIndex + 1u < strokeCount)
+    {
+        BokushoBrushStroke next = BokushoBrushStrokes[strokeIndex + 1u];
+        if (SameSourceBoundary(stroke, next))
+        {
+            after = StrokePoint(next, saturate(afterT - 1.0));
+        }
+    }
+
+    before = QuantizeFloat2(before, BOKUSHO_BRISTLE_TANGENT_WORLD_QUANTUM);
+    after = QuantizeFloat2(after, BOKUSHO_BRISTLE_TANGENT_WORLD_QUANTUM);
     return cultmath_normalize(after - before);
 }
 
@@ -107,26 +166,6 @@ float StrokeSegmentSpan(BokushoBrushStroke stroke, uint sampleCount)
 float CanvasPigment(float value)
 {
     return 0.96 * (1.0 - exp(-max(value, 0.0) * 0.82));
-}
-
-float QuantizeScalar(float value, float quantum)
-{
-    return quantum > 0.0 ? floor((value / quantum) + 0.5) * quantum : value;
-}
-
-float2 QuantizeFloat2(float2 value, float quantum)
-{
-    return float2(QuantizeScalar(value.x, quantum), QuantizeScalar(value.y, quantum));
-}
-
-float QuantizePositive(float value, float quantum)
-{
-    return QuantizeScalar(max(value, 0.0), quantum);
-}
-
-uint QuantizePositiveUnits(float value, uint units)
-{
-    return (uint)floor(saturate(value) * (float)units + 0.5);
 }
 
 float4 StrokeRhythm(BokushoBrushStroke stroke, float strokeT)
@@ -314,7 +353,7 @@ void SimulateBokushoTuftSegment(
     {
         float t = sampleCount <= 1u ? 0.0 : (float)sample / (float)(sampleCount - 1u);
         float2 center = StrokePoint(stroke, t);
-        float2 tangent = StrokeTangent(stroke, t);
+        float2 tangent = StrokeTangent(stroke, outputStrokeIndex, t, sampleCount);
         float2 normal = float2(-tangent.y, tangent.x);
         float strokeT = StrokeProgress(stroke, t);
         float taper = StrokeTaper(stroke, t);
@@ -373,6 +412,7 @@ void SimulateBokushoTuftSegment(
 
 void SimulateBokushoTuftSegmentToPage(
     BokushoBrushStroke stroke,
+    uint strokeIndex,
     uint laneKey,
     uint tuft,
     uint sampleCount,
@@ -404,7 +444,7 @@ void SimulateBokushoTuftSegmentToPage(
     {
         float t = stepCount <= 1u ? 0.0 : (float)step / (float)(stepCount - 1u);
         float2 center = StrokePoint(stroke, t);
-        float2 tangent = StrokeTangent(stroke, t, stepCount);
+        float2 tangent = StrokeTangent(stroke, strokeIndex, t, stepCount);
         float2 normal = float2(-tangent.y, tangent.x);
         float strokeT = StrokeProgress(stroke, t);
         float taper = StrokeTaper(stroke, t);
@@ -558,8 +598,8 @@ void D3D12BokushoPageDepositCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     [loop]
     for (uint replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex += 1u)
     {
-        SimulateBokushoTuftSegmentToPage(BokushoBrushStrokes[replayStrokeIndex], chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, previousPatchNormalRadius, previousPatchTangentRadius, false, true);
+        SimulateBokushoTuftSegmentToPage(BokushoBrushStrokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, previousPatchNormalRadius, previousPatchTangentRadius, false, true);
     }
 
-    SimulateBokushoTuftSegmentToPage(stroke, chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, previousPatchNormalRadius, previousPatchTangentRadius, true, strokeIndex == chainStart);
+    SimulateBokushoTuftSegmentToPage(stroke, strokeIndex, chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, previousPatchNormalRadius, previousPatchTangentRadius, true, strokeIndex == chainStart);
 }

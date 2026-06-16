@@ -284,10 +284,12 @@ public static class BokushoBrushSimulation
             var dryMemory = Saturate((1.0f - stateWet) * 0.62f + separation * 0.32f + velocity * 0.004f);
             var fiberNoise = LaneHash(laneKey + StrokeNoiseStep(strokeT) * 13, tuft, 101);
             var continuity = 1.0f - SmoothStep(0.18f + dryMemory * 0.28f, 0.96f, fiberNoise) * dryMemory * (0.38f + edge * 0.22f);
-            var contactTransfer = contact * stateLoad * (0.16f + stateWet * 0.92f) * (0.30f + drag * 0.64f + localPressure * 0.22f + sweptPatch * 0.18f) * (0.68f + laneCore * 0.50f - separation * 0.14f) * continuity;
+            var inkFilm = Saturate(stateLoad * (0.28f + stateWet * 0.34f));
+            var bristleTooth = (0.62f + continuity * (0.30f + inkFilm * 0.08f)) * (0.82f + inkFilm * 0.24f - edge * 0.06f);
+            var contactTransfer = contact * stateLoad * (0.16f + stateWet * 0.92f) * (0.30f + drag * 0.64f + localPressure * 0.22f + sweptPatch * 0.18f) * (0.68f + laneCore * 0.50f - separation * 0.14f) * bristleTooth;
             var airborneRelease = (1.0f - contact) * stateLoad * stateWet * Saturate(velocity * 0.010f - adhesion * 0.16f) * (0.20f + separation * 0.42f + edge * 0.18f);
             var consumedPigment = contactTransfer + airborneRelease;
-            stateLoad = MathF.Max(0.0f, stateLoad - consumedPigment * segmentSpan * (0.010f + localPressure * 0.006f));
+            stateLoad = MathF.Max(0.0f, stateLoad - consumedPigment * segmentSpan * (0.014f + localPressure * 0.009f + dryMemory * 0.004f));
             stateWet = MathF.Max(0.0f, stateWet - consumedPigment * segmentSpan * (0.006f + dryMemory * 0.003f));
 
             if (writeOutput)
@@ -299,8 +301,8 @@ public static class BokushoBrushSimulation
                 tips[index] = new Vector4(
                     tip.X,
                     tip.Y,
-                    localNormalRadius * (0.84f + laneCore * 0.20f + localPressure * 0.14f + sweptPatch * 0.08f - separation * 0.10f),
-                    localTangentRadius * (0.92f + bend * 0.22f + drag * 0.16f) + sweptDistance * 0.36f);
+                    localNormalRadius * (0.74f + inkFilm * 0.10f + laneCore * 0.20f + localPressure * 0.14f + sweptPatch * 0.08f - separation * 0.10f),
+                    localTangentRadius * (0.86f + inkFilm * 0.06f + bend * 0.22f + drag * 0.16f) + sweptDistance * 0.36f);
             }
         }
     }
@@ -376,17 +378,19 @@ public static class BokushoBrushSimulation
             var dryMemory = Saturate((1.0f - stateWet) * 0.62f + separation * 0.32f + velocity * 0.004f);
             var fiberNoise = LaneHash(laneKey + StrokeNoiseStep(strokeT) * 13, tuft, 101);
             var continuity = 1.0f - SmoothStep(0.18f + dryMemory * 0.28f, 0.96f, fiberNoise) * dryMemory * (0.38f + edge * 0.22f);
-            var contactTransfer = contact * stateLoad * (0.16f + stateWet * 0.92f) * (0.30f + drag * 0.64f + localPressure * 0.22f + sweptPatch * 0.18f) * (0.68f + laneCore * 0.50f - separation * 0.14f) * continuity;
+            var inkFilm = Saturate(stateLoad * (0.28f + stateWet * 0.34f));
+            var bristleTooth = (0.62f + continuity * (0.30f + inkFilm * 0.08f)) * (0.82f + inkFilm * 0.24f - edge * 0.06f);
+            var contactTransfer = contact * stateLoad * (0.16f + stateWet * 0.92f) * (0.30f + drag * 0.64f + localPressure * 0.22f + sweptPatch * 0.18f) * (0.68f + laneCore * 0.50f - separation * 0.14f) * bristleTooth;
             var airborneRelease = (1.0f - contact) * stateLoad * stateWet * Saturate(velocity * 0.010f - adhesion * 0.16f) * (0.20f + separation * 0.42f + edge * 0.18f);
             var consumedPigment = contactTransfer + airborneRelease;
-            stateLoad = MathF.Max(0.0f, stateLoad - consumedPigment * segmentSpan * (0.010f + localPressure * 0.006f));
+            stateLoad = MathF.Max(0.0f, stateLoad - consumedPigment * segmentSpan * (0.014f + localPressure * 0.009f + dryMemory * 0.004f));
             stateWet = MathF.Max(0.0f, stateWet - consumedPigment * segmentSpan * (0.006f + dryMemory * 0.003f));
 
             if (writeOutput && (writeInitialStep || step > 0))
             {
                 var pigment = (contactTransfer * (0.95f + localPressure * 0.34f + sweptPatch * 0.24f) + airborneRelease * (1.6f + velocity * 0.002f)) * stroke.PigmentScale;
-                var patchNormalRadius = localNormalRadius * (0.84f + laneCore * 0.20f + localPressure * 0.14f + sweptPatch * 0.08f - separation * 0.10f);
-                var patchTangentRadius = localTangentRadius * (0.92f + bend * 0.22f + drag * 0.16f) + sweptDistance * 0.36f;
+                var patchNormalRadius = localNormalRadius * (0.74f + inkFilm * 0.10f + laneCore * 0.20f + localPressure * 0.14f + sweptPatch * 0.08f - separation * 0.10f);
+                var patchTangentRadius = localTangentRadius * (0.86f + inkFilm * 0.06f + bend * 0.22f + drag * 0.16f) + sweptDistance * 0.36f;
                 DepositSweptPatch(densityPage, width, height, viewCenter, viewRadius, previousTip, tip, patchNormalRadius, patchTangentRadius, pigment);
             }
         }

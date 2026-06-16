@@ -307,10 +307,12 @@ void SimulateBokushoTuftSegment(
         float dryMemory = saturate((1.0 - stateWet) * 0.62 + separation * 0.32 + velocity * 0.004);
         float fiberNoise = LaneHash(laneKey + StrokeNoiseStep(strokeT) * 13u, tuft, 101u);
         float continuity = 1.0 - cultmath_smoothstep(0.18 + dryMemory * 0.28, 0.96, fiberNoise) * dryMemory * (0.38 + edge * 0.22);
-        float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * continuity;
+        float inkFilm = saturate(stateLoad * (0.28 + stateWet * 0.34));
+        float bristleTooth = (0.62 + continuity * (0.30 + inkFilm * 0.08)) * (0.82 + inkFilm * 0.24 - edge * 0.06);
+        float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * bristleTooth;
         float airborneRelease = (1.0 - contact) * stateLoad * stateWet * saturate(velocity * 0.010 - adhesion * 0.16) * (0.20 + separation * 0.42 + edge * 0.18);
         float consumedPigment = contactTransfer + airborneRelease;
-        stateLoad = max(0.0, stateLoad - consumedPigment * segmentSpan * (0.010 + localPressure * 0.006));
+        stateLoad = max(0.0, stateLoad - consumedPigment * segmentSpan * (0.014 + localPressure * 0.009 + dryMemory * 0.004));
         stateWet = max(0.0, stateWet - consumedPigment * segmentSpan * (0.006 + dryMemory * 0.003));
 
         if (writeOutput)
@@ -323,8 +325,8 @@ void SimulateBokushoTuftSegment(
             BokushoCanvasField[index] = localPigment;
             BokushoTipField[index] = float4(
                 tip,
-                localNormalRadius * (0.84 + laneCore * 0.20 + localPressure * 0.14 + sweptPatch * 0.08 - separation * 0.10),
-                localTangentRadius * (0.92 + bend * 0.22 + drag * 0.16) + sweptDistance * 0.36);
+                localNormalRadius * (0.74 + inkFilm * 0.10 + laneCore * 0.20 + localPressure * 0.14 + sweptPatch * 0.08 - separation * 0.10),
+                localTangentRadius * (0.86 + inkFilm * 0.06 + bend * 0.22 + drag * 0.16) + sweptDistance * 0.36);
         }
     }
 }
@@ -392,17 +394,19 @@ void SimulateBokushoTuftSegmentToPage(
         float dryMemory = saturate((1.0 - stateWet) * 0.62 + separation * 0.32 + velocity * 0.004);
         float fiberNoise = LaneHash(laneKey + StrokeNoiseStep(strokeT) * 13u, tuft, 101u);
         float continuity = 1.0 - cultmath_smoothstep(0.18 + dryMemory * 0.28, 0.96, fiberNoise) * dryMemory * (0.38 + edge * 0.22);
-        float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * continuity;
+        float inkFilm = saturate(stateLoad * (0.28 + stateWet * 0.34));
+        float bristleTooth = (0.62 + continuity * (0.30 + inkFilm * 0.08)) * (0.82 + inkFilm * 0.24 - edge * 0.06);
+        float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * bristleTooth;
         float airborneRelease = (1.0 - contact) * stateLoad * stateWet * saturate(velocity * 0.010 - adhesion * 0.16) * (0.20 + separation * 0.42 + edge * 0.18);
         float consumedPigment = contactTransfer + airborneRelease;
-        stateLoad = max(0.0, stateLoad - consumedPigment * segmentSpan * (0.010 + localPressure * 0.006));
+        stateLoad = max(0.0, stateLoad - consumedPigment * segmentSpan * (0.014 + localPressure * 0.009 + dryMemory * 0.004));
         stateWet = max(0.0, stateWet - consumedPigment * segmentSpan * (0.006 + dryMemory * 0.003));
 
         if (writeOutput && (writeInitialStep || step > 0u))
         {
             float pigment = (contactTransfer * (0.95 + localPressure * 0.34 + sweptPatch * 0.24) + airborneRelease * (1.6 + velocity * 0.002)) * stroke.dynamics.z;
-            float patchNormalRadius = localNormalRadius * (0.84 + laneCore * 0.20 + localPressure * 0.14 + sweptPatch * 0.08 - separation * 0.10);
-            float patchTangentRadius = localTangentRadius * (0.92 + bend * 0.22 + drag * 0.16) + sweptDistance * 0.36;
+            float patchNormalRadius = localNormalRadius * (0.74 + inkFilm * 0.10 + laneCore * 0.20 + localPressure * 0.14 + sweptPatch * 0.08 - separation * 0.10);
+            float patchTangentRadius = localTangentRadius * (0.86 + inkFilm * 0.06 + bend * 0.22 + drag * 0.16) + sweptDistance * 0.36;
             DepositSweptPatch(previousTip, tip, patchNormalRadius, patchTangentRadius, pigment);
         }
     }

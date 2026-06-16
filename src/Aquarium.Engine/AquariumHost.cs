@@ -76,8 +76,10 @@ public static class AquariumHost
         var readyFrames = 0;
         var requiredReadyFrames = ParseHeadlessReadyFrames();
         var captureFramePath = ParseCaptureFramePath(args);
+        var captureBokushoCanvasPath = ParseCaptureBokushoCanvasPath(args);
         var captureBokushoDensityPath = ParseCaptureBokushoDensityPath(args);
         var capturedFrame = false;
+        var capturedBokushoCanvas = false;
         var capturedBokushoDensity = false;
         IAquariumRuntime? sceneReadyRuntime = null;
 
@@ -152,6 +154,16 @@ public static class AquariumHost
                 }
 
                 if (runtime.Options.Headless
+                    && !capturedBokushoCanvas
+                    && !string.IsNullOrWhiteSpace(captureBokushoCanvasPath)
+                    && readyFrames >= requiredReadyFrames)
+                {
+                    renderer.SaveBokushoBrushCanvasRaw(captureBokushoCanvasPath);
+                    Console.WriteLine($"Headless Aquarium Bokusho canvas captured: {Path.GetFullPath(captureBokushoCanvasPath)}");
+                    capturedBokushoCanvas = true;
+                }
+
+                if (runtime.Options.Headless
                     && !capturedBokushoDensity
                     && !string.IsNullOrWhiteSpace(captureBokushoDensityPath)
                     && readyFrames >= requiredReadyFrames)
@@ -162,11 +174,13 @@ public static class AquariumHost
                 }
 
                 var needsFrameCapture = !string.IsNullOrWhiteSpace(captureFramePath) && !capturedFrame;
+                var needsBokushoCanvasCapture = !string.IsNullOrWhiteSpace(captureBokushoCanvasPath) && !capturedBokushoCanvas;
                 var needsBokushoDensityCapture = !string.IsNullOrWhiteSpace(captureBokushoDensityPath) && !capturedBokushoDensity;
                 if (runtime.Options.Headless
                     && frames >= 2
                     && readyFrames >= requiredReadyFrames
                     && !needsFrameCapture
+                    && !needsBokushoCanvasCapture
                     && !needsBokushoDensityCapture)
                 {
                     Console.WriteLine("Headless Aquarium completed requested frames.");
@@ -231,6 +245,20 @@ public static class AquariumHost
         }
 
         return Environment.GetEnvironmentVariable("AQUARIUM_CAPTURE_FRAME");
+    }
+
+    private static string? ParseCaptureBokushoCanvasPath(IReadOnlyCollection<string> args)
+    {
+        var values = args.ToArray();
+        for (var index = 0; index < values.Length - 1; index++)
+        {
+            if (string.Equals(values[index], "--capture-bokusho-canvas", StringComparison.OrdinalIgnoreCase))
+            {
+                return values[index + 1];
+            }
+        }
+
+        return Environment.GetEnvironmentVariable("AQUARIUM_CAPTURE_BOKUSHO_CANVAS");
     }
 
     private static string? ParseCaptureBokushoDensityPath(IReadOnlyCollection<string> args)

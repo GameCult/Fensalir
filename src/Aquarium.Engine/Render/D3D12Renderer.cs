@@ -1585,7 +1585,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
         PngImageWriter.WriteRgba(path, width, height, rgba);
     }
 
-    public unsafe void SaveBokushoPageDensityRaw(string path)
+    public void SaveBokushoBrushCanvasRaw(string path)
+        => SaveStructuredBufferRaw(bokushoBrushCanvasBuffer, path, "Aquarium D3D12 Bokusho Brush Canvas Readback");
+
+    public void SaveBokushoPageDensityRaw(string path)
+        => SaveStructuredBufferRaw(bokushoPageDensityBuffer, path, "Aquarium D3D12 Bokusho Page Density Readback");
+
+    private unsafe void SaveStructuredBufferRaw(D3D12StructuredBuffer buffer, string path, string readbackName)
     {
         if (!hasPresentedReadyFrame)
         {
@@ -1594,19 +1600,19 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
         WaitForGpu();
 
-        var bufferBytes = bokushoPageDensityBuffer.SizeBytes;
+        var bufferBytes = buffer.SizeBytes;
         using var readback = device.CreateCommittedResource(
             HeapType.Readback,
             ResourceDescription.Buffer((ulong)bufferBytes),
             ResourceStates.CopyDest,
             null);
-        readback.Name = "Aquarium D3D12 Bokusho Page Density Readback";
+        readback.Name = readbackName;
 
         using var captureAllocator = device.CreateCommandAllocator(CommandListType.Direct);
         using var captureList = device.CreateCommandList<ID3D12GraphicsCommandList>(0, CommandListType.Direct, captureAllocator, null);
-        bokushoPageDensityBuffer.Transition(captureList, ResourceStates.CopySource);
-        captureList.CopyBufferRegion(readback, 0, bokushoPageDensityBuffer.Resource, 0, (ulong)bufferBytes);
-        bokushoPageDensityBuffer.Transition(captureList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+        buffer.Transition(captureList, ResourceStates.CopySource);
+        captureList.CopyBufferRegion(readback, 0, buffer.Resource, 0, (ulong)bufferBytes);
+        buffer.Transition(captureList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
         captureList.Close();
         commandQueue.ExecuteCommandList(captureList);
         WaitForGpu();

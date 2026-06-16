@@ -52,8 +52,8 @@ float2 StrokeTangent(BokushoBrushStroke stroke, float t)
 
 float StrokeTaper(float t)
 {
-    float entry = smoothstep(0.0, 0.10, t);
-    float exit = 1.0 - smoothstep(0.86, 1.0, t);
+    float entry = cultmath_smoothstep(0.0, 0.10, t);
+    float exit = 1.0 - cultmath_smoothstep(0.86, 1.0, t);
     return 0.04 + entry * exit * 0.96;
 }
 
@@ -62,8 +62,8 @@ float StrokeTaper(BokushoBrushStroke stroke, float t)
     float strokeT = saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
     float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
     float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
-    float entry = smoothstep(0.0, entryTaper, strokeT);
-    float exit = 1.0 - smoothstep(1.0 - exitTaper, 1.0, strokeT);
+    float entry = cultmath_smoothstep(0.0, entryTaper, strokeT);
+    float exit = 1.0 - cultmath_smoothstep(1.0 - exitTaper, 1.0, strokeT);
     float contact = pow(entry * exit, 1.12);
     return 0.018 + contact * 0.982;
 }
@@ -83,6 +83,16 @@ float StrokeSegmentSpan(BokushoBrushStroke stroke, uint sampleCount)
 float CanvasPigment(float value)
 {
     return 0.96 * (1.0 - exp(-max(value, 0.0) * 0.82));
+}
+
+uint EncodePageDensityContribution(float contribution)
+{
+    float c = saturate(contribution);
+    float c2 = c * c;
+    float c3 = c2 * c;
+    float c4 = c2 * c2;
+    float density = c + (c2 * 0.5) + (c3 * (1.0 / 3.0)) + (c4 * 0.25);
+    return (uint)floor(min(density * BOKUSHO_PAGE_DENSITY_SCALE, BOKUSHO_PAGE_DENSITY_SCALE) + 0.5);
 }
 
 void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float tangentRadius, float pigment)
@@ -124,16 +134,14 @@ void DepositSweptPatch(float2 previousTip, float2 tip, float normalRadius, float
             float tangentDistance = dot(local, tangent) / patchTangentRadius;
             float normalDistance = dot(local, normal) / patchNormalRadius;
             float ellipse = sqrt(tangentDistance * tangentDistance + normalDistance * normalDistance);
-            float coverage = smoothstep(1.0, 0.0, ellipse);
+            float coverage = cultmath_smoothstep(1.0, 0.0, ellipse);
             if (coverage <= 0.0)
             {
                 continue;
             }
 
             float contribution = ink * coverage * BOKUSHO_PAGE_PATCH_TRANSFER_GAIN;
-            float density = -log(max(1.0 - saturate(contribution), 0.000001));
-            uint fixedDensity = (uint)round(min(density * BOKUSHO_PAGE_DENSITY_SCALE, BOKUSHO_PAGE_DENSITY_SCALE));
-            InterlockedAdd(BokushoPageDensityField[(uint)(y * (int)pageSize + x)], fixedDensity);
+            InterlockedAdd(BokushoPageDensityField[(uint)(y * (int)pageSize + x)], EncodePageDensityContribution(contribution));
         }
     }
 }
@@ -210,7 +218,7 @@ void SimulateBokushoTuftSegment(
         float2 normal = float2(-tangent.y, tangent.x);
         float taper = StrokeTaper(stroke, t);
         float localPressure = pressure * taper;
-        float laneCore = smoothstep(0.0, 0.78, 1.0 - edge);
+        float laneCore = cultmath_smoothstep(0.0, 0.78, 1.0 - edge);
         float cohesion = saturate(0.28 + stateWet * 0.44 + laneCore * 0.24 + localPressure * 0.10 - split * 0.18);
         float localNormalRadius = max(normalRadius * (0.18 + taper * 0.82) * (0.72 + splay * 0.34 + localPressure * 0.16 - cohesion * 0.08), 0.0001);
         float localTangentRadius = max(tangentRadius * (0.24 + taper * 0.76) * (0.86 + bend * 0.18), 0.0001);
@@ -236,7 +244,7 @@ void SimulateBokushoTuftSegment(
         float adhesion = saturate(stateWet * (0.36 + cohesion * 0.40) + localPressure * 0.10 - separation * 0.22);
         float dryMemory = saturate((1.0 - stateWet) * 0.62 + separation * 0.32 + velocity * 0.004);
         float fiberNoise = LaneHash(laneKey + sample * 13u, tuft, 101u);
-        float continuity = 1.0 - smoothstep(0.18 + dryMemory * 0.28, 0.96, fiberNoise) * dryMemory * (0.38 + edge * 0.22);
+        float continuity = 1.0 - cultmath_smoothstep(0.18 + dryMemory * 0.28, 0.96, fiberNoise) * dryMemory * (0.38 + edge * 0.22);
         float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * continuity;
         float airborneRelease = (1.0 - contact) * stateLoad * stateWet * saturate(velocity * 0.010 - adhesion * 0.16) * (0.20 + separation * 0.42 + edge * 0.18);
         float consumedPigment = contactTransfer + airborneRelease;
@@ -293,7 +301,7 @@ void SimulateBokushoTuftSegmentToPage(
         float2 normal = float2(-tangent.y, tangent.x);
         float taper = StrokeTaper(stroke, t);
         float localPressure = pressure * taper;
-        float laneCore = smoothstep(0.0, 0.78, 1.0 - edge);
+        float laneCore = cultmath_smoothstep(0.0, 0.78, 1.0 - edge);
         float cohesion = saturate(0.28 + stateWet * 0.44 + laneCore * 0.24 + localPressure * 0.10 - split * 0.18);
         float localNormalRadius = max(normalRadius * (0.18 + taper * 0.82) * (0.72 + splay * 0.34 + localPressure * 0.16 - cohesion * 0.08), 0.0001);
         float localTangentRadius = max(tangentRadius * (0.24 + taper * 0.76) * (0.86 + bend * 0.18), 0.0001);
@@ -319,7 +327,7 @@ void SimulateBokushoTuftSegmentToPage(
         float adhesion = saturate(stateWet * (0.36 + cohesion * 0.40) + localPressure * 0.10 - separation * 0.22);
         float dryMemory = saturate((1.0 - stateWet) * 0.62 + separation * 0.32 + velocity * 0.004);
         float fiberNoise = LaneHash(laneKey + step * 13u, tuft, 101u);
-        float continuity = 1.0 - smoothstep(0.18 + dryMemory * 0.28, 0.96, fiberNoise) * dryMemory * (0.38 + edge * 0.22);
+        float continuity = 1.0 - cultmath_smoothstep(0.18 + dryMemory * 0.28, 0.96, fiberNoise) * dryMemory * (0.38 + edge * 0.22);
         float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * continuity;
         float airborneRelease = (1.0 - contact) * stateLoad * stateWet * saturate(velocity * 0.010 - adhesion * 0.16) * (0.20 + separation * 0.42 + edge * 0.18);
         float consumedPigment = contactTransfer + airborneRelease;

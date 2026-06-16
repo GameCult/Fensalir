@@ -783,8 +783,17 @@ public static class BokushoBrushSimulation
 
     public static uint EncodePageDensityContribution(float contribution)
     {
-        var density = -MathF.Log(MathF.Max(1.0f - Saturate(contribution), 0.000001f));
+        var density = PageOpticalDensity(contribution);
         return (uint)MathF.Floor(MathF.Min(density * PageDensityScale, PageDensityScale) + 0.5f);
+    }
+
+    private static float PageOpticalDensity(float contribution)
+    {
+        var c = Saturate(contribution);
+        var c2 = c * c;
+        var c3 = c2 * c;
+        var c4 = c2 * c2;
+        return c + (c2 * 0.5f) + (c3 * (1.0f / 3.0f)) + (c4 * 0.25f);
     }
 
     public static float DecodePageDensity(uint encodedDensity)

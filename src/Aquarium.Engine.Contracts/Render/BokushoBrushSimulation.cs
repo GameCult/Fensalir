@@ -52,6 +52,7 @@ public static class BokushoBrushSimulation
         var sampleCount = Math.Clamp(frame.SampleCount, 2, 4096);
         var tuftCount = Math.Clamp(frame.TuftCount, 1, 4096);
         var strokes = EffectiveStrokes(frame);
+        var sourcePaths = SourcePathIndex.Create(frame.SourcePoints);
         var valueCount = checked(sampleCount * tuftCount * strokes.Length);
         if (trace.Length < valueCount)
         {
@@ -101,7 +102,7 @@ public static class BokushoBrushSimulation
                 var seedNormalRadius = MathF.Max(seedRadius * seedStroke.NormalScale, 0.0001f);
                 var seedSplit = Saturate((0.28f - LaneHash(chainStart, tuft, 53)) * 3.0f) * Saturate((edge - 0.20f) * 1.5f) * seedStroke.SplitScale;
                 var initialCohesion = LaneCohesion(edge, seedSplit, wetness, seedPressure);
-                var tip = StrokePoint(seedStroke, 0.0f);
+                var tip = StrokePoint(sourcePaths, seedStroke, 0.0f);
                 var poseBias = seedStroke.ShaftTilt * 0.18f + seedStroke.ShaftRotation * 0.08f;
                 var offset = (restOffset + poseBias * (1.0f - edge * 0.35f)) * seedNormalRadius * (0.42f + splay * 0.38f) + (laneHash - 0.5f) * seedNormalRadius * 0.05f;
                 var stateLoad = load * (0.86f + initialCohesion * 0.48f) * (1.0f - edge * 0.08f) * laneLoad * (1.0f - seedSplit * 0.18f);
@@ -109,10 +110,10 @@ public static class BokushoBrushSimulation
 
                 for (var replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex++)
                 {
-                    SimulateTuftSegment(strokes, strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, tuftCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, wetness, load, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, Span<float>.Empty, Span<float>.Empty, Span<Vector4>.Empty, writeOutput: false);
+                    SimulateTuftSegment(sourcePaths, strokes, strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, tuftCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, wetness, load, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, Span<float>.Empty, Span<float>.Empty, Span<Vector4>.Empty, writeOutput: false);
                 }
 
-                SimulateTuftSegment(strokes, stroke, strokeIndex, chainStart, tuft, sampleCount, tuftCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, wetness, load, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, trace, canvas, tips, writeOutput: true);
+                SimulateTuftSegment(sourcePaths, strokes, stroke, strokeIndex, chainStart, tuft, sampleCount, tuftCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, wetness, load, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, trace, canvas, tips, writeOutput: true);
             }
         }
     }
@@ -175,6 +176,7 @@ public static class BokushoBrushSimulation
         var sampleCount = Math.Clamp(frame.SampleCount, 2, 4096);
         var tuftCount = Math.Clamp(frame.TuftCount, 1, 4096);
         var strokes = EffectiveStrokes(frame);
+        var sourcePaths = SourcePathIndex.Create(frame.SourcePoints);
         var wetness = Saturate(frame.Wetness / 1.6f);
         var load = Math.Clamp(frame.InkLoad / 1.05f, 0.0f, 2.7f);
         var splay = Saturate(frame.Splay / 2.0f);
@@ -200,7 +202,7 @@ public static class BokushoBrushSimulation
                 var seedNormalRadius = MathF.Max(seedRadius * seedStroke.NormalScale, 0.0001f);
                 var seedSplit = Saturate((0.28f - LaneHash(chainStart, tuft, 53)) * 3.0f) * Saturate((edge - 0.20f) * 1.5f) * seedStroke.SplitScale;
                 var initialCohesion = LaneCohesion(edge, seedSplit, wetness, seedPressure);
-                var tip = StrokePoint(seedStroke, 0.0f);
+                var tip = StrokePoint(sourcePaths, seedStroke, 0.0f);
                 var poseBias = seedStroke.ShaftTilt * 0.18f + seedStroke.ShaftRotation * 0.08f;
                 var offset = (restOffset + poseBias * (1.0f - edge * 0.35f)) * seedNormalRadius * (0.42f + splay * 0.38f) + (laneHash - 0.5f) * seedNormalRadius * 0.05f;
                 var stateLoad = load * (0.86f + initialCohesion * 0.48f) * (1.0f - edge * 0.08f) * laneLoad * (1.0f - seedSplit * 0.18f);
@@ -210,15 +212,16 @@ public static class BokushoBrushSimulation
 
                 for (var replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex++)
                 {
-                    SimulateTuftSegmentToPage(strokes, strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, ref previousPatchNormalRadius, ref previousPatchTangentRadius, densityPage, width, height, viewCenter, safeRadius, writeOutput: false, writeInitialStep: true);
+                    SimulateTuftSegmentToPage(sourcePaths, strokes, strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, ref previousPatchNormalRadius, ref previousPatchTangentRadius, densityPage, width, height, viewCenter, safeRadius, writeOutput: false, writeInitialStep: true);
                 }
 
-                SimulateTuftSegmentToPage(strokes, stroke, strokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, ref previousPatchNormalRadius, ref previousPatchTangentRadius, densityPage, width, height, viewCenter, safeRadius, writeOutput: true, writeInitialStep: strokeIndex == chainStart);
+                SimulateTuftSegmentToPage(sourcePaths, strokes, stroke, strokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, ref previousPatchNormalRadius, ref previousPatchTangentRadius, densityPage, width, height, viewCenter, safeRadius, writeOutput: true, writeInitialStep: strokeIndex == chainStart);
             }
         }
     }
 
     private static void SimulateTuftSegment(
+        SourcePathIndex sourcePaths,
         IReadOnlyList<AquariumBokushoBrushStroke> strokes,
         AquariumBokushoBrushStroke stroke,
         int strokeIndex,
@@ -255,8 +258,8 @@ public static class BokushoBrushSimulation
         for (var sample = 0; sample < sampleCount; sample++)
         {
             var t = sampleCount <= 1 ? 0.0f : sample / (float)(sampleCount - 1);
-            var center = StrokePoint(stroke, t);
-            var tangent = StrokeTangent(strokes, strokeIndex, stroke, t, sampleCount);
+            var center = StrokePoint(sourcePaths, stroke, t);
+            var tangent = StrokeTangent(sourcePaths, strokes, strokeIndex, stroke, t, sampleCount);
             var normal = new Vector2(-tangent.Y, tangent.X);
             var strokeT = StrokeProgress(stroke, t);
             var taper = StrokeTaper(strokeT, stroke.EntryTaper, stroke.ExitTaper);
@@ -313,6 +316,7 @@ public static class BokushoBrushSimulation
     }
 
     private static void SimulateTuftSegmentToPage(
+        SourcePathIndex sourcePaths,
         IReadOnlyList<AquariumBokushoBrushStroke> strokes,
         AquariumBokushoBrushStroke stroke,
         int strokeIndex,
@@ -353,8 +357,8 @@ public static class BokushoBrushSimulation
         for (var step = 0; step < stepCount; step++)
         {
             var t = stepCount <= 1 ? 0.0f : step / (float)(stepCount - 1);
-            var center = StrokePoint(stroke, t);
-            var tangent = StrokeTangent(strokes, strokeIndex, stroke, t, stepCount);
+            var center = StrokePoint(sourcePaths, stroke, t);
+            var tangent = StrokeTangent(sourcePaths, strokes, strokeIndex, stroke, t, stepCount);
             var normal = new Vector2(-tangent.Y, tangent.X);
             var strokeT = StrokeProgress(stroke, t);
             var taper = StrokeTaper(strokeT, stroke.EntryTaper, stroke.ExitTaper);
@@ -540,6 +544,11 @@ public static class BokushoBrushSimulation
             t);
     }
 
+    private static Vector2 StrokePoint(SourcePathIndex sourcePaths, AquariumBokushoBrushStroke stroke, float t)
+        => sourcePaths.TrySample(stroke.SourceStrokeId, StrokeProgress(stroke, t), out var point)
+            ? Quantize(point, BristleTangentWorldQuantum)
+            : StrokePoint(stroke, t);
+
     private static Vector2 StrokeTangent(AquariumBokushoBrushStroke stroke, float t, int sampleCount)
     {
         var dt = 1.0f / MathF.Max(sampleCount - 1.0f, 1.0f);
@@ -548,9 +557,22 @@ public static class BokushoBrushSimulation
         return Normalize(after - before);
     }
 
-    private static Vector2 StrokeTangent(IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex, AquariumBokushoBrushStroke stroke, float t, int sampleCount)
+    private static Vector2 StrokeTangent(SourcePathIndex sourcePaths, IReadOnlyList<AquariumBokushoBrushStroke> strokes, int strokeIndex, AquariumBokushoBrushStroke stroke, float t, int sampleCount)
     {
         var dt = 1.0f / MathF.Max(sampleCount - 1.0f, 1.0f);
+        if (sourcePaths.HasSource(stroke.SourceStrokeId))
+        {
+            var strokeT = StrokeProgress(stroke, t);
+            var sourceDt = SegmentSpan(stroke, sampleCount) * dt;
+            if (sourcePaths.TrySample(stroke.SourceStrokeId, Saturate(strokeT - sourceDt), out var sourceBefore) &&
+                sourcePaths.TrySample(stroke.SourceStrokeId, Saturate(strokeT + sourceDt), out var sourceAfter))
+            {
+                sourceBefore = Quantize(sourceBefore, BristleTangentWorldQuantum);
+                sourceAfter = Quantize(sourceAfter, BristleTangentWorldQuantum);
+                return Normalize(sourceAfter - sourceBefore);
+            }
+        }
+
         var beforeT = t - dt;
         var afterT = t + dt;
         var before = beforeT < 0.0f && PreviousSourcePacket(strokes, strokeIndex) is { } previous
@@ -592,6 +614,86 @@ public static class BokushoBrushSimulation
         => previous.SourceStrokeId >= 0 &&
             previous.SourceStrokeId == next.SourceStrokeId &&
             MathF.Abs(Math.Clamp(previous.SegmentEnd, 0.0f, 1.0f) - Math.Clamp(next.SegmentStart, 0.0f, 1.0f)) <= 0.001f;
+
+    private sealed class SourcePathIndex
+    {
+        private static readonly SourcePathIndex EmptyIndex = new(new Dictionary<int, AquariumBokushoSourcePoint[]>());
+
+        private readonly Dictionary<int, AquariumBokushoSourcePoint[]> pointsBySourceId;
+
+        private SourcePathIndex(Dictionary<int, AquariumBokushoSourcePoint[]> pointsBySourceId)
+        {
+            this.pointsBySourceId = pointsBySourceId;
+        }
+
+        public static SourcePathIndex Create(IReadOnlyList<AquariumBokushoSourcePoint> sourcePoints)
+        {
+            if (sourcePoints.Count == 0)
+            {
+                return EmptyIndex;
+            }
+
+            var groups = sourcePoints
+                .Select(point => point.Normalized())
+                .Where(point => point.SourceStrokeId >= 0)
+                .GroupBy(point => point.SourceStrokeId)
+                .ToDictionary(
+                    static group => group.Key,
+                    static group => group
+                        .OrderBy(point => point.T)
+                        .ToArray());
+            return groups.Count == 0 ? EmptyIndex : new SourcePathIndex(groups);
+        }
+
+        public bool HasSource(int sourceStrokeId)
+            => sourceStrokeId >= 0 && pointsBySourceId.TryGetValue(sourceStrokeId, out var points) && points.Length >= 2;
+
+        public bool TrySample(int sourceStrokeId, float t, out Vector2 point)
+        {
+            point = default;
+            if (!HasSource(sourceStrokeId))
+            {
+                return false;
+            }
+
+            var points = pointsBySourceId[sourceStrokeId];
+            var target = Saturate(t);
+            if (target <= points[0].T)
+            {
+                point = points[0].Position;
+                return true;
+            }
+
+            var last = points[^1];
+            if (target >= last.T)
+            {
+                point = last.Position;
+                return true;
+            }
+
+            var low = 0;
+            var high = points.Length - 1;
+            while (low + 1 < high)
+            {
+                var mid = (low + high) / 2;
+                if (points[mid].T <= target)
+                {
+                    low = mid;
+                }
+                else
+                {
+                    high = mid;
+                }
+            }
+
+            var a = points[low];
+            var b = points[high];
+            var span = MathF.Max(b.T - a.T, 0.000001f);
+            var local = Saturate((target - a.T) / span);
+            point = Vector2.Lerp(a.Position, b.Position, local);
+            return true;
+        }
+    }
 
     private static float ProjectCanvasSample(AquariumBokushoBrushFrame frame, IReadOnlyList<AquariumBokushoBrushStroke> strokes, ReadOnlySpan<float> canvas, ReadOnlySpan<Vector4> tips, int strokeIndex, Vector2 world)
     {

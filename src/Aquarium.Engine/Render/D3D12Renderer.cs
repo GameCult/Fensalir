@@ -48,6 +48,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int MaxBokushoBrushTufts = 1024;
     private const int MaxBokushoBrushSamples = 512;
     private const int MaxBokushoBrushStrokes = 256;
+    private const int MaxBokushoSourcePoints = 4096;
     private const int MaxBokushoBrushValues = MaxBokushoBrushTufts * MaxBokushoBrushSamples;
     private const int FieldReservoirSlotsPerPixel = 4;
     private const int FieldReservoirCandidateStrideBytes = 144;
@@ -140,6 +141,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootBokushoBrushTips = 3;
     private const int RootBokushoBrushStrokes = 4;
     private const int RootBokushoBrushPage = 5;
+    private const int RootBokushoBrushSourcePoints = 6;
     private const int RootBokushoPageConstants = 24;
     private const int RootBokushoPageCanvas = 25;
     private const int RootBokushoPageStrokes = 26;
@@ -307,6 +309,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private readonly D3D12StructuredBuffer bokushoBrushCanvasBuffer;
     private readonly D3D12StructuredBuffer bokushoBrushTipBuffer;
     private readonly D3D12StructuredBuffer bokushoBrushStrokeBuffer;
+    private readonly D3D12StructuredBuffer bokushoSourcePointBuffer;
     private readonly D3D12StructuredBuffer bokushoPageDensityBuffer;
     private D3D12StructuredBuffer fieldReservoirCandidateBuffer = null!;
     private D3D12StructuredBuffer fieldReservoirLockBuffer = null!;
@@ -532,6 +535,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         bokushoBrushCanvasBuffer = new D3D12StructuredBuffer(device, MaxBokushoBrushValues, sizeof(float), "Aquarium D3D12 Bokusho Brush Canvas Field", allowUnorderedAccess: true);
         bokushoBrushTipBuffer = new D3D12StructuredBuffer(device, MaxBokushoBrushValues, Marshal.SizeOf<Vector4>(), "Aquarium D3D12 Bokusho Brush Tip Field", allowUnorderedAccess: true);
         bokushoBrushStrokeBuffer = new D3D12StructuredBuffer(device, MaxBokushoBrushStrokes, Marshal.SizeOf<D3D12BokushoBrushStrokePacket>(), "Aquarium D3D12 Bokusho Brush Stroke Packet Buffer");
+        bokushoSourcePointBuffer = new D3D12StructuredBuffer(device, MaxBokushoSourcePoints, Marshal.SizeOf<D3D12BokushoSourcePointPacket>(), "Aquarium D3D12 Bokusho Source Point Buffer");
         bokushoPageDensityBuffer = new D3D12StructuredBuffer(device, HeightFieldTextureSize * HeightFieldTextureSize, sizeof(uint), "Aquarium D3D12 Bokusho Page Density Field", allowUnorderedAccess: true);
         CreateFieldReservoirBuffers();
         resourceRegistry.Add("sdf-light-buffer", sdfLightBuffer);
@@ -551,6 +555,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         resourceRegistry.Add("bokusho-brush-canvas-buffer", bokushoBrushCanvasBuffer);
         resourceRegistry.Add("bokusho-brush-tip-buffer", bokushoBrushTipBuffer);
         resourceRegistry.Add("bokusho-brush-stroke-buffer", bokushoBrushStrokeBuffer);
+        resourceRegistry.Add("bokusho-source-point-buffer", bokushoSourcePointBuffer);
         resourceRegistry.Add("bokusho-page-density-buffer", bokushoPageDensityBuffer);
         commandList = device.CreateCommandList<ID3D12GraphicsCommandList>(0, CommandListType.Direct, frames[frameIndex].CommandAllocator, null);
         commandList.Name = "Aquarium D3D12 Graphics Command List";
@@ -1735,6 +1740,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         bokushoBrushTipBuffer.Dispose();
         bokushoBrushTraceBuffer.Dispose();
         bokushoBrushStrokeBuffer.Dispose();
+        bokushoSourcePointBuffer.Dispose();
         bokushoPageDensityBuffer.Dispose();
         tubeFieldSegmentBuffer.Dispose();
         tubeFieldIndexBuffer.Dispose();
@@ -4127,13 +4133,15 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var sampleCount = Math.Clamp(frame.SampleCount, 2, MaxBokushoBrushSamples);
         var tuftCount = Math.Clamp(frame.TuftCount, 1, MaxBokushoBrushTufts);
         var strokes = PackBokushoBrushStrokes(frame);
+        var sourcePoints = PackBokushoSourcePoints(frame);
         var debugStrokeCount = BoundedBokushoDebugStrokeCount(strokes.Length, sampleCount, tuftCount);
         var pageStrokeCount = Math.Min(strokes.Length, MaxBokushoBrushStrokes);
+        var sourcePointCount = Math.Min(sourcePoints.Length, MaxBokushoSourcePoints);
         var valueCount = checked(sampleCount * tuftCount * debugStrokeCount);
         var debugConstants = new D3D12BokushoBrushConstants(
             new Vector4(sampleCount, tuftCount, frame.PhysicsHz, debugStrokeCount),
             new Vector4(frame.BrushRadius, frame.Pressure, frame.InkLoad, frame.Wetness),
-            new Vector4(frame.Splay, frame.Bend, frame.Friction, 0.0f),
+            new Vector4(frame.Splay, frame.Bend, frame.Friction, sourcePointCount),
             new Vector4(frame.RadiusScale, frame.PressureScale, frame.NormalScale, frame.TangentScale),
             frame.StrokeP0,
             frame.StrokeP1,
@@ -4144,12 +4152,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
         var debugConstantsUpload = frameResources.UploadRing.WriteConstant(debugConstants);
         var pageConstantsUpload = frameResources.UploadRing.WriteConstant(pageConstants);
         bokushoBrushStrokeBuffer.UploadPartial(activeCommandList, frameResources.UploadRing, strokes.AsSpan(0, pageStrokeCount));
+        bokushoSourcePointBuffer.UploadPartial(activeCommandList, frameResources.UploadRing, sourcePoints.AsSpan(0, sourcePointCount));
 
         bokushoBrushTraceBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         bokushoBrushCanvasBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         bokushoBrushTipBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         bokushoPageDensityBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         bokushoBrushStrokeBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+        bokushoSourcePointBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
         activeCommandList.SetComputeRootSignature(bokushoBrushRootSignature);
         activeCommandList.SetPipelineState(bokushoBrushPipelineState);
         activeCommandList.SetComputeRootConstantBufferView(RootBokushoBrushConstants, debugConstantsUpload.GpuVirtualAddress);
@@ -4158,6 +4168,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCommandList.SetComputeRootUnorderedAccessView(RootBokushoBrushTips, bokushoBrushTipBuffer.Resource.GPUVirtualAddress);
         activeCommandList.SetComputeRootShaderResourceView(RootBokushoBrushStrokes, bokushoBrushStrokeBuffer.Resource.GPUVirtualAddress);
         activeCommandList.SetComputeRootUnorderedAccessView(RootBokushoBrushPage, bokushoPageDensityBuffer.Resource.GPUVirtualAddress);
+        activeCommandList.SetComputeRootShaderResourceView(RootBokushoBrushSourcePoints, bokushoSourcePointBuffer.Resource.GPUVirtualAddress);
         activeCommandList.Dispatch((uint)(((tuftCount * debugStrokeCount) + 127) / 128), 1, 1);
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoBrushTraceBuffer.Resource));
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(bokushoBrushCanvasBuffer.Resource));
@@ -4883,10 +4894,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
     {
         if (frame.Strokes.Count > 0)
         {
+            var sourceRanges = BokushoSourcePointRanges(frame);
             var packets = new D3D12BokushoBrushStrokePacket[frame.Strokes.Count];
             for (var index = 0; index < packets.Length; index++)
             {
-                packets[index] = PackBokushoBrushStroke(frame.Strokes[index].Normalized());
+                var stroke = frame.Strokes[index].Normalized();
+                sourceRanges.TryGetValue(stroke.SourceStrokeId, out var range);
+                packets[index] = PackBokushoBrushStroke(stroke, range);
             }
 
             return packets;
@@ -4906,15 +4920,55 @@ public sealed class D3D12Renderer : IAquariumRenderer
     }
 
     private static D3D12BokushoBrushStrokePacket PackBokushoBrushStroke(AquariumBokushoBrushStroke stroke)
+        => PackBokushoBrushStroke(stroke, default);
+
+    private static D3D12BokushoBrushStrokePacket PackBokushoBrushStroke(AquariumBokushoBrushStroke stroke, BokushoSourcePointRange sourceRange)
     {
         return new D3D12BokushoBrushStrokePacket(
             new Vector4(stroke.RadiusScale, stroke.PressureScale, stroke.NormalScale, stroke.TangentScale),
             new Vector4(stroke.EntryTaper, stroke.ExitTaper, stroke.PigmentScale, stroke.SplitScale),
             new Vector4(stroke.ShaftTilt, stroke.ShaftRotation, stroke.GripHeight, stroke.Compliance),
             new Vector4(stroke.StrokeP0.X, stroke.StrokeP0.Y, stroke.SegmentStart, stroke.SegmentEnd),
-            stroke.StrokeP1,
+            new Vector4(stroke.StrokeP1.X, stroke.StrokeP1.Y, sourceRange.Start, sourceRange.Count),
             stroke.StrokeP2,
             new Vector4(stroke.StrokeP3.X, stroke.StrokeP3.Y, stroke.StrokeP3.Z, stroke.SourceStrokeId));
+    }
+
+    private static D3D12BokushoSourcePointPacket[] PackBokushoSourcePoints(AquariumBokushoBrushFrame frame)
+        => frame.SourcePoints
+            .Select(point => point.Normalized())
+            .Where(point => point.SourceStrokeId >= 0)
+            .OrderBy(point => point.SourceStrokeId)
+            .ThenBy(point => point.T)
+            .Take(MaxBokushoSourcePoints)
+            .Select(static point => new D3D12BokushoSourcePointPacket(
+                new Vector4(point.Position.X, point.Position.Y, point.T, point.SourceStrokeId)))
+            .ToArray();
+
+    private static Dictionary<int, BokushoSourcePointRange> BokushoSourcePointRanges(AquariumBokushoBrushFrame frame)
+    {
+        var ranges = new Dictionary<int, BokushoSourcePointRange>();
+        var sorted = frame.SourcePoints
+            .Select(point => point.Normalized())
+            .Where(point => point.SourceStrokeId >= 0)
+            .OrderBy(point => point.SourceStrokeId)
+            .ThenBy(point => point.T)
+            .Take(MaxBokushoSourcePoints)
+            .ToArray();
+        var index = 0;
+        while (index < sorted.Length)
+        {
+            var sourceStrokeId = sorted[index].SourceStrokeId;
+            var start = index;
+            while (index < sorted.Length && sorted[index].SourceStrokeId == sourceStrokeId)
+            {
+                index++;
+            }
+
+            ranges[sourceStrokeId] = new BokushoSourcePointRange(start, index - start);
+        }
+
+        return ranges;
     }
 
     private void AppendFieldEvidenceGpuSensorInputs()
@@ -6403,6 +6457,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(22, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(78, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(23, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(81, 0), ShaderVisibility.All),
         };
         var description = new RootSignatureDescription(
             RootSignatureFlags.None,
@@ -7157,6 +7212,11 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Vector4 StrokeP1,
         Vector4 StrokeP2,
         Vector4 StrokeP3);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct D3D12BokushoSourcePointPacket(Vector4 Point);
+
+    private readonly record struct BokushoSourcePointRange(int Start, int Count);
 
     private readonly record struct D3D12PipelinePrivateGeneratedMesh(
         D3D12StructuredBuffer Vertices,

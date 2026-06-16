@@ -42,6 +42,7 @@ RWStructuredBuffer<float> BokushoCanvasField : register(u21);
 RWStructuredBuffer<float4> BokushoTipField : register(u22);
 RWStructuredBuffer<uint> BokushoPageDensityField : register(u23);
 StructuredBuffer<BokushoBrushStroke> BokushoBrushStrokes : register(t78);
+StructuredBuffer<float4> BokushoSourcePoints : register(t81);
 
 float QuantizeScalar(float value, float quantum)
 {
@@ -63,9 +64,78 @@ uint QuantizePositiveUnits(float value, uint units)
     return (uint)floor(saturate(value) * (float)units + 0.5);
 }
 
-float2 StrokePoint(BokushoBrushStroke stroke, float t)
+float2 PacketStrokePoint(BokushoBrushStroke stroke, float t)
 {
     return cultmath_catmullrom(stroke.p0.xy, stroke.p1.xy, stroke.p2.xy, stroke.p3.xy, t);
+}
+
+bool TrySampleSourcePoint(BokushoBrushStroke stroke, float sourceT, out float2 sampledPoint)
+{
+    sampledPoint = float2(0.0, 0.0);
+    uint sourcePointCount = (uint)round(max(brushDynamics.w, 0.0));
+    uint start = (uint)round(max(stroke.p1.z, 0.0));
+    uint count = (uint)round(max(stroke.p1.w, 0.0));
+    if (count < 2u || sourcePointCount == 0u || start >= sourcePointCount)
+    {
+        return false;
+    }
+
+    count = min(count, sourcePointCount - start);
+    if (count < 2u)
+    {
+        return false;
+    }
+
+    float target = saturate(sourceT);
+    float4 first = BokushoSourcePoints[start];
+    if (target <= first.z)
+    {
+        sampledPoint = first.xy;
+        return true;
+    }
+
+    uint lastIndex = start + count - 1u;
+    float4 last = BokushoSourcePoints[lastIndex];
+    if (target >= last.z)
+    {
+        sampledPoint = last.xy;
+        return true;
+    }
+
+    uint low = start;
+    uint high = lastIndex;
+    [loop]
+    while (low + 1u < high)
+    {
+        uint mid = (low + high) / 2u;
+        if (BokushoSourcePoints[mid].z <= target)
+        {
+            low = mid;
+        }
+        else
+        {
+            high = mid;
+        }
+    }
+
+    float4 a = BokushoSourcePoints[low];
+    float4 b = BokushoSourcePoints[high];
+    float span = max(b.z - a.z, 0.000001);
+    float local = saturate((target - a.z) / span);
+    sampledPoint = lerp(a.xy, b.xy, local);
+    return true;
+}
+
+float2 StrokePoint(BokushoBrushStroke stroke, float t)
+{
+    float2 sampledPoint;
+    float sourceT = saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
+    if (TrySampleSourcePoint(stroke, sourceT, sampledPoint))
+    {
+        return QuantizeFloat2(sampledPoint, BOKUSHO_BRISTLE_TANGENT_WORLD_QUANTUM);
+    }
+
+    return PacketStrokePoint(stroke, t);
 }
 
 float2 StrokeTangent(BokushoBrushStroke stroke, float t)
@@ -94,6 +164,26 @@ bool SameSourceBoundary(BokushoBrushStroke previous, BokushoBrushStroke next)
 float2 StrokeTangent(BokushoBrushStroke stroke, uint strokeIndex, float t, uint stepCount)
 {
     float dt = 1.0 / max((float)stepCount - 1.0, 1.0);
+    uint sourcePointCount = (uint)round(max(brushDynamics.w, 0.0));
+    uint sourceRangeCount = (uint)round(max(stroke.p1.w, 0.0));
+    if (sourcePointCount > 0u && sourceRangeCount >= 2u)
+    {
+        float sourceStart = saturate(stroke.p0.z);
+        float sourceEnd = saturate(max(stroke.p0.z, stroke.p0.w));
+        float sourceSpan = max(sourceEnd - sourceStart, 1.0 / max((float)(stepCount - 1u), 1.0));
+        float sourceT = saturate(lerp(sourceStart, sourceEnd, t));
+        float sourceDt = sourceSpan * dt;
+        float2 sourceBefore;
+        float2 sourceAfter;
+        if (TrySampleSourcePoint(stroke, saturate(sourceT - sourceDt), sourceBefore) &&
+            TrySampleSourcePoint(stroke, saturate(sourceT + sourceDt), sourceAfter))
+        {
+            sourceBefore = QuantizeFloat2(sourceBefore, BOKUSHO_BRISTLE_TANGENT_WORLD_QUANTUM);
+            sourceAfter = QuantizeFloat2(sourceAfter, BOKUSHO_BRISTLE_TANGENT_WORLD_QUANTUM);
+            return cultmath_normalize(sourceAfter - sourceBefore);
+        }
+    }
+
     float beforeT = t - dt;
     float afterT = t + dt;
     float2 before = StrokePoint(stroke, saturate(beforeT));

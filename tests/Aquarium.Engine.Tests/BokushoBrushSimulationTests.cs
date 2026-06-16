@@ -685,6 +685,56 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuBrushSourcePointsOwnStrokeGeometryWhenPresent()
+    {
+        var frame = new AquariumBokushoBrushFrame
+        {
+            TuftCount = 17,
+            SampleCount = 64,
+            PhysicsHz = 500.0f,
+            BrushRadius = 0.78f,
+            Pressure = 1.04f,
+            InkLoad = 1.36f,
+            Wetness = 1.06f,
+            Splay = 0.78f,
+            Bend = 0.70f,
+            Friction = 0.66f,
+            SourcePoints =
+            [
+                new AquariumBokushoSourcePoint { SourceStrokeId = 12, T = 0.0f, Position = new Vector2(-2.8f, 0.0f) },
+                new AquariumBokushoSourcePoint { SourceStrokeId = 12, T = 0.5f, Position = new Vector2(0.0f, 0.0f) },
+                new AquariumBokushoSourcePoint { SourceStrokeId = 12, T = 1.0f, Position = new Vector2(2.8f, 0.0f) },
+            ],
+            Strokes =
+            [
+                new AquariumBokushoBrushStroke
+                {
+                    StrokeP0 = new Vector4(-2.8f, 2.4f, 0.0f, 0.0f),
+                    StrokeP1 = new Vector4(-1.2f, 2.2f, 0.0f, 0.0f),
+                    StrokeP2 = new Vector4(1.2f, 2.1f, 0.0f, 0.0f),
+                    StrokeP3 = new Vector4(2.8f, 2.4f, 0.0f, 0.0f),
+                    RadiusScale = 0.92f,
+                    PressureScale = 1.0f,
+                    NormalScale = 0.58f,
+                    TangentScale = 1.10f,
+                    PigmentScale = 1.24f,
+                    SplitScale = 0.82f,
+                    SegmentStart = 0.0f,
+                    SegmentEnd = 1.0f,
+                    SourceStrokeId = 12,
+                },
+            ],
+        };
+
+        var page = BokushoBrushSimulation.EvaluatePage(frame, 128, 128, Vector2.Zero, 4.0f);
+        var sourceLine = SamplePage(page, 128, 128, new Vector2(0.0f, 0.0f), 4.0f);
+        var packetCurve = SamplePage(page, 128, 128, new Vector2(0.0f, 2.2f), 4.0f);
+
+        Assert.True(sourceLine > 0.001f, $"source line={sourceLine:0.000000}");
+        Assert.True(sourceLine > packetCurve * 2.0f, $"source line={sourceLine:0.000000}; packet curve={packetCurve:0.000000}");
+    }
+
+    [Fact]
     public void CpuBrushCurvedPathChangesBristleSweepAndCoverage()
     {
         var straight = GestureFrame(curved: false);

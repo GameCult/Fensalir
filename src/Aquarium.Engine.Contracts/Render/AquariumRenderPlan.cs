@@ -558,6 +558,8 @@ public sealed class AquariumBokushoBrushFrame
 
     public IReadOnlyList<AquariumBokushoBrushStroke> Strokes { get; init; } = [];
 
+    public IReadOnlyList<AquariumBokushoSourcePoint> SourcePoints { get; init; } = [];
+
     public bool HasInput => TuftCount > 0 && SampleCount > 1 && PhysicsHz > 0.0f;
 
     public AquariumBokushoBrushFrame Normalized() => new()
@@ -581,6 +583,23 @@ public sealed class AquariumBokushoBrushFrame
         StrokeP2 = StrokeP2,
         StrokeP3 = StrokeP3,
         Strokes = Strokes.Select(stroke => stroke.Normalized()).ToArray(),
+        SourcePoints = SourcePoints.Select(point => point.Normalized()).ToArray(),
+    };
+}
+
+public sealed class AquariumBokushoSourcePoint
+{
+    public int SourceStrokeId { get; init; } = -1;
+
+    public float T { get; init; }
+
+    public Vector2 Position { get; init; }
+
+    public AquariumBokushoSourcePoint Normalized() => new()
+    {
+        SourceStrokeId = SourceStrokeId,
+        T = Math.Clamp(T, 0.0f, 1.0f),
+        Position = Position,
     };
 }
 

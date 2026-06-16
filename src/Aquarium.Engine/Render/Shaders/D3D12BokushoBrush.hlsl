@@ -54,6 +54,14 @@ float2 StrokeTangent(BokushoBrushStroke stroke, float t)
     return cultmath_normalize(after - before);
 }
 
+float2 StrokeTangent(BokushoBrushStroke stroke, float t, uint stepCount)
+{
+    float dt = 1.0 / max((float)stepCount - 1.0, 1.0);
+    float2 before = StrokePoint(stroke, saturate(t - dt));
+    float2 after = StrokePoint(stroke, saturate(t + dt));
+    return cultmath_normalize(after - before);
+}
+
 float StrokeTaper(float t)
 {
     float entry = cultmath_smoothstep(0.0, 0.10, t);
@@ -324,7 +332,7 @@ void SimulateBokushoTuftSegmentToPage(
     {
         float t = stepCount <= 1u ? 0.0 : (float)step / (float)(stepCount - 1u);
         float2 center = StrokePoint(stroke, t);
-        float2 tangent = StrokeTangent(stroke, t);
+        float2 tangent = StrokeTangent(stroke, t, stepCount);
         float2 normal = float2(-tangent.y, tangent.x);
         float taper = StrokeTaper(stroke, t);
         float localPressure = pressure * taper;

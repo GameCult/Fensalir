@@ -659,6 +659,21 @@ public sealed class BokushoBrushSimulationTests
     }
 
     [Fact]
+    public void CpuPageDepositDoesNotDoubleStampContinuousSegmentBoundary()
+    {
+        var shared = SourceIdentityFrame(sameSourceId: true);
+        var split = SourceIdentityFrame(sameSourceId: false);
+
+        var sharedDensity = BokushoBrushSimulation.EvaluatePageDensity(shared, 160, 160, Vector2.Zero, 4.0f);
+        var splitDensity = BokushoBrushSimulation.EvaluatePageDensity(split, 160, 160, Vector2.Zero, 4.0f);
+        var sharedJoin = SampleDensity(sharedDensity, 160, 160, new Vector2(0.0f, 0.0f), 4.0f);
+        var splitJoin = SampleDensity(splitDensity, 160, 160, new Vector2(0.0f, 0.0f), 4.0f);
+
+        Assert.True(sharedJoin > 0.0f);
+        Assert.True(splitJoin > sharedJoin, $"shared join={sharedJoin:0.000000}; split join={splitJoin:0.000000}");
+    }
+
+    [Fact]
     public void CpuBrushSegmentSpanKeepsLaterFittedPiecesLoaded()
     {
         var frame = SourceIdentityFrame(sameSourceId: true);
@@ -1018,5 +1033,13 @@ public sealed class BokushoBrushSimulationTests
         var x = Math.Clamp((int)MathF.Round(uv.X * (width - 1)), 0, width - 1);
         var y = Math.Clamp((int)MathF.Round(uv.Y * (height - 1)), 0, height - 1);
         return page[y * width + x];
+    }
+
+    private static float SampleDensity(uint[] page, int width, int height, Vector2 world, float viewRadius)
+    {
+        var uv = world / viewRadius * 0.5f + new Vector2(0.5f, 0.5f);
+        var x = Math.Clamp((int)MathF.Round(uv.X * (width - 1)), 0, width - 1);
+        var y = Math.Clamp((int)MathF.Round(uv.Y * (height - 1)), 0, height - 1);
+        return BokushoBrushSimulation.DecodePageDensity(page[y * width + x]);
     }
 }

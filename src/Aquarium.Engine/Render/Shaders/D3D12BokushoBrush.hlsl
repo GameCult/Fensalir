@@ -69,9 +69,14 @@ float StrokeTaper(float t)
     return 0.04 + entry * exit * 0.96;
 }
 
+float StrokeProgress(BokushoBrushStroke stroke, float t)
+{
+    return saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
+}
+
 float StrokeTaper(BokushoBrushStroke stroke, float t)
 {
-    float strokeT = saturate(lerp(stroke.p0.z, max(stroke.p0.z, stroke.p0.w), t));
+    float strokeT = StrokeProgress(stroke, t);
     float entryTaper = clamp(stroke.dynamics.x, 0.01, 0.50);
     float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
     float entry = cultmath_smoothstep(0.0, entryTaper, strokeT);
@@ -79,6 +84,11 @@ float StrokeTaper(BokushoBrushStroke stroke, float t)
     float x = saturate(entry * exit);
     float contact = x * (0.76 + x * 0.24);
     return 0.018 + contact * 0.982;
+}
+
+uint StrokeNoiseStep(float strokeT)
+{
+    return (uint)floor(saturate(strokeT) * 4096.0 + 0.5);
 }
 
 float LaneCohesion(float edge, float split, float wetness, float pressure)
@@ -267,6 +277,7 @@ void SimulateBokushoTuftSegment(
         float2 center = StrokePoint(stroke, t);
         float2 tangent = StrokeTangent(stroke, t);
         float2 normal = float2(-tangent.y, tangent.x);
+        float strokeT = StrokeProgress(stroke, t);
         float taper = StrokeTaper(stroke, t);
         float localPressure = pressure * taper;
         float laneCore = cultmath_smoothstep(0.0, 0.78, 1.0 - edge);
@@ -294,7 +305,7 @@ void SimulateBokushoTuftSegment(
         float separation = saturate(split * 0.34 + tension * 0.46 + edge * 0.20 - cohesion * 0.24);
         float adhesion = saturate(stateWet * (0.36 + cohesion * 0.40) + localPressure * 0.10 - separation * 0.22);
         float dryMemory = saturate((1.0 - stateWet) * 0.62 + separation * 0.32 + velocity * 0.004);
-        float fiberNoise = LaneHash(laneKey + sample * 13u, tuft, 101u);
+        float fiberNoise = LaneHash(laneKey + StrokeNoiseStep(strokeT) * 13u, tuft, 101u);
         float continuity = 1.0 - cultmath_smoothstep(0.18 + dryMemory * 0.28, 0.96, fiberNoise) * dryMemory * (0.38 + edge * 0.22);
         float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * continuity;
         float airborneRelease = (1.0 - contact) * stateLoad * stateWet * saturate(velocity * 0.010 - adhesion * 0.16) * (0.20 + separation * 0.42 + edge * 0.18);
@@ -329,7 +340,8 @@ void SimulateBokushoTuftSegmentToPage(
     inout float2 tip,
     inout float stateLoad,
     inout float stateWet,
-    bool writeOutput)
+    bool writeOutput,
+    bool writeInitialStep)
 {
     float pressure = saturate(brushMaterial.y * stroke.profile.y * 0.5) * 2.0;
     float splay = saturate(brushDynamics.x / 2.0);
@@ -350,6 +362,7 @@ void SimulateBokushoTuftSegmentToPage(
         float2 center = StrokePoint(stroke, t);
         float2 tangent = StrokeTangent(stroke, t, stepCount);
         float2 normal = float2(-tangent.y, tangent.x);
+        float strokeT = StrokeProgress(stroke, t);
         float taper = StrokeTaper(stroke, t);
         float localPressure = pressure * taper;
         float laneCore = cultmath_smoothstep(0.0, 0.78, 1.0 - edge);
@@ -377,7 +390,7 @@ void SimulateBokushoTuftSegmentToPage(
         float separation = saturate(split * 0.34 + tension * 0.46 + edge * 0.20 - cohesion * 0.24);
         float adhesion = saturate(stateWet * (0.36 + cohesion * 0.40) + localPressure * 0.10 - separation * 0.22);
         float dryMemory = saturate((1.0 - stateWet) * 0.62 + separation * 0.32 + velocity * 0.004);
-        float fiberNoise = LaneHash(laneKey + step * 13u, tuft, 101u);
+        float fiberNoise = LaneHash(laneKey + StrokeNoiseStep(strokeT) * 13u, tuft, 101u);
         float continuity = 1.0 - cultmath_smoothstep(0.18 + dryMemory * 0.28, 0.96, fiberNoise) * dryMemory * (0.38 + edge * 0.22);
         float contactTransfer = contact * stateLoad * (0.16 + stateWet * 0.92) * (0.30 + drag * 0.64 + localPressure * 0.22 + sweptPatch * 0.18) * (0.68 + laneCore * 0.50 - separation * 0.14) * continuity;
         float airborneRelease = (1.0 - contact) * stateLoad * stateWet * saturate(velocity * 0.010 - adhesion * 0.16) * (0.20 + separation * 0.42 + edge * 0.18);
@@ -385,7 +398,7 @@ void SimulateBokushoTuftSegmentToPage(
         stateLoad = max(0.0, stateLoad - consumedPigment * segmentSpan * (0.010 + localPressure * 0.006));
         stateWet = max(0.0, stateWet - consumedPigment * segmentSpan * (0.006 + dryMemory * 0.003));
 
-        if (writeOutput)
+        if (writeOutput && (writeInitialStep || step > 0u))
         {
             float pigment = (contactTransfer * (0.95 + localPressure * 0.34 + sweptPatch * 0.24) + airborneRelease * (1.6 + velocity * 0.002)) * stroke.dynamics.z;
             float patchNormalRadius = localNormalRadius * (0.84 + laneCore * 0.20 + localPressure * 0.14 + sweptPatch * 0.08 - separation * 0.10);
@@ -490,8 +503,8 @@ void D3D12BokushoPageDepositCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     [loop]
     for (uint replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex += 1u)
     {
-        SimulateBokushoTuftSegmentToPage(BokushoBrushStrokes[replayStrokeIndex], chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, false);
+        SimulateBokushoTuftSegmentToPage(BokushoBrushStrokes[replayStrokeIndex], chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, false, true);
     }
 
-    SimulateBokushoTuftSegmentToPage(stroke, chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, true);
+    SimulateBokushoTuftSegmentToPage(stroke, chainStart, tuft, sampleCount, restOffset, edge, offset, tip, stateLoad, stateWet, true, strokeIndex == chainStart);
 }

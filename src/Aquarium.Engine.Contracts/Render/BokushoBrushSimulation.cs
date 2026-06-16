@@ -206,10 +206,10 @@ public static class BokushoBrushSimulation
 
                 for (var replayStrokeIndex = chainStart; replayStrokeIndex < strokeIndex; replayStrokeIndex++)
                 {
-                    SimulateTuftSegmentToPage(strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, densityPage, width, height, viewCenter, safeRadius, writeOutput: false);
+                    SimulateTuftSegmentToPage(strokes[replayStrokeIndex], replayStrokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, densityPage, width, height, viewCenter, safeRadius, writeOutput: false, writeInitialStep: true);
                 }
 
-                SimulateTuftSegmentToPage(stroke, strokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, densityPage, width, height, viewCenter, safeRadius, writeOutput: true);
+                SimulateTuftSegmentToPage(stroke, strokeIndex, chainStart, tuft, sampleCount, frame.PhysicsHz, frame.Pressure, frame.BrushRadius, splay, bend, friction, restOffset, edge, ref offset, ref tip, ref stateLoad, ref stateWet, densityPage, width, height, viewCenter, safeRadius, writeOutput: true, writeInitialStep: strokeIndex == chainStart);
             }
         }
     }
@@ -282,7 +282,7 @@ public static class BokushoBrushSimulation
             var separation = Saturate(split * 0.34f + tension * 0.46f + edge * 0.20f - cohesion * 0.24f);
             var adhesion = Saturate(stateWet * (0.36f + cohesion * 0.40f) + localPressure * 0.10f - separation * 0.22f);
             var dryMemory = Saturate((1.0f - stateWet) * 0.62f + separation * 0.32f + velocity * 0.004f);
-            var fiberNoise = LaneHash(laneKey + sample * 13, tuft, 101);
+            var fiberNoise = LaneHash(laneKey + StrokeNoiseStep(strokeT) * 13, tuft, 101);
             var continuity = 1.0f - SmoothStep(0.18f + dryMemory * 0.28f, 0.96f, fiberNoise) * dryMemory * (0.38f + edge * 0.22f);
             var contactTransfer = contact * stateLoad * (0.16f + stateWet * 0.92f) * (0.30f + drag * 0.64f + localPressure * 0.22f + sweptPatch * 0.18f) * (0.68f + laneCore * 0.50f - separation * 0.14f) * continuity;
             var airborneRelease = (1.0f - contact) * stateLoad * stateWet * Saturate(velocity * 0.010f - adhesion * 0.16f) * (0.20f + separation * 0.42f + edge * 0.18f);
@@ -328,7 +328,8 @@ public static class BokushoBrushSimulation
         int height,
         Vector2 viewCenter,
         float viewRadius,
-        bool writeOutput)
+        bool writeOutput,
+        bool writeInitialStep)
     {
         var pressure = Saturate(framePressure * stroke.PressureScale * 0.5f) * 2.0f;
         var radius = MathF.Max(frameBrushRadius * stroke.RadiusScale, 0.0001f);
@@ -373,7 +374,7 @@ public static class BokushoBrushSimulation
             var separation = Saturate(split * 0.34f + tension * 0.46f + edge * 0.20f - cohesion * 0.24f);
             var adhesion = Saturate(stateWet * (0.36f + cohesion * 0.40f) + localPressure * 0.10f - separation * 0.22f);
             var dryMemory = Saturate((1.0f - stateWet) * 0.62f + separation * 0.32f + velocity * 0.004f);
-            var fiberNoise = LaneHash(laneKey + step * 13, tuft, 101);
+            var fiberNoise = LaneHash(laneKey + StrokeNoiseStep(strokeT) * 13, tuft, 101);
             var continuity = 1.0f - SmoothStep(0.18f + dryMemory * 0.28f, 0.96f, fiberNoise) * dryMemory * (0.38f + edge * 0.22f);
             var contactTransfer = contact * stateLoad * (0.16f + stateWet * 0.92f) * (0.30f + drag * 0.64f + localPressure * 0.22f + sweptPatch * 0.18f) * (0.68f + laneCore * 0.50f - separation * 0.14f) * continuity;
             var airborneRelease = (1.0f - contact) * stateLoad * stateWet * Saturate(velocity * 0.010f - adhesion * 0.16f) * (0.20f + separation * 0.42f + edge * 0.18f);
@@ -381,7 +382,7 @@ public static class BokushoBrushSimulation
             stateLoad = MathF.Max(0.0f, stateLoad - consumedPigment * segmentSpan * (0.010f + localPressure * 0.006f));
             stateWet = MathF.Max(0.0f, stateWet - consumedPigment * segmentSpan * (0.006f + dryMemory * 0.003f));
 
-            if (writeOutput)
+            if (writeOutput && (writeInitialStep || step > 0))
             {
                 var pigment = (contactTransfer * (0.95f + localPressure * 0.34f + sweptPatch * 0.24f) + airborneRelease * (1.6f + velocity * 0.002f)) * stroke.PigmentScale;
                 var patchNormalRadius = localNormalRadius * (0.84f + laneCore * 0.20f + localPressure * 0.14f + sweptPatch * 0.08f - separation * 0.10f);
@@ -736,6 +737,11 @@ public static class BokushoBrushSimulation
         var start = Math.Clamp(stroke.SegmentStart, 0.0f, 1.0f);
         var end = Math.Clamp(stroke.SegmentEnd, start, 1.0f);
         return Saturate(Lerp(start, end, t));
+    }
+
+    private static int StrokeNoiseStep(float strokeT)
+    {
+        return (int)MathF.Floor(Saturate(strokeT) * 4096.0f + 0.5f);
     }
 
     private static float LaneCohesion(float edge, float split, float wetness, float pressure)

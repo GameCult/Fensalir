@@ -720,8 +720,14 @@ public static class BokushoBrushSimulation
     {
         var entry = SmoothStep(0.0f, entryTaper, t);
         var exit = 1.0f - SmoothStep(1.0f - exitTaper, 1.0f, t);
-        var contact = MathF.Pow(entry * exit, 1.12f);
+        var contact = TaperContact(entry * exit);
         return 0.018f + contact * 0.982f;
+    }
+
+    private static float TaperContact(float value)
+    {
+        var x = Saturate(value);
+        return x * (0.76f + x * 0.24f);
     }
 
     private static float StrokeProgress(AquariumBokushoBrushStroke stroke, float t)

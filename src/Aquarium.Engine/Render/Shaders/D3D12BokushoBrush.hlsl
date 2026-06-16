@@ -68,7 +68,8 @@ float StrokeTaper(BokushoBrushStroke stroke, float t)
     float exitTaper = clamp(stroke.dynamics.y, 0.01, 0.50);
     float entry = cultmath_smoothstep(0.0, entryTaper, strokeT);
     float exit = 1.0 - cultmath_smoothstep(1.0 - exitTaper, 1.0, strokeT);
-    float contact = pow(entry * exit, 1.12);
+    float x = saturate(entry * exit);
+    float contact = x * (0.76 + x * 0.24);
     return 0.018 + contact * 0.982;
 }
 

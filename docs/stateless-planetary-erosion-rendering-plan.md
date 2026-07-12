@@ -35,7 +35,7 @@ parent/child residual transitions have not been built.
 | 3. Physical bands | Complete | Wavelength selection, fractional terminal octave, unresolved bound |
 | 4. GPU pages | Complete | Spherical borders, sibling seam tests, GPU summary reduction |
 | 5. Page-backed intersection | Complete | Persistent page and summary buffers, conservative bounds/steps, bracketed refinement, radial hit parity |
-| 6. Quadtree transitions | Not started | Parent/child residual ownership still to implement |
+| 6. Quadtree transitions | In progress | Residual atlas and lifecycle probes complete; visible no-pop capture remains |
 | 7. Unified differentials/materials | Not started | Final composed derivative contract still to implement |
 | 8. Profiling/backend decision | Not started | No frame-time or memory-budget claim yet |
 

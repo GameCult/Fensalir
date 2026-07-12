@@ -32,7 +32,7 @@ internal static class D3D12ComputeProbe
         {
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(0, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(0, 0), ShaderVisibility.All),
-            new RootParameter(new RootConstants(0, 0, 1), ShaderVisibility.All),
+            new RootParameter(new RootConstants(0, 0, 3), ShaderVisibility.All),
         };
         var signatureDescription = new RootSignatureDescription(RootSignatureFlags.None, parameters, []);
         using var signature = device.CreateRootSignature(0, in signatureDescription, RootSignatureVersion.Version1);

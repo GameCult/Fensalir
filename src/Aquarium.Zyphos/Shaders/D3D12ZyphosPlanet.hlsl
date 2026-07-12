@@ -244,10 +244,13 @@ float sdfDistance(float3 p, int sdfIndex)
 float zyPlanetTraceBoundRadius(SdfObject sdfObject)
 {
     float legacyBound = max(sdfObject.centerRadius.w * 1.42, 0.001);
-    ZyPlanetPageSummary summary = zy_planet_page_summary[0];
-    ZyPlanetPageMetadata metadata = zy_planet_page_metadata[0];
-    if (metadata.state.x < 0.5 || summary.metadata.w < 0.5) return legacyBound;
-    float erosionExtent = max(abs(summary.bounds.x), abs(summary.bounds.y)) + max(summary.bounds.w, 0.0);
+    float erosionExtent=0.0; int pageCount=min((int)zy_planet_page_set[0].state.x,64);
+    [loop] for(int pageIndex=0;pageIndex<pageCount;pageIndex++)
+    {
+        ZyPlanetPageSummary summary=zy_planet_page_summary[pageIndex]; ZyPlanetPageMetadata metadata=zy_planet_page_metadata[pageIndex];
+        if(metadata.state.x<0.5||summary.metadata.w<0.5)continue;
+        erosionExtent+=max(abs(summary.bounds.x),abs(summary.bounds.y))*saturate(metadata.state.y)+max(summary.bounds.w,0.0);
+    }
     return max(legacyBound, max(sdfObject.state.x, 0.001) + erosionExtent);
 }
 

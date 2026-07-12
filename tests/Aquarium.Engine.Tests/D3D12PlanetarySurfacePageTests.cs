@@ -25,16 +25,112 @@ public sealed class D3D12PlanetarySurfacePageTests
     }
 
     [Fact]
-    public void CameraFaceSelectionReusesResidentPageAndVersionsReplacement()
+    public void QuadtreeSelectionKeepsSixRootsAndAddsOneResidualAncestorChain()
     {
+        ZyphosPlanetarySurfacePages.Reset();
         var center = ZyphosUmbrosSystem.ZyphosCenter;
-        var first = ZyphosSceneBuilder.Build(0.0f, 0.0f, center + Vector3.UnitZ * 12.0f, default).PlanetarySurfacePages;
-        var sameFace = ZyphosSceneBuilder.Build(0.0f, 0.0f, center + Vector3.Normalize(new Vector3(0.1f, 0.1f, 1.0f)) * 12.0f, default).PlanetarySurfacePages;
-        var replacement = ZyphosSceneBuilder.Build(0.0f, 0.0f, center + Vector3.UnitX * 12.0f, default).PlanetarySurfacePages;
+        var orbital = ZyphosSceneBuilder.Build(0.0f, 0.0f, center + Vector3.UnitZ * 1000.0f, default).PlanetarySurfacePages;
+        var near = ZyphosSceneBuilder.Build(2.0f, 1.0f, center + Vector3.Normalize(new Vector3(0.13f, 0.19f, 1.0f)) * (ZyphosUmbrosSystem.ZyphosSurfaceRadius + 0.05f), default).PlanetarySurfacePages;
 
-        Assert.Same(first, sameFace);
-        Assert.NotEqual(first.Version, replacement.Version);
-        Assert.NotEqual(first.Metadata.Address.X, replacement.Metadata.Address.X);
+        Assert.Equal(6, orbital.Pages.Count);
+        Assert.Equal(Enum.GetValues<CubeFace>().Select(face => (float)face), orbital.Pages.Select(page => page.Metadata.Address.X));
+        Assert.True(near.Pages.Count > 6);
+        Assert.Equal(Enumerable.Range(1, near.Pages.Count - 6).Select(level => (float)level), near.Pages.Skip(6).Select(page => page.Metadata.Address.Y));
+        Assert.All(near.Pages.Skip(6), page => Assert.True(page.Samples[0].Sampling.Y > page.Samples[0].Sampling.X));
+    }
+
+    [Fact]
+    public void ChildPageStoresOnlyTheNewlyResolvableResidualBand()
+    {
+        const float radius=8.4f;
+        var parent=new PlanetarySurfacePageRequest(new CubeTileKey(CubeFace.PositiveZ,2,2,1),9,2);
+        var child=new PlanetarySurfacePageRequest(parent.Tile.Child(1,0),9,2);
+        var direction=PlanetarySurfacePageSampling.DirectionAtLocal(child,0.43,0.57);
+        var childSpacing=PlanetarySurfacePageSampling.NominalAngularTexelSize(child)*radius;
+        var parentSpacing=PlanetarySurfacePageSampling.NominalAngularTexelSize(parent)*radius;
+        var input=new[]
+        {
+            new PageInput(new Vector4(direction,radius),new Vector4(childSpacing,0,0,0)),
+            new PageInput(new Vector4(direction,radius),new Vector4(parentSpacing,0,0,0)),
+            new PageInput(new Vector4(direction,radius),new Vector4(childSpacing,parentSpacing,0,0)),
+        };
+        var output=D3D12ComputeProbe.Run<PageInput,PageOutput>(ShaderPath(),"D3D12ZyphosTerrainPageCS",input);
+        Assert.InRange(MathF.Abs(output[0].HeightGradient.X-(output[1].HeightGradient.X+output[2].HeightGradient.X)),0,2.0e-5f);
+        Assert.InRange(MathF.Abs(output[0].HeightGradient.Y-(output[1].HeightGradient.Y+output[2].HeightGradient.Y)),0,2.0e-4f);
+        Assert.InRange(MathF.Abs(output[0].HeightGradient.Z-(output[1].HeightGradient.Z+output[2].HeightGradient.Z)),0,2.0e-4f);
+    }
+
+    [Fact]
+    public void ResidualArrivalChangesPresentationWithoutRegeneratingContent()
+    {
+        ZyphosPlanetarySurfacePages.Reset();
+        var center=ZyphosUmbrosSystem.ZyphosCenter;
+        var direction=Vector3.Normalize(new Vector3(-0.17f,-1.0f,0.23f));
+        var camera=center+direction*(ZyphosUmbrosSystem.ZyphosSurfaceRadius+0.03f);
+        var start=ZyphosSceneBuilder.Build(100.0f,99.9f,camera,default).PlanetarySurfacePages;
+        var middle=ZyphosSceneBuilder.Build(100.175f,100.0f,camera,default).PlanetarySurfacePages;
+        var settled=ZyphosSceneBuilder.Build(100.35f,100.175f,camera,default).PlanetarySurfacePages;
+        Assert.Equal(start.ContentVersion,middle.ContentVersion);
+        Assert.Equal(middle.ContentVersion,settled.ContentVersion);
+        Assert.NotEqual(start.PresentationVersion,middle.PresentationVersion);
+        Assert.All(start.Pages.Skip(6),page=>Assert.Equal(0.0f,page.Metadata.State.Y));
+        Assert.All(middle.Pages.Skip(6),page=>Assert.InRange(page.Metadata.State.Y,0.49f,0.51f));
+        Assert.All(settled.Pages.Skip(6),page=>Assert.InRange(page.Metadata.State.Y,0.999f,1.0f));
+    }
+
+    [Fact]
+    public void TeleportCrossFadesOldAndNewResidualChainsBeforeEviction()
+    {
+        ZyphosPlanetarySurfacePages.Reset();
+        var center=ZyphosUmbrosSystem.ZyphosCenter;
+        var radius=ZyphosUmbrosSystem.ZyphosSurfaceRadius+0.03f;
+        var cameraA=center+Vector3.Normalize(new Vector3(1.0f,0.12f,0.18f))*radius;
+        var cameraB=center+Vector3.Normalize(new Vector3(-0.21f,1.0f,-0.14f))*radius;
+        _=ZyphosSceneBuilder.Build(200.0f,199.9f,cameraA,default);
+        var settledA=ZyphosSceneBuilder.Build(200.35f,200.0f,cameraA,default).PlanetarySurfacePages;
+        var oldKeys=settledA.Pages.Skip(6).Select(page=>page.ContentKey).ToHashSet();
+        var departure=ZyphosSceneBuilder.Build(201.0f,200.35f,cameraB,default).PlanetarySurfacePages;
+        var newKeys=departure.Pages.Skip(6).Select(page=>page.ContentKey).Where(key=>!oldKeys.Contains(key)).ToHashSet();
+        Assert.NotEmpty(newKeys);
+        Assert.All(departure.Pages.Where(page=>oldKeys.Contains(page.ContentKey)),page=>Assert.InRange(page.Metadata.State.Y,0.999f,1.0f));
+        Assert.All(departure.Pages.Where(page=>newKeys.Contains(page.ContentKey)),page=>Assert.Equal(0.0f,page.Metadata.State.Y));
+
+        var midpoint=ZyphosSceneBuilder.Build(201.175f,201.0f,cameraB,default).PlanetarySurfacePages;
+        Assert.All(midpoint.Pages.Where(page=>oldKeys.Contains(page.ContentKey)||newKeys.Contains(page.ContentKey)),page=>Assert.InRange(page.Metadata.State.Y,0.49f,0.51f));
+        var settledB=ZyphosSceneBuilder.Build(201.36f,201.175f,cameraB,default).PlanetarySurfacePages;
+        Assert.DoesNotContain(settledB.Pages,page=>oldKeys.Contains(page.ContentKey));
+        Assert.All(settledB.Pages.Where(page=>newKeys.Contains(page.ContentKey)),page=>Assert.InRange(page.Metadata.State.Y,0.999f,1.0f));
+    }
+
+    [Fact]
+    public void ProjectedErrorSelectionAddsLevelsMonotonicallyDuringDescent()
+    {
+        ZyphosPlanetarySurfacePages.Reset();
+        var center=ZyphosUmbrosSystem.ZyphosCenter;
+        var direction=Vector3.Normalize(new Vector3(0.11f,0.17f,1.0f));
+        var distances=new[]{1000.0f,100.0f,20.0f,ZyphosUmbrosSystem.ZyphosSurfaceRadius+0.05f};
+        var levels=new List<int>();
+        for(var index=0;index<distances.Length;index++)
+        {
+            var pages=ZyphosSceneBuilder.Build((float)index,(float)index-0.1f,center+direction*distances[index],default).PlanetarySurfacePages;
+            levels.Add((int)pages.Pages.Where(page=>page.Metadata.Address.X==(float)CubeFace.PositiveZ).Max(page=>page.Metadata.Address.Y));
+        }
+        Assert.Equal(levels.Order(),levels);
+        Assert.True(levels[^1]>levels[0]);
+    }
+
+    [Fact]
+    public void ReloadReconstructsTheSameCutAndFadesResidualsFromItsParent()
+    {
+        ZyphosPlanetarySurfacePages.Reset();
+        var center=ZyphosUmbrosSystem.ZyphosCenter;
+        var camera=center+Vector3.Normalize(new Vector3(0.61f,-0.22f,0.76f))*(ZyphosUmbrosSystem.ZyphosSurfaceRadius+0.04f);
+        var before=ZyphosSceneBuilder.Build(401.0f,400.0f,camera,default).PlanetarySurfacePages;
+        var reloaded=ZyphosSceneBuilder.Build(0.0f,0.0f,camera,default).PlanetarySurfacePages;
+        Assert.Equal(before.Pages.Select(page=>page.ContentKey),reloaded.Pages.Select(page=>page.ContentKey));
+        Assert.Equal(before.ContentVersion,reloaded.ContentVersion);
+        Assert.All(reloaded.Pages.Take(6),page=>Assert.Equal(1.0f,page.Metadata.State.Y));
+        Assert.All(reloaded.Pages.Skip(6),page=>Assert.Equal(0.0f,page.Metadata.State.Y));
     }
 
     [Fact]

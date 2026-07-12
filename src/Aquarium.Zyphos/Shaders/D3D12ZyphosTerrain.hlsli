@@ -6,9 +6,11 @@
 struct ZyPlanetPageOutput { float4 height_gradient; float4 masks; };
 struct ZyPlanetPageMetadata { float4 address; float4 layout; float4 bounds; float4 state; };
 struct ZyPlanetPageSummary { float4 bounds; float4 metadata; };
+struct ZyPlanetPageSet { float4 state; };
 StructuredBuffer<ZyPlanetPageOutput> zy_planet_page : register(t81);
 StructuredBuffer<ZyPlanetPageMetadata> zy_planet_page_metadata : register(t82);
 StructuredBuffer<ZyPlanetPageSummary> zy_planet_page_summary : register(t83);
+StructuredBuffer<ZyPlanetPageSet> zy_planet_page_set : register(t84);
 
 static const float ZY_TERRAIN_NON_EROSION_SLOPE_BOUND = 8.0;
 
@@ -20,38 +22,51 @@ float2 zyTerrainCubeFaceUv(float3 dir, out float face)
     if(dir.z>=0){face=4;return dir.xy/a.z;}face=5;return float2(-dir.x,dir.y)/a.z;
 }
 
-bool zyTrySampleErosionPage(float3 dir, out float4 heightGradient, out float2 masks)
+bool zyTerrainPageLocal(float3 dir, ZyPlanetPageMetadata metadata, out float2 local)
 {
-    ZyPlanetPageMetadata metadata=zy_planet_page_metadata[0]; heightGradient=0; masks=0;
-    if(metadata.state.x<0.5)return false;
-    float face; float2 uv=zyTerrainCubeFaceUv(dir,face); if(abs(face-metadata.address.x)>0.25)return false;
-    float axisTiles=exp2(metadata.address.y); float2 local=(uv*0.5+0.5)*axisTiles-metadata.address.zw;
-    if(any(local<0.0)||any(local>1.0))return false;
+    float face; float2 uv=zyTerrainCubeFaceUv(dir,face); local=0.0;
+    if(metadata.state.x<0.5||abs(face-metadata.address.x)>0.25)return false;
+    float axisTiles=exp2(metadata.address.y); local=(uv*0.5+0.5)*axisTiles-metadata.address.zw;
+    return all(local>=0.0)&&all(local<=1.0);
+}
+
+void zySampleErosionPage(int pageIndex, float2 local, out float4 heightGradient, out float2 masks)
+{
+    ZyPlanetPageMetadata metadata=zy_planet_page_metadata[pageIndex];
     float storage=metadata.layout.y, interior=metadata.layout.z, border=metadata.layout.w;
     float2 texel=local*(interior-1.0)+border; float2 base=floor(texel); float2 fraction=frac(texel);
     int2 p0=(int2)clamp(base,0.0,storage-1.0); int2 p1=min(p0+1,(int2)(storage-1.0));
-    ZyPlanetPageOutput a=zy_planet_page[p0.y*(int)storage+p0.x], b=zy_planet_page[p0.y*(int)storage+p1.x];
-    ZyPlanetPageOutput c=zy_planet_page[p1.y*(int)storage+p0.x], d=zy_planet_page[p1.y*(int)storage+p1.x];
+    int offset=(int)metadata.layout.x;
+    ZyPlanetPageOutput a=zy_planet_page[offset+p0.y*(int)storage+p0.x], b=zy_planet_page[offset+p0.y*(int)storage+p1.x];
+    ZyPlanetPageOutput c=zy_planet_page[offset+p1.y*(int)storage+p0.x], d=zy_planet_page[offset+p1.y*(int)storage+p1.x];
     heightGradient=lerp(lerp(a.height_gradient,b.height_gradient,fraction.x),lerp(c.height_gradient,d.height_gradient,fraction.x),fraction.y);
-    masks=lerp(lerp(a.masks.xy,b.masks.xy,fraction.x),lerp(c.masks.xy,d.masks.xy,fraction.x),fraction.y); return true;
+    masks=lerp(lerp(a.masks.xy,b.masks.xy,fraction.x),lerp(c.masks.xy,d.masks.xy,fraction.x),fraction.y);
 }
 
-bool zyTryGetErosionPageSummary(float3 dir, out ZyPlanetPageSummary summary)
+bool zyTrySampleErosionPage(float3 dir, out float4 heightGradient, out float2 masks)
 {
-    summary = zy_planet_page_summary[0];
-    ZyPlanetPageMetadata metadata = zy_planet_page_metadata[0];
-    if (metadata.state.x < 0.5 || summary.metadata.w < 0.5) return false;
-    float face; float2 uv = zyTerrainCubeFaceUv(dir, face);
-    if (abs(face - metadata.address.x) > 0.25) return false;
-    float axisTiles = exp2(metadata.address.y);
-    float2 local = (uv * 0.5 + 0.5) * axisTiles - metadata.address.zw;
-    return all(local >= 0.0) && all(local <= 1.0);
+    heightGradient=0.0; masks=0.0; bool found=false;
+    int pageCount=min((int)zy_planet_page_set[0].state.x,64);
+    [loop] for(int pageIndex=0;pageIndex<pageCount;pageIndex++)
+    {
+        float2 local; ZyPlanetPageMetadata metadata=zy_planet_page_metadata[pageIndex];
+        if(!zyTerrainPageLocal(dir,metadata,local))continue;
+        float4 contribution; float2 pageMasks; zySampleErosionPage(pageIndex,local,contribution,pageMasks);
+        float blend=saturate(metadata.state.y); heightGradient+=contribution*blend;
+        masks=found?lerp(masks,pageMasks,blend):pageMasks; found=true;
+    }
+    return found;
 }
 
 float zyTerrainConservativeDistanceScale(float3 dir)
 {
-    ZyPlanetPageSummary summary;
-    float erosionSlope = zyTryGetErosionPageSummary(dir, summary) ? summary.bounds.z : 0.0;
+    float erosionSlope=0.0; int pageCount=min((int)zy_planet_page_set[0].state.x,64);
+    [loop] for(int pageIndex=0;pageIndex<pageCount;pageIndex++)
+    {
+        float2 local; ZyPlanetPageMetadata metadata=zy_planet_page_metadata[pageIndex];
+        if(zyTerrainPageLocal(dir,metadata,local)&&zy_planet_page_summary[pageIndex].metadata.w>0.5)
+            erosionSlope+=max(zy_planet_page_summary[pageIndex].bounds.z,0.0)*saturate(metadata.state.y);
+    }
     float totalSlopeBound = ZY_TERRAIN_NON_EROSION_SLOPE_BOUND + max(erosionSlope, 0.0);
     return rsqrt(1.0 + totalSlopeBound * totalSlopeBound);
 }

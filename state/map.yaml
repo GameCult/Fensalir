@@ -105,6 +105,19 @@ invariants:
     root); direct CultMath evaluation remains the CPU/compute verification
     oracle. Page summaries expand broad-phase bounds and scale radial steps,
     while the shared SDF proxy owns bracketed sign-change refinement.
+  - Planetary page residency separates content from presentation state.
+    ContentVersion changes only when the resident tile set changes;
+    PresentationVersion carries arrival/departure weights without regenerating
+    erosion. Six root pages remain resident. A projected-error selector uses
+    CultMath's unresolved-height bound against the camera footprint to request
+    one ancestor chain, and departing chains remain addressable until their
+    residual weights reach zero.
+  - Root pages contain the resolvable low-frequency erosion field. Every child
+    page stores `child filtered field - parent filtered field`; the planet
+    shader sums the containing ancestor contributions and weights only those
+    residuals during transitions. Independent full-spectrum pages are never
+    blended. D3D12 flattens resident payloads into one output atlas with indexed
+    metadata and one GPU summary per page at t81-t84.
   - The shared reservoir is a fractal domain reservoir, not a texel cache.
     Pixel rows are the current D3D12 execution projection of selected domain
     evidence. Area-domain contributors must carry selected subpixel or local

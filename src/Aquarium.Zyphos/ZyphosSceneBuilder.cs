@@ -24,7 +24,7 @@ public static class ZyphosSceneBuilder
                 PriorityFocus = fractalPlan.ReservoirPriorityFocus,
                 ProgramTransforms = fractalPlan.GpuProgramTransforms,
             },
-            PlanetarySurfacePages = ZyphosPlanetarySurfacePages.ForCamera(cameraPosition),
+            PlanetarySurfacePages = ZyphosPlanetarySurfacePages.ForCamera(cameraPosition, timeSeconds),
             SdfObjects = BuildSdfObjects(timeSeconds, previousTimeSeconds),
             SdfLights = BuildSdfLights(timeSeconds),
         };

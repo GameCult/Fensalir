@@ -98,6 +98,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private const int RootPlanetarySurfacePage = 29;
     private const int RootPlanetarySurfacePageMetadata = 30;
     private const int RootPlanetarySurfacePageSummary = 31;
+    private const int RootPlanetarySurfacePageSet = 32;
     private const int RootFusionFrameConstants = 0;
     private const int RootFusionSeeds = 1;
     private const int RootFusionSensorCameras = 2;
@@ -321,8 +322,10 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private D3D12StructuredBuffer? planetarySurfacePageOutputBuffer;
     private D3D12StructuredBuffer? planetarySurfacePageMetadataBuffer;
     private D3D12StructuredBuffer? planetarySurfacePageSummaryBuffer;
+    private D3D12StructuredBuffer? planetarySurfacePageSetBuffer;
     private AquariumPlanetarySurfacePageSet activePlanetarySurfacePages = AquariumPlanetarySurfacePageSet.Empty;
-    private long residentPlanetarySurfacePageVersion;
+    private long residentPlanetarySurfacePageContentVersion;
+    private long residentPlanetarySurfacePagePresentationVersion;
     private D3D12StructuredBuffer fieldReservoirCandidateBuffer = null!;
     private D3D12StructuredBuffer fieldReservoirLockBuffer = null!;
     private readonly List<D3D12TubeFieldDrawBatch> tubeFieldDrawBatches = [];
@@ -1762,6 +1765,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         bokushoSourcePointBuffer.Dispose();
         bokushoPageDensityBuffer.Dispose();
         planetarySurfacePageMetadataBuffer?.Dispose();
+        planetarySurfacePageSetBuffer?.Dispose();
         planetarySurfacePageSummaryBuffer?.Dispose();
         planetarySurfacePageOutputBuffer?.Dispose();
         planetarySurfacePageInputBuffer?.Dispose();
@@ -3777,6 +3781,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             context.CommandList.SetGraphicsRootShaderResourceView(RootPlanetarySurfacePage, planetarySurfacePageOutputBuffer.Resource.GPUVirtualAddress);
             context.CommandList.SetGraphicsRootShaderResourceView(RootPlanetarySurfacePageMetadata, planetarySurfacePageMetadataBuffer.Resource.GPUVirtualAddress);
             context.CommandList.SetGraphicsRootShaderResourceView(RootPlanetarySurfacePageSummary, planetarySurfacePageSummaryBuffer!.Resource.GPUVirtualAddress);
+            context.CommandList.SetGraphicsRootShaderResourceView(RootPlanetarySurfacePageSet, planetarySurfacePageSetBuffer!.Resource.GPUVirtualAddress);
             context.CommandList.SetGraphicsRootDescriptorTable(RootSceneOverdraw, frameResources.SceneOverdrawDescriptor.Gpu);
 
             context.CommandList.RSSetViewports(viewport);
@@ -3898,32 +3903,52 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private void EnsurePlanetarySurfacePageBuffers()
     {
-        var count = Math.Max(activePlanetarySurfacePages.Samples.Count, 1);
-        if (planetarySurfacePageInputBuffer?.ElementCount == count) return;
-        planetarySurfacePageMetadataBuffer?.Dispose(); planetarySurfacePageSummaryBuffer?.Dispose(); planetarySurfacePageOutputBuffer?.Dispose(); planetarySurfacePageInputBuffer?.Dispose();
-        planetarySurfacePageInputBuffer = new D3D12StructuredBuffer(device, count, Marshal.SizeOf<AquariumPlanetarySurfacePageInput>(), "Aquarium Planetary Page Inputs");
-        planetarySurfacePageOutputBuffer = new D3D12StructuredBuffer(device, count, 32, "Aquarium Planetary Page Outputs", allowUnorderedAccess: true);
-        planetarySurfacePageMetadataBuffer = new D3D12StructuredBuffer(device, 1, Marshal.SizeOf<AquariumPlanetarySurfacePageMetadata>(), "Aquarium Planetary Page Metadata");
-        planetarySurfacePageSummaryBuffer = new D3D12StructuredBuffer(device, 1, 32, "Aquarium Planetary Page Summary", allowUnorderedAccess: true);
-        residentPlanetarySurfacePageVersion = 0;
+        var sampleCount = Math.Max(activePlanetarySurfacePages.SampleCount, 1);
+        var pageCount = Math.Max(activePlanetarySurfacePages.Pages.Count, 1);
+        if (planetarySurfacePageInputBuffer?.ElementCount == sampleCount && planetarySurfacePageMetadataBuffer?.ElementCount == pageCount) return;
+        planetarySurfacePageSetBuffer?.Dispose(); planetarySurfacePageMetadataBuffer?.Dispose(); planetarySurfacePageSummaryBuffer?.Dispose(); planetarySurfacePageOutputBuffer?.Dispose(); planetarySurfacePageInputBuffer?.Dispose();
+        planetarySurfacePageInputBuffer = new D3D12StructuredBuffer(device, sampleCount, Marshal.SizeOf<AquariumPlanetarySurfacePageInput>(), "Aquarium Planetary Page Inputs");
+        planetarySurfacePageOutputBuffer = new D3D12StructuredBuffer(device, sampleCount, 32, "Aquarium Planetary Page Outputs", allowUnorderedAccess: true);
+        planetarySurfacePageMetadataBuffer = new D3D12StructuredBuffer(device, pageCount, Marshal.SizeOf<AquariumPlanetarySurfacePageMetadata>(), "Aquarium Planetary Page Metadata");
+        planetarySurfacePageSummaryBuffer = new D3D12StructuredBuffer(device, pageCount, 32, "Aquarium Planetary Page Summaries", allowUnorderedAccess: true);
+        planetarySurfacePageSetBuffer = new D3D12StructuredBuffer(device, 1, 16, "Aquarium Planetary Page Set");
+        residentPlanetarySurfacePageContentVersion = 0;
+        residentPlanetarySurfacePagePresentationVersion = 0;
     }
 
     private void DispatchPlanetarySurfacePage(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
     {
-        if (planetarySurfacePageInputBuffer is null || planetarySurfacePageOutputBuffer is null || planetarySurfacePageMetadataBuffer is null || planetarySurfacePageSummaryBuffer is null) return;
+        if (planetarySurfacePageInputBuffer is null || planetarySurfacePageOutputBuffer is null || planetarySurfacePageMetadataBuffer is null || planetarySurfacePageSummaryBuffer is null || planetarySurfacePageSetBuffer is null) return;
         if (!activePlanetarySurfacePages.HasInput)
         {
-            if (residentPlanetarySurfacePageVersion != 0)
+            if (residentPlanetarySurfacePageContentVersion != 0)
             {
                 planetarySurfacePageMetadataBuffer.Upload(activeCommandList, frameResources.UploadRing, new[] { default(AquariumPlanetarySurfacePageMetadata) });
-                residentPlanetarySurfacePageVersion = 0;
+                planetarySurfacePageSetBuffer.Upload(activeCommandList, frameResources.UploadRing, new[] { Vector4.Zero });
+                residentPlanetarySurfacePageContentVersion = 0;
+                residentPlanetarySurfacePagePresentationVersion = 0;
             }
             return;
         }
-        if (residentPlanetarySurfacePageVersion == activePlanetarySurfacePages.Version) return;
-        var samples = activePlanetarySurfacePages.Samples as AquariumPlanetarySurfacePageInput[] ?? activePlanetarySurfacePages.Samples.ToArray();
+        var pages = activePlanetarySurfacePages.Pages;
+        var metadata = new AquariumPlanetarySurfacePageMetadata[pages.Count];
+        var samples = new AquariumPlanetarySurfacePageInput[activePlanetarySurfacePages.SampleCount];
+        var sampleOffset = 0;
+        for (var pageIndex = 0; pageIndex < pages.Count; pageIndex++)
+        {
+            var page = pages[pageIndex];
+            for (var index = 0; index < page.Samples.Count; index++) samples[sampleOffset + index] = page.Samples[index];
+            metadata[pageIndex] = page.Metadata with { Layout = new Vector4(sampleOffset, page.Metadata.Layout.Y, page.Metadata.Layout.Z, page.Metadata.Layout.W) };
+            sampleOffset += page.Samples.Count;
+        }
+        if (residentPlanetarySurfacePagePresentationVersion != activePlanetarySurfacePages.PresentationVersion)
+        {
+            planetarySurfacePageMetadataBuffer.Upload(activeCommandList, frameResources.UploadRing, metadata);
+            planetarySurfacePageSetBuffer.Upload(activeCommandList, frameResources.UploadRing, new[] { new Vector4(pages.Count, 0, 0, 1) });
+            residentPlanetarySurfacePagePresentationVersion = activePlanetarySurfacePages.PresentationVersion;
+        }
+        if (residentPlanetarySurfacePageContentVersion == activePlanetarySurfacePages.ContentVersion) return;
         planetarySurfacePageInputBuffer.Upload(activeCommandList, frameResources.UploadRing, samples);
-        planetarySurfacePageMetadataBuffer.Upload(activeCommandList, frameResources.UploadRing, new[] { activePlanetarySurfacePages.Metadata });
         planetarySurfacePageOutputBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         activeCommandList.SetComputeRootSignature(planetarySurfacePageRootSignature);
         activeCommandList.SetPipelineState(planetarySurfacePagePipelineState!);
@@ -3937,12 +3962,17 @@ public sealed class D3D12Renderer : IAquariumRenderer
         activeCommandList.SetPipelineState(planetarySurfacePageSummaryPipelineState!);
         activeCommandList.SetComputeRootShaderResourceView(0, planetarySurfacePageOutputBuffer.Resource.GPUVirtualAddress);
         activeCommandList.SetComputeRootUnorderedAccessView(1, planetarySurfacePageSummaryBuffer.Resource.GPUVirtualAddress);
-        activeCommandList.SetComputeRoot32BitConstant(2, (uint)samples.Length, 0);
-        activeCommandList.Dispatch(1, 1, 1);
+        for (var pageIndex = 0; pageIndex < pages.Count; pageIndex++)
+        {
+            activeCommandList.SetComputeRoot32BitConstant(2, (uint)pages[pageIndex].Samples.Count, 0);
+            activeCommandList.SetComputeRoot32BitConstant(2, (uint)metadata[pageIndex].Layout.X, 1);
+            activeCommandList.SetComputeRoot32BitConstant(2, (uint)pageIndex, 2);
+            activeCommandList.Dispatch(1, 1, 1);
+        }
         activeCommandList.ResourceBarrier(ResourceBarrier.BarrierUnorderedAccessView(planetarySurfacePageSummaryBuffer.Resource));
         planetarySurfacePageSummaryBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
         planetarySurfacePageOutputBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
-        residentPlanetarySurfacePageVersion = activePlanetarySurfacePages.Version;
+        residentPlanetarySurfacePageContentVersion = activePlanetarySurfacePages.ContentVersion;
     }
 
     private void DispatchFractalReservoirs(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
@@ -6326,6 +6356,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(81, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(82, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(83, 0), ShaderVisibility.All),
+            new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(84, 0), ShaderVisibility.All),
         };
         var staticSamplers = new[]
         {
@@ -6357,7 +6388,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         {
             new RootParameter(RootParameterType.ShaderResourceView, new RootDescriptor(0, 0), ShaderVisibility.All),
             new RootParameter(RootParameterType.UnorderedAccessView, new RootDescriptor(0, 0), ShaderVisibility.All),
-            new RootParameter(new RootConstants(0, 0, 1), ShaderVisibility.All),
+            new RootParameter(new RootConstants(0, 0, 3), ShaderVisibility.All),
         };
         var description = new RootSignatureDescription(RootSignatureFlags.None, parameters, []);
         return device.CreateRootSignature(0, in description, RootSignatureVersion.Version1);

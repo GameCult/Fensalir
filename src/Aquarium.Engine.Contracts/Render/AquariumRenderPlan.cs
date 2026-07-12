@@ -540,14 +540,23 @@ public readonly record struct AquariumPlanetarySurfacePageInput(Vector4 Directio
 [StructLayout(LayoutKind.Sequential)]
 public readonly record struct AquariumPlanetarySurfacePageMetadata(Vector4 Address, Vector4 Layout, Vector4 Bounds, Vector4 State);
 
+public sealed class AquariumPlanetarySurfacePage
+{
+    public long ContentKey { get; init; }
+    public IReadOnlyList<AquariumPlanetarySurfacePageInput> Samples { get; init; } = [];
+    public AquariumPlanetarySurfacePageMetadata Metadata { get; init; }
+    public bool HasInput => ContentKey != 0 && Samples.Count > 0;
+}
+
 public sealed class AquariumPlanetarySurfacePageSet
 {
     public static AquariumPlanetarySurfacePageSet Empty { get; } = new();
     public string GeneratorEntryPoint { get; init; } = "D3D12PlanetaryTerrainPageCS";
-    public long Version { get; init; }
-    public IReadOnlyList<AquariumPlanetarySurfacePageInput> Samples { get; init; } = [];
-    public AquariumPlanetarySurfacePageMetadata Metadata { get; init; }
-    public bool HasInput => Version > 0 && Samples.Count > 0;
+    public long ContentVersion { get; init; }
+    public long PresentationVersion { get; init; }
+    public IReadOnlyList<AquariumPlanetarySurfacePage> Pages { get; init; } = [];
+    public int SampleCount => Pages.Sum(page => page.Samples.Count);
+    public bool HasInput => ContentVersion != 0 && Pages.Count > 0 && Pages.All(page => page.HasInput);
 }
 
 public sealed class AquariumBokushoBrushFrame

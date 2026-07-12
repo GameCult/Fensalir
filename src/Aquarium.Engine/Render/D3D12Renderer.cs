@@ -175,6 +175,13 @@ public sealed class D3D12Renderer : IAquariumRenderer
         new(19, "Reservoir Disocclusion"),
         new(20, "Reservoir Spatial Budget"),
         new(21, "Overdraw"),
+        new(22, "Planet Tile/Level/Blend"),
+        new(23, "Planet Bounds/Error"),
+        new(24, "Planet Refined Normal"),
+        new(25, "Planet Ridge/Gully"),
+        new(26, "Planet Cross-Edge Error"),
+        new(27, "Planet Direct/Page Error"),
+        new(28, "Planet Version/Wavelength"),
     ];
     private static readonly Format[] SceneEvidenceRenderTargetFormats =
     [

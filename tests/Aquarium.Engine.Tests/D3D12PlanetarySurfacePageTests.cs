@@ -31,7 +31,8 @@ public sealed class D3D12PlanetarySurfacePageTests
 
         var scene = ZyphosSceneBuilder.Build(1.0f, 0.5f, ZyphosUmbrosSystem.ZyphosCenter + Vector3.UnitZ * 12.0f, default);
         Assert.Equal(ZyphosRenderPlan.SdfObjectCount, scene.SdfObjects.Count);
-        Assert.Equal(ZyphosUmbrosSystem.ZyphosBoundRadius, scene.SdfObjects[ZyphosRenderPlan.PlanetIndex].CenterRadius.W);
+        Assert.Equal(0.0f, scene.SdfObjects[ZyphosRenderPlan.PlanetIndex].CenterRadius.W);
+        Assert.Equal(ZyphosUmbrosSystem.ZyphosSurfaceRadius, scene.SdfObjects[ZyphosRenderPlan.PlanetIndex].State.X);
         Assert.Equal(ZyphosUmbrosSystem.UmbrosBoundRadius, scene.SdfObjects[ZyphosRenderPlan.UmbrosIndex].CenterRadius.W);
         Assert.Equal(ZyphosUmbrosSystem.PrimaryStarVisualRadius, scene.SdfObjects[ZyphosRenderPlan.StarIndex].CenterRadius.W);
     }

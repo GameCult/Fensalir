@@ -323,6 +323,32 @@ SdfSurface sdfSurface(float3 p, int sdfIndex)
     return surface;
 }
 
+bool zyTracePlanet(float3 origin,float3 direction,int sdfIndex,out float travel,out float3 normal,out SdfSurface surface,out float stepCount)
+{
+    SdfObject sdfObject=sdfObjects[sdfIndex]; float boundRadius=zyPlanetTraceBoundRadius(sdfObject);
+    float3 oc=origin-sdfObject.centerRadius.xyz; float b=dot(oc,direction); float c=dot(oc,oc)-boundRadius*boundRadius;
+    float discriminant=b*b-c; normal=0.0; stepCount=0.0;
+    surface.baseColor=0.0; surface.metallic=0.0; surface.roughness=0.0; surface.emission=0.0; surface.temporalDetail=0.0; surface.reservoirConfidence=1.0;
+    if(discriminant<0.0){travel=farDistance+1.0;return false;}
+    float extent=sqrt(discriminant); float entry=max(-b-extent,0.0); float closest=max(-b,entry); float exit=min(-b+extent,farDistance);
+    if(entry>exit){travel=farDistance+1.0;return false;}
+    float low=entry; float lowDistance=sdfDistance(origin+direction*low,sdfIndex);
+    if(lowDistance<=0.0){travel=low;float3 p=origin+direction*travel;normal=zyPlanetSurfaceNormal(p,sdfIndex);surface=sdfSurface(p,sdfIndex);return true;}
+    float high=low; bool bracketed=false;
+    [unroll] for(int coarse=1;coarse<=24;coarse++)
+    {
+        high=lerp(entry,closest,(float)coarse/24.0); float highDistance=sdfDistance(origin+direction*high,sdfIndex); stepCount=(float)coarse;
+        if(highDistance<=0.0){bracketed=true;break;} low=high; lowDistance=highDistance;
+    }
+    if(!bracketed){travel=farDistance+1.0;return false;}
+    [unroll] for(int refine=0;refine<10;refine++)
+    {
+        float mid=(low+high)*0.5; float value=sdfDistance(origin+direction*mid,sdfIndex);
+        if(value<=0.0)high=mid;else low=mid;
+    }
+    travel=high; float3 p=origin+direction*travel; normal=zyPlanetSurfaceNormal(p,sdfIndex); surface=sdfSurface(p,sdfIndex); stepCount+=10.0; return true;
+}
+
 float3 shadeSdf(float2 uv, float travel, float3 p, float3 normal, int sdfIndex, SdfSurface surface)
 {
     SdfObject sdfObject = sdfObjects[sdfIndex];
@@ -350,4 +376,5 @@ float3 shadeSdf(float2 uv, float travel, float3 p, float3 normal, int sdfIndex, 
 
 #define SDF_TRACE_BOUND_RADIUS(sdfObject) zyPlanetTraceBoundRadius(sdfObject)
 #define SDF_SURFACE_NORMAL(p,sdfIndex) zyPlanetSurfaceNormal(p,sdfIndex)
+#define SDF_TRACE_FUNCTION zyTracePlanet
 #include "D3D12SdfProxy.hlsli"

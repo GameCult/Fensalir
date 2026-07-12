@@ -76,7 +76,7 @@ public sealed class ZyphosRuntime : IAquariumRuntime
 
     public ZyphosRuntime()
     {
-        Ui = new AquariumUiDocument()
+        var ui = new AquariumUiDocument()
             .Panel("Zyphos", 18.0f, 82.0f, 340.0f, panel =>
             {
                 panel.Section("Planetary Demo");
@@ -119,6 +119,7 @@ public sealed class ZyphosRuntime : IAquariumRuntime
             .Command("zyphos-fractal", _ => ZyphosFractalTerrain.DebugDump, "Dump the compiled Zyphos fractal terrain grammar.")
             .Command("zyphos-fractal-plan", _ => ZyphosFractalTerrain.BuildPlanDebugDump(ZyphosFractalTerrain.BuildRenderPlan(CurrentShot())), "Dump the current Zyphos fractal selected cut and resource budget.")
             .Command("zyphos-system", _ => $"Zyphos-Umbros: separation {ZyphosUmbrosSystem.SeparationInZyphosRadii:0.0} Zyphos radii, Umbros radius {ZyphosUmbrosSystem.UmbrosRadiusRatio:0.00} Zyphos, apparent diameter {ZyphosUmbrosSystem.UmbrosAngularDiameterDegrees:0.0} degrees.", "Report the modeled Zyphos/Umbros/star baseline.");
+        Ui = Environment.GetEnvironmentVariable("AQUARIUM_ZYPHOS_HIDE_UI") == "1" ? AquariumUiDocument.Empty : ui;
     }
 
     public AquariumFrame ComposeFrame(AquariumFrame frame, AquariumFrameInput input)
@@ -129,6 +130,8 @@ public sealed class ZyphosRuntime : IAquariumRuntime
     public void Start()
     {
         Console.WriteLine("Zyphos planetary demo booted.");
+        var shot=CurrentShot();
+        Console.WriteLine($"Zyphos camera: position {shot.CameraPosition}; target {shot.CameraTarget}; planet distance {Vector3.Distance(shot.CameraPosition,ZyphosUmbrosSystem.ZyphosCenter):0.###}");
     }
 
     public void Update(float deltaSeconds, InputState input)

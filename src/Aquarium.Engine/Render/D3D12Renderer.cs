@@ -239,6 +239,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
     private ID3D12PipelineState? fractalRadiosityReservoirPipelineState;
     private ID3D12PipelineState? planetarySurfacePagePipelineState;
     private ID3D12PipelineState? planetarySurfacePageSummaryPipelineState;
+    private ID3D12PipelineState? planetarySurfacePatchPipelineState;
     private ID3D12PipelineState? tubeFieldComputePipelineState;
     private ID3D12PipelineState? tubeFieldRenderPipelineState;
     private ID3D12PipelineState? bokushoBrushPipelineState;
@@ -1694,6 +1695,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         && fractalRadiosityReservoirPipelineState is not null
         && planetarySurfacePagePipelineState is not null
         && planetarySurfacePageSummaryPipelineState is not null
+        && planetarySurfacePatchPipelineState is not null
         && tubeFieldComputePipelineState is not null
         && tubeFieldRenderPipelineState is not null
         && bokushoBrushPipelineState is not null
@@ -2433,6 +2435,9 @@ public sealed class D3D12Renderer : IAquariumRenderer
         Step("planetary-surface-page-summary");
         var planetarySurfacePageSummary = CreatePlanetarySurfacePageSummaryPipelineState(paths.PlanetarySurfacePageSummary);
         planetarySurfacePageSummary.Name = "Aquarium D3D12 Planetary Surface Page Summary Compute Pipeline";
+        Step("planetary-surface-patch");
+        var planetarySurfacePatch = CreatePlanetarySurfacePatchPipelineState(paths.PlanetarySurfacePatch);
+        planetarySurfacePatch.Name = "Aquarium D3D12 Planetary Surface Patch Pipeline";
         Step("tube-field-compute");
         var tubeFieldCompute = CreateTubeFieldComputePipelineState(paths.TubeField);
         tubeFieldCompute.Name = "Aquarium D3D12 TubeField Compute Pipeline";
@@ -2504,6 +2509,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             fractalRadiosityReservoir,
             planetarySurfacePage,
             planetarySurfacePageSummary,
+            planetarySurfacePatch,
             tubeFieldCompute,
             tubeFieldRender,
             bokushoBrush,
@@ -3156,8 +3162,26 @@ public sealed class D3D12Renderer : IAquariumRenderer
             context.CommandList.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
             context.CommandList.DrawInstanced(3, 1, 0, 0);
 
+            if (activePlanetarySurfacePages.RenderCoarsePatches && activePlanetarySurfacePages.Pages.Count >= 6 && residentPlanetarySurfacePageContentVersion == activePlanetarySurfacePages.ContentVersion)
+            {
+                BeginGpuTiming(context.CommandList, frameResources, D3D12GpuTimingPass.PlanetarySurfacePatches);
+                context.CommandList.ClearDepthStencilView(sceneDepthStencilView.Cpu,ClearFlags.Depth,1.0f,0);
+                planetarySurfacePageOutputBuffer!.Transition(context.CommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+                planetarySurfacePageMetadataBuffer!.Transition(context.CommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+                planetarySurfacePageSummaryBuffer!.Transition(context.CommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+                planetarySurfacePageSetBuffer!.Transition(context.CommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
+                context.CommandList.SetGraphicsRootShaderResourceView(RootPlanetarySurfacePage, planetarySurfacePageOutputBuffer.Resource.GPUVirtualAddress);
+                context.CommandList.SetGraphicsRootShaderResourceView(RootPlanetarySurfacePageMetadata, planetarySurfacePageMetadataBuffer.Resource.GPUVirtualAddress);
+                context.CommandList.SetGraphicsRootShaderResourceView(RootPlanetarySurfacePageSummary, planetarySurfacePageSummaryBuffer.Resource.GPUVirtualAddress);
+                context.CommandList.SetGraphicsRootShaderResourceView(RootPlanetarySurfacePageSet, planetarySurfacePageSetBuffer.Resource.GPUVirtualAddress);
+                context.CommandList.SetPipelineState(planetarySurfacePatchPipelineState!);
+                context.CommandList.DrawInstanced(16u * 16u * 6u, 6, 0, 0);
+                EndGpuTiming(context.CommandList, frameResources, D3D12GpuTimingPass.PlanetarySurfacePatches);
+            }
+
             for (var sdfIndex = 0; sdfIndex < sdfProxyPipelineStates.Length; sdfIndex++)
             {
+                if (sdfObjects[sdfIndex].CenterRadius.W <= 0.0f) continue;
                 context.CommandList.SetPipelineState(sdfProxyPipelineStates[sdfIndex]!);
                 context.CommandList.DrawInstanced(6, 1, 0, 0);
             }
@@ -3948,6 +3972,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             residentPlanetarySurfacePagePresentationVersion = activePlanetarySurfacePages.PresentationVersion;
         }
         if (residentPlanetarySurfacePageContentVersion == activePlanetarySurfacePages.ContentVersion) return;
+        BeginGpuTiming(activeCommandList, frameResources, D3D12GpuTimingPass.PlanetarySurfacePages);
         planetarySurfacePageInputBuffer.Upload(activeCommandList, frameResources.UploadRing, samples);
         planetarySurfacePageOutputBuffer.Transition(activeCommandList, ResourceStates.UnorderedAccess);
         activeCommandList.SetComputeRootSignature(planetarySurfacePageRootSignature);
@@ -3973,6 +3998,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         planetarySurfacePageSummaryBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
         planetarySurfacePageOutputBuffer.Transition(activeCommandList, ResourceStates.PixelShaderResource | ResourceStates.NonPixelShaderResource);
         residentPlanetarySurfacePageContentVersion = activePlanetarySurfacePages.ContentVersion;
+        EndGpuTiming(activeCommandList, frameResources, D3D12GpuTimingPass.PlanetarySurfacePages);
     }
 
     private void DispatchFractalReservoirs(ID3D12GraphicsCommandList activeCommandList, FrameResources frameResources)
@@ -5816,6 +5842,17 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 "kernel packed-block-match");
         }
 
+        if (activePlanetarySurfacePages.HasInput && planetarySurfacePageOutputBuffer is not null && planetarySurfacePageSummaryBuffer is not null && planetarySurfacePageMetadataBuffer is not null)
+        {
+            var residentBytes=planetarySurfacePageOutputBuffer.SizeBytes+planetarySurfacePageSummaryBuffer.SizeBytes+planetarySurfacePageMetadataBuffer.SizeBytes;
+            Console.WriteLine(
+                $"D3D12 planetary pages: pages {activePlanetarySurfacePages.Pages.Count:N0}; " +
+                $"samples {activePlanetarySurfacePages.SampleCount:N0}; " +
+                $"resident {residentBytes / 1024.0:0.0} KiB; " +
+                $"content-version {activePlanetarySurfacePages.ContentVersion}; " +
+                $"presentation-version {activePlanetarySurfacePages.PresentationVersion}");
+        }
+
         if (gpuSensorTextureCount > 0 ||
             gpuSensorFieldUnsupportedTextureCount > 0)
         {
@@ -5862,6 +5899,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 $"{FormatGpuTiming(D3D12GpuTimingPass.GpuSensorFusion, "sensor-fusion")}; " +
                 $"{FormatGpuTiming(D3D12GpuTimingPass.StereoDepthUpdate, "stereo-depth")}; " +
                 $"{FormatGpuTiming(D3D12GpuTimingPass.FractalReservoirUpdate, "fractal-reservoir")}; " +
+                $"{FormatGpuTiming(D3D12GpuTimingPass.PlanetarySurfacePages, "planetary-pages")}; " +
+                $"{FormatGpuTiming(D3D12GpuTimingPass.PlanetarySurfacePatches, "planetary-patches")}; " +
                 $"{FormatGpuTiming(D3D12GpuTimingPass.TubeFieldUpdate, "tube-field")}; " +
                 $"{FormatGpuTiming(D3D12GpuTimingPass.HeightField, "height-field")}; " +
                 $"{FormatGpuTiming(D3D12GpuTimingPass.SceneCandidate, "scene-candidate")}; " +
@@ -6070,6 +6109,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 fractalRadiosityReservoirPipelineState!,
                 planetarySurfacePagePipelineState!,
                 planetarySurfacePageSummaryPipelineState!,
+                planetarySurfacePatchPipelineState!,
                 tubeFieldComputePipelineState!,
                 tubeFieldRenderPipelineState!,
                 bokushoBrushPipelineState!,
@@ -6105,6 +6145,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fractalRadiosityReservoirPipelineState = pipelines.FractalRadiosityReservoir;
         planetarySurfacePagePipelineState = pipelines.PlanetarySurfacePage;
         planetarySurfacePageSummaryPipelineState = pipelines.PlanetarySurfacePageSummary;
+        planetarySurfacePatchPipelineState = pipelines.PlanetarySurfacePatch;
         tubeFieldComputePipelineState = pipelines.TubeFieldCompute;
         tubeFieldRenderPipelineState = pipelines.TubeFieldRender;
         bokushoBrushPipelineState = pipelines.BokushoBrush;
@@ -6142,6 +6183,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         fractalRadiosityReservoirPipelineState = null;
         planetarySurfacePagePipelineState = null;
         planetarySurfacePageSummaryPipelineState = null;
+        planetarySurfacePatchPipelineState = null;
         tubeFieldComputePipelineState = null;
         tubeFieldRenderPipelineState = null;
         bokushoBrushPipelineState = null;
@@ -6829,6 +6871,18 @@ public sealed class D3D12Renderer : IAquariumRenderer
         });
     }
 
+    private ID3D12PipelineState CreatePlanetarySurfacePatchPipelineState(string path)
+    {
+        var description=new GraphicsPipelineStateDescription
+        {
+            RootSignature=fullscreenRootSignature,VertexShader=CompileShader(path,"D3D12ZyphosTerrainPatchVS","vs_5_0"),PixelShader=CompileShader(path,"D3D12ZyphosTerrainPatchPS","ps_5_0"),
+            BlendState=CreateSceneEvidenceBlend(),RasterizerState=RasterizerDescription.CullNone,
+            DepthStencilState=new DepthStencilDescription { DepthEnable=true,DepthWriteMask=DepthWriteMask.All,DepthFunc=ComparisonFunction.LessEqual,StencilEnable=false },
+            SampleMask=uint.MaxValue,PrimitiveTopologyType=PrimitiveTopologyType.Triangle,RenderTargetFormats=SceneEvidenceRenderTargetFormats,SampleDescription=new SampleDescription(1,0),DepthStencilFormat=SceneDepthFormat,
+        };
+        return device.CreateGraphicsPipelineState(description);
+    }
+
     private ID3D12PipelineState CreateStereoDepthPipelineState(string path)
     {
         var computeShader = CompileShader(path, "D3D12PackedStereoDepthCS", "cs_5_0");
@@ -7389,6 +7443,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         string FractalSplatRender,
         string PlanetarySurfacePage,
         string PlanetarySurfacePageSummary,
+        string PlanetarySurfacePatch,
         string SdfCommon,
         string SdfProxy,
         IReadOnlyList<string> SdfShaders,
@@ -7397,7 +7452,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         string Post,
         string ReservoirHistoryUpdate)
     {
-        public IReadOnlyList<string> All { get; } = [HeightField, Scene, Spline, TemporalGaussian, GpuSensorFusion, StereoDepth, PointCloud, TubeField, BokushoBrush, FractalReservoir, FractalSplatRender, PlanetarySurfacePage, PlanetarySurfacePageSummary, SdfCommon, SdfProxy, ..SdfShaders, SdfMath, ..Includes, Post, ReservoirHistoryUpdate];
+        public IReadOnlyList<string> All { get; } = [HeightField, Scene, Spline, TemporalGaussian, GpuSensorFusion, StereoDepth, PointCloud, TubeField, BokushoBrush, FractalReservoir, FractalSplatRender, PlanetarySurfacePage, PlanetarySurfacePageSummary, PlanetarySurfacePatch, SdfCommon, SdfProxy, ..SdfShaders, SdfMath, ..Includes, Post, ReservoirHistoryUpdate];
 
         public static D3D12ShaderPaths FromManifest(string root, AquariumShaderManifest manifest)
         {
@@ -7419,6 +7474,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
                 shaderPath(manifest.FractalSplatRenderShader),
                 shaderPath(manifest.PlanetarySurfacePageShader),
                 shaderPath(manifest.PlanetarySurfacePageSummaryShader),
+                shaderPath(manifest.PlanetarySurfacePatchShader),
                 shaderPath(manifest.SdfCommonInclude),
                 shaderPath(manifest.SdfProxyInclude),
                 manifest.SdfShaderPaths.Select(shaderPath).ToArray(),
@@ -7447,6 +7503,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
         ID3D12PipelineState FractalRadiosityReservoir,
         ID3D12PipelineState PlanetarySurfacePage,
         ID3D12PipelineState PlanetarySurfacePageSummary,
+        ID3D12PipelineState PlanetarySurfacePatch,
         ID3D12PipelineState TubeFieldCompute,
         ID3D12PipelineState TubeFieldRender,
         ID3D12PipelineState BokushoBrush,
@@ -7476,6 +7533,7 @@ public sealed class D3D12Renderer : IAquariumRenderer
             FractalRadiosityReservoir.Dispose();
             PlanetarySurfacePage.Dispose();
             PlanetarySurfacePageSummary.Dispose();
+            PlanetarySurfacePatch.Dispose();
             TubeFieldRender.Dispose();
             TubeFieldCompute.Dispose();
             PointCloudRender.Dispose();
@@ -7542,6 +7600,8 @@ public sealed class D3D12Renderer : IAquariumRenderer
         GpuSensorFusion,
         StereoDepthUpdate,
         FractalReservoirUpdate,
+        PlanetarySurfacePages,
+        PlanetarySurfacePatches,
         TubeFieldUpdate,
         HeightField,
         SceneCandidate,

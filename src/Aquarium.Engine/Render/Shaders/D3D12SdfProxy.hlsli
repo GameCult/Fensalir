@@ -22,6 +22,10 @@
 #define SDF_SURFACE_NORMAL(p,sdfIndex) sdfFiniteDifferenceNormal(p,sdfIndex)
 #endif
 
+#ifndef SDF_TRACE_FUNCTION
+#define SDF_TRACE_FUNCTION traceSdf
+#endif
+
 float3 sdfFiniteDifferenceNormal(float3 p, int sdfIndex)
 {
     float epsilon = 0.006;
@@ -127,7 +131,7 @@ SceneOut D3D12SdfProxyPS(SdfObjectProxyVertexOut input)
     float3 normal;
     SdfSurface surface;
     float stepCount;
-    if (!traceSdf(cameraPosition, rayDirection, sdfIndex, travel, normal, surface, stepCount))
+    if (!SDF_TRACE_FUNCTION(cameraPosition, rayDirection, sdfIndex, travel, normal, surface, stepCount))
     {
         discard;
     }

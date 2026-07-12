@@ -161,6 +161,9 @@ public sealed class D3D12PlanetarySurfacePageTests
                 var bytecode = D3D12ShaderCompiler.Compile(Path.Combine(temporaryRoot, shaderName), "D3D12SdfProxyPS", "ps_5_0", skipOptimizationInDebug: false);
                 Assert.False(bytecode.IsEmpty);
             }
+            var patchPath = Path.Combine(temporaryRoot, "D3D12ZyphosTerrainPatch.hlsl");
+            Assert.False(D3D12ShaderCompiler.Compile(patchPath, "D3D12ZyphosTerrainPatchVS", "vs_5_0", skipOptimizationInDebug: false).IsEmpty);
+            Assert.False(D3D12ShaderCompiler.Compile(patchPath, "D3D12ZyphosTerrainPatchPS", "ps_5_0", skipOptimizationInDebug: false).IsEmpty);
         }
         finally
         {

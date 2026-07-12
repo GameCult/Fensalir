@@ -26,7 +26,10 @@ bool zyTerrainPageLocal(float3 dir, ZyPlanetPageMetadata metadata, out float2 lo
 {
     float face; float2 uv=zyTerrainCubeFaceUv(dir,face); local=0.0;
     if(metadata.state.x<0.5||abs(face-metadata.address.x)>0.25)return false;
-    float axisTiles=exp2(metadata.address.y); local=(uv*0.5+0.5)*axisTiles-metadata.address.zw;
+    float axisTiles=exp2(metadata.address.y); float2 scaled=(uv*0.5+0.5)*axisTiles;
+    float2 canonical=floor(min(scaled,axisTiles-1.0e-5));
+    if(any(abs(canonical-metadata.address.zw)>0.25))return false;
+    local=scaled-metadata.address.zw;
     return all(local>=0.0)&&all(local<=1.0);
 }
 

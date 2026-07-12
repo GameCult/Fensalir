@@ -98,13 +98,18 @@ invariants:
     displacement, maximum slope, and unresolved error before SDF proxies read
     them at t81-t83. Zyphos registers planet, Umbros, and star proxies in object
     index order and publishes all three SDF objects from one scene builder.
-  - Advanced erosion is not evaluated inside the pixel-shader sphere-trace
-    loop. Shader Model 5 cannot carry its nested dynamic octave loops there,
-    and doing so would multiply the full filter by every ray step. Missing
-    pages therefore lower to the nearest resident ancestor (the base field at
-    root); direct CultMath evaluation remains the CPU/compute verification
-    oracle. Page summaries expand broad-phase bounds and scale radial steps,
-    while the shared SDF proxy owns bracketed sign-change refinement.
+  - Production planet visibility is owned by coarse cube-sphere raster patches,
+    not the general SDF proxy. Patch vertices consume the resident ancestor
+    field; covered pixels perform four bounded radial corrections against the
+    complete resident page field, then use the shared differential/material
+    contract. Missing pages lower to the nearest resident ancestor (the base
+    field at root). Direct CultMath evaluation and the bracketed planet SDF are
+    verification oracles only; neither owns production visibility.
+  - D3D12 binds the page atlas, metadata, summaries, and page set to both patch
+    shader stages at t81-t84. Patch projection follows the renderer's established
+    camera-basis convention, including clip-space Y inversion and normalized
+    forward depth. Ordinary `LessEqual` depth owns front/back visibility;
+    diagnostic `Always` depth is not a production path.
   - Planetary page residency separates content from presentation state.
     ContentVersion changes only when the resident tile set changes;
     PresentationVersion carries arrival/departure weights without regenerating

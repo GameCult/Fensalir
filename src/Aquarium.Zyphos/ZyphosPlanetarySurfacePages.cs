@@ -68,6 +68,7 @@ internal static class ZyphosPlanetarySurfacePages
             ContentVersion = contentVersion,
             PresentationVersion = presentationVersion,
             Pages = pages,
+            RenderCoarsePatches = true,
         };
     }
 

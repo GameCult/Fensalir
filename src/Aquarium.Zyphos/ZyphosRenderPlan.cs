@@ -16,6 +16,7 @@ public static class ZyphosRenderPlan
             .Core("D3D12HeightField.hlsl", "D3D12Scene.hlsl", "D3D12Post.hlsl")
             .PlanetarySurfacePage("D3D12ZyphosTerrainPage.hlsl")
             .PlanetarySurfacePageSummary("D3D12ZyphosTerrainPageSummary.hlsl")
+            .PlanetarySurfacePatch("D3D12ZyphosTerrainPatch.hlsl")
             .SdfShader("D3D12ZyphosPlanet.hlsl")
             .SdfShader("D3D12ZyphosUmbros.hlsl")
             .SdfShader("D3D12ZyphosStar.hlsl");

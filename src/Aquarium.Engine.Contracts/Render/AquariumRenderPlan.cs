@@ -40,6 +40,8 @@ public sealed class AquariumShaderManifest
 
     public string PlanetarySurfacePageSummaryShader { get; private set; } = "D3D12PlanetarySurfacePageSummary.hlsl";
 
+    public string PlanetarySurfacePatchShader { get; private set; } = "D3D12PlanetarySurfacePatch.hlsl";
+
     public string PostShader { get; private set; } = "D3D12Post.hlsl";
 
     public string SdfCommonInclude { get; private set; } = "D3D12SdfCommon.hlsli";
@@ -105,6 +107,12 @@ public sealed class AquariumShaderManifest
     public AquariumShaderManifest PlanetarySurfacePageSummary(string path)
     {
         PlanetarySurfacePageSummaryShader = path;
+        return this;
+    }
+
+    public AquariumShaderManifest PlanetarySurfacePatch(string path)
+    {
+        PlanetarySurfacePatchShader = path;
         return this;
     }
 
@@ -555,6 +563,7 @@ public sealed class AquariumPlanetarySurfacePageSet
     public long ContentVersion { get; init; }
     public long PresentationVersion { get; init; }
     public IReadOnlyList<AquariumPlanetarySurfacePage> Pages { get; init; } = [];
+    public bool RenderCoarsePatches { get; init; }
     public int SampleCount => Pages.Sum(page => page.Samples.Count);
     public bool HasInput => ContentVersion != 0 && Pages.Count > 0 && Pages.All(page => page.HasInput);
 }

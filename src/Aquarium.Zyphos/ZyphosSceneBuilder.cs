@@ -24,7 +24,9 @@ public static class ZyphosSceneBuilder
                 PriorityFocus = fractalPlan.ReservoirPriorityFocus,
                 ProgramTransforms = fractalPlan.GpuProgramTransforms,
             },
-            PlanetarySurfacePages = ZyphosPlanetarySurfacePages.ForCamera(cameraPosition, timeSeconds),
+            PlanetarySurfacePages = Environment.GetEnvironmentVariable("AQUARIUM_ZYPHOS_DISABLE_PLANETARY_PAGES") == "1"
+                ? AquariumPlanetarySurfacePageSet.Empty
+                : ZyphosPlanetarySurfacePages.ForCamera(cameraPosition, timeSeconds),
             SdfObjects = BuildSdfObjects(timeSeconds, previousTimeSeconds),
             SdfLights = BuildSdfLights(timeSeconds),
         };
@@ -40,8 +42,9 @@ public static class ZyphosSceneBuilder
         var previousStarCenter = ZyphosUmbrosSystem.PrimaryStarCenter(previousTimeSeconds);
 
         var objects = new AquariumSdfObject[ZyphosRenderPlan.SdfObjectCount];
+        var planetBoundRadius = Environment.GetEnvironmentVariable("AQUARIUM_ZYPHOS_ENABLE_PLANET_SDF_ORACLE") == "1" ? ZyphosUmbrosSystem.ZyphosBoundRadius : 0.0f;
         objects[ZyphosRenderPlan.PlanetIndex] = new AquariumSdfObject(
-            new Vector4(ZyphosUmbrosSystem.ZyphosCenter, ZyphosUmbrosSystem.ZyphosBoundRadius),
+            new Vector4(ZyphosUmbrosSystem.ZyphosCenter, planetBoundRadius),
             new Vector4(ZyphosUmbrosSystem.ZyphosCenter, previousRotation),
             new Vector4(ZyphosUmbrosSystem.ZyphosSurfaceRadius, rotation, ZyphosUmbrosSystem.SeaLevel, rotation));
         objects[ZyphosRenderPlan.UmbrosIndex] = new AquariumSdfObject(

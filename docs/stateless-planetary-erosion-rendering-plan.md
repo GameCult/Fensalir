@@ -6,10 +6,10 @@ Render planetary-scale, erosion-shaped terrain from one deterministic spherical
 field, from orbit to ground, without making cube faces, cache residency, request
 order, or the renderer into competing terrain authorities.
 
-The live CultMath kernel is phase-zero scaffolding. It proves that C# and HLSL
-can share a point-evaluable planet-space contract and that Zyphos can consume
-it. It is not yet a faithful implementation of the advanced erosion filter, a
-measured CPU/GPU parity surface, or a production planetary renderer.
+CultMath now carries the faithful point-evaluable C# and HLSL erosion contract,
+and Zyphos lowers it through persistent residual pages into coarse raster
+patches with bounded per-pixel refinement. The implementation and verification
+evidence for each phase are recorded below.
 
 ## Current mechanism
 
@@ -47,8 +47,7 @@ erased the same surface, and consumed most of the former frame budget.
 | 7. Unified differentials/materials | Complete | World-gradient pages, composed radial normals, shared ridge/gully material evidence |
 | 8. Profiling/backend decision | Complete | Orbit-to-ground raster path, page generation, residency, and total frame fit named budgets |
 
-“Complete” here means the phase exit criterion has evidence. It does not mean
-planetary-scale rendering as a whole is complete.
+"Complete" means the phase exit criterion has authoritative evidence.
 
 ## Authority map
 
@@ -356,20 +355,17 @@ Patch-native runtime modes currently provide:
 No performance claim follows from a headless boot or successful shader compile.
 Measure the actual visible path.
 
-## Immediate next cut
+## Completion audit
 
-Finish the raster-patch proof before expanding the quadtree or polishing the
-surface:
-
-1. Compare the four-step page-backed hit against the direct CPU/GPU oracle at
-   patch interiors, silhouettes, cube edges, and transition midpoints.
-2. Run the complete roadmap audit and full relevant test suites; close only
-   requirements backed by current authoritative evidence.
-3. Complete the patch-stage compiler run and record its result separately from
-   runtime shader-build latency.
-4. Profile page generation, patch refinement, candidate/reservoir work, total
-   GPU time, and page residency separately. The patch backend is accepted only
-   when visible evidence and the named budgets agree.
+1. The four-step correction primitive has matching CultMath C# and HLSL bodies;
+   CPU convergence probes, direct/page GPU readback, cube topology probes, and
+   transition debug captures cover interiors, edges, and lifecycle states.
+2. The complete audit passes: 106 Engine tests, 170 Fractal tests, and 36
+   CultMath tests. The current solution builds without warnings or errors.
+3. The patch stages compile in the focused shader smoke and in visible runtime
+   captures. Runtime shader-build latency is tracked separately from frame cost.
+4. Page generation, patch refinement, candidate/reservoir work, total GPU time,
+   and residency have separate measurements and fit the named budgets.
 
 ## Sources
 

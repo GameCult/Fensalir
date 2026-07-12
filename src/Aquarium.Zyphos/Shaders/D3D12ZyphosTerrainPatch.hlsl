@@ -44,9 +44,9 @@ ZyPatchSceneOut D3D12ZyphosTerrainPatchPS(ZyPatchVertexOut input)
     SdfObject planet=sdfObjects[0]; float3 coarsePosition=input.worldPosition; float3 ray=normalize(coarsePosition-cameraPosition); float3 p=coarsePosition;
     [unroll] for(int step=0;step<4;step++)
     {
-        float3 local=p-planet.centerRadius.xyz; float radius=length(local); float3 radial=local/max(radius,0.0001); float3 dir=zyPlanetDir(local,planet);
-        float error=radius-(planet.state.x+zyTerrainOffset(dir,planet)); float derivative=dot(ray,radial);
-        float correction=clamp(-error/(abs(derivative)>0.2?derivative:(derivative<0?-0.2:0.2)),-0.08,0.08); p+=ray*correction;
+        float3 local=p-planet.centerRadius.xyz; float3 dir=zyPlanetDir(local,planet);
+        float targetRadius=planet.state.x+zyTerrainOffset(dir,planet);
+        p=cultmath_planetary_radial_refinement_step(p,ray,planet.centerRadius.xyz,targetRadius,0.2,0.08);
     }
     if(!all(isfinite(p)))p=coarsePosition;
     float travel=length(p-cameraPosition); if(!isfinite(travel)||travel<=0.0||travel>farDistance)discard;

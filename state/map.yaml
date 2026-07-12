@@ -133,6 +133,9 @@ invariants:
     filtered erosion against the summed page field at the selected spacing;
     mode 28 exposes content fingerprint, spacing ratio, and deepest level.
     The unresolved bound and measured direct error remain distinct signals.
+  - The bounded radial correction step is owned by CultMath in matching C# and
+    HLSL bodies. Zyphos composes four steps with its terrain-offset callback;
+    the renderer does not carry a private correction equation.
   - Planetary page residency separates content from presentation state.
     ContentVersion changes only when the resident tile set changes;
     PresentationVersion carries arrival/departure weights without regenerating

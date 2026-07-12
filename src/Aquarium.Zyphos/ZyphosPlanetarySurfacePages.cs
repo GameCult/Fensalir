@@ -30,6 +30,18 @@ internal static class ZyphosPlanetarySurfacePages
         _ = ForCamera(cameraPosition, -Math.Max(pageAgeSeconds, 0.0f));
     }
 
+    internal static void PrimeEvictionForCapture(Vector3 cameraPosition, float pageAgeSeconds)
+    {
+        var center=ZyphosUmbrosSystem.ZyphosCenter;
+        var relative=cameraPosition-center;
+        var oldDirection=Vector3.Normalize(new Vector3(relative.Z,relative.Y,-relative.X));
+        var oldCamera=center+oldDirection*Math.Max(relative.Length(),0.001f);
+        Reset();
+        _=ForCamera(oldCamera,-1.0f);
+        _=ForCamera(oldCamera,-0.65f);
+        _=ForCamera(cameraPosition,-Math.Max(pageAgeSeconds,0.0f));
+    }
+
     public static AquariumPlanetarySurfacePageSet ForCamera(Vector3 cameraPosition, float timeSeconds)
     {
         if (timeSeconds < lastTimeSeconds)

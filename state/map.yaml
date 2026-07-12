@@ -123,6 +123,10 @@ invariants:
     `AQUARIUM_PROFILE_PLANETARY_PAGES=1` deliberately regenerates unchanged
     pages so their one-shot GPU cost can be measured; production content-version
     caching remains authoritative.
+  - Deterministic capture controls can select spatial domain, orbit distance,
+    exact residual age, or a cross-face eviction midpoint. Capture priming is
+    presentation evidence only: production arrival/departure ownership remains
+    the time-based resident-page lifecycle.
   - Planetary page residency separates content from presentation state.
     ContentVersion changes only when the resident tile set changes;
     PresentationVersion carries arrival/departure weights without regenerating

@@ -164,6 +164,27 @@ public sealed class D3D12PlanetarySurfacePageTests
     }
 
     [Fact]
+    public void CapturePrimingProducesAnExactCrossFaceEvictionMidpoint()
+    {
+        var camera=ZyphosUmbrosSystem.ZyphosCenter+Vector3.Normalize(new Vector3(0.1f,-0.3f,1.0f))*4.1f;
+        try
+        {
+            ZyphosPlanetarySurfacePages.PrimeEvictionForCapture(camera,0.175f);
+            var pages=ZyphosPlanetarySurfacePages.ForCamera(camera,0.0f);
+            var residuals=pages.Pages.Skip(6).ToArray();
+            Assert.NotEmpty(residuals);
+            Assert.Contains(residuals,page=>MathF.Abs(page.Metadata.State.Y-0.5f)<0.001f);
+            Assert.All(residuals,page=>Assert.InRange(page.Metadata.State.Y,0.5f,1.0f));
+            Assert.Contains(residuals,page=>page.Metadata.Address.X==(float)CubeFace.PositiveX);
+            Assert.Contains(residuals,page=>page.Metadata.Address.X==(float)CubeFace.PositiveZ);
+        }
+        finally
+        {
+            ZyphosPlanetarySurfacePages.Reset();
+        }
+    }
+
+    [Fact]
     public void ZyphosPlanetaryProxyShadersCompileWithPageBindings()
     {
         var temporaryRoot = Path.Combine(Path.GetTempPath(), $"aquarium-zyphos-shaders-{Guid.NewGuid():N}");

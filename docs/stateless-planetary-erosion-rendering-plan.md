@@ -43,7 +43,7 @@ erased the same surface, and consumed most of the former frame budget.
 | 3. Physical bands | Complete | Wavelength selection, fractional terminal octave, unresolved bound |
 | 4. GPU pages | Complete | Spherical borders, sibling seam tests, GPU summary reduction |
 | 5. Page-backed intersection | Complete | Persistent page and summary buffers, conservative bounds/steps, bracketed refinement, radial hit parity |
-| 6. Quadtree transitions | In progress | Exact 0/0.5/1 arrival captures and lifecycle probes complete; visible edge/eviction traversal remains |
+| 6. Quadtree transitions | Complete | Exact 0/0.5/1 arrival captures plus cross-face half-eviction capture and lifecycle probes |
 | 7. Unified differentials/materials | Complete | World-gradient pages, composed radial normals, shared ridge/gully material evidence |
 | 8. Profiling/backend decision | Complete | Orbit-to-ground raster path, page generation, residency, and total frame fit named budgets |
 
@@ -344,8 +344,8 @@ Measure the actual visible path.
 Finish the raster-patch proof before expanding the quadtree or polishing the
 surface:
 
-1. Capture cube-edge lateral traversal and a frozen residual-eviction sequence;
-   arrival, orbit, and exterior-ground evidence are complete.
+1. Audit every numerical, topology, timeline, and visible-debug requirement
+   against authoritative tests, captures, and runtime source.
 2. Compare the four-step page-backed hit against the direct CPU/GPU oracle at
    patch interiors, silhouettes, cube edges, and transition midpoints.
 3. Complete the patch-stage compiler run and record its result separately from

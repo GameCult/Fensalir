@@ -107,6 +107,16 @@ public sealed class ZyphosRuntime : IAquariumRuntime
             autoOrbit = false;
             ZyphosPlanetarySurfacePages.PrimeForCapture(CurrentShot().CameraPosition, pageAgeSeconds);
         }
+        if (float.TryParse(
+            Environment.GetEnvironmentVariable("AQUARIUM_ZYPHOS_EVICTION_AGE_SECONDS"),
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var evictionAgeSeconds))
+        {
+            timeScale = 0.0f;
+            autoOrbit = false;
+            ZyphosPlanetarySurfacePages.PrimeEvictionForCapture(CurrentShot().CameraPosition, evictionAgeSeconds);
+        }
         var ui = new AquariumUiDocument()
             .Panel("Zyphos", 18.0f, 82.0f, 340.0f, panel =>
             {

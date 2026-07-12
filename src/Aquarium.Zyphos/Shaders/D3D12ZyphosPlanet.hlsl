@@ -52,18 +52,29 @@ float3 zySphericalFieldGradient(float3 dir)
     return gradient - dir * dot(gradient, dir);
 }
 
-CultMathSphericalErosionSample zyErosion(float3 dir, float field)
+CultMathAdvancedErosionParameters zyErosionParameters(float planetRadius)
 {
-    CultMathSphericalErosionParameters parameters;
-    parameters.frequency = 17.0;
-    parameters.amplitude = 0.012;
-    parameters.lacunarity = 2.03;
-    parameters.gain = 0.52;
-    parameters.slope_strength = 4.5;
-    parameters.detail = 1.35;
-    parameters.seed = 713.0;
-    parameters.octaves = 5;
-    return cultmath_spherical_erosion(dir, field, zySphericalFieldGradient(dir), parameters);
+    CultMathAdvancedErosionParameters p;
+    p.scale = planetRadius * 0.075; p.strength = 0.12; p.gully_weight = 0.58; p.detail = 1.45;
+    p.rounding = float4(0.1, 0.015, 0.1, 2.0); p.onset = float4(1.25, 1.25, 2.8, 1.5);
+    p.assumed_slope = float2(0.7, 0.85); p.cell_scale = 0.7; p.normalization = 0.5;
+    p.octaves = 7; p.lacunarity = 2.0; p.gain = 0.5; return p;
+}
+
+float zyAdvancedErosionHeight(float3 dir, float field, SdfObject sdfObject)
+{
+    float radius = max(sdfObject.state.x, 0.001);
+    float3 world = dir * radius;
+    float3 gradient = zySphericalFieldGradient(dir) / radius;
+    float3 weights = pow(abs(dir), 4.0); weights /= max(weights.x + weights.y + weights.z, 1.0e-6);
+    CultMathAdvancedErosionParameters p = zyErosionParameters(radius);
+    float sampleSpacing = max(viewRadius / max(resolution.y, 1.0) * 2.0, radius / 8192.0);
+    CultMathErosionBandSelection band = cultmath_select_erosion_bands(p.scale * p.cell_scale, sampleSpacing, p.octaves, p.lacunarity, p.strength * p.scale, p.gain, 2.0);
+    float fade = saturate(field * 0.5 + 0.5) * 2.0 - 1.0;
+    CultMathAdvancedErosionResult xy = cultmath_advanced_erosion_filter_banded(world.xy + float2(713.0, -291.0), float3(field, gradient.x, gradient.y), fade, p, band);
+    CultMathAdvancedErosionResult yz = cultmath_advanced_erosion_filter_banded(world.yz + float2(-431.0, 887.0), float3(field, gradient.y, gradient.z), fade, p, band);
+    CultMathAdvancedErosionResult zx = cultmath_advanced_erosion_filter_banded(world.zx + float2(197.0, 557.0), float3(field, gradient.z, gradient.x), fade, p, band);
+    return xy.delta.x * weights.z + yz.delta.x * weights.x + zx.delta.x * weights.y;
 }
 
 float zyHash21(float2 p)
@@ -252,7 +263,7 @@ float zyPebbleCluster(float3 dir)
 float zyTerrainOffset(float3 dir, SdfObject sdfObject)
 {
     float field = zySphericalField(dir);
-    CultMathSphericalErosionSample erosion = zyErosion(dir, field);
+    float erosionHeight = zyAdvancedErosionHeight(dir, field, sdfObject);
     float seaLevel = sdfObject.state.z;
     float land = smoothstep(seaLevel - 0.04, seaLevel + 0.08, field);
     float mountain = pow(saturate(field - seaLevel), 1.65);
@@ -260,7 +271,7 @@ float zyTerrainOffset(float3 dir, SdfObject sdfObject)
     float authoredMaterial;
     float authoredGeometry = zyAuthoredBrushTerrainLimited(dir, ZYPHOS_GEOMETRY_BRUSH_LIMIT, authoredMaterial);
     float tileRelief = zyQuadtreeSdfRelief(dir) * land + zyLeafCluster(dir) * 0.018 + zyPebbleCluster(dir) * 0.010;
-    return (field - seaLevel) * 0.10 + mountain * 0.13 + polarCap * land + tileRelief + authoredGeometry * 0.52 + erosion.height_offset * land;
+    return (field - seaLevel) * 0.10 + mountain * 0.13 + polarCap * land + tileRelief + authoredGeometry * 0.52 + erosionHeight * land;
 }
 
 float sdfDistance(float3 p, int sdfIndex)

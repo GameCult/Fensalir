@@ -84,6 +84,11 @@ invariants:
     readback probe. Shader include expansion is owned by D3D12ShaderCompiler
     and shared with the renderer; parity probes must not boot a swapchain or
     duplicate CultMath equations.
+  - Planetary erosion frequencies are selected in world-distance wavelengths
+    from the current sample footprint. The last resolvable octave fades
+    fractionally and reports its omitted-height bound; Zyphos lowers the planar
+    reference filter through smooth planet-space triplanar charts, not cube-face
+    terrain ownership.
   - The shared reservoir is a fractal domain reservoir, not a texel cache.
     Pixel rows are the current D3D12 execution projection of selected domain
     evidence. Area-domain contributors must carry selected subpixel or local

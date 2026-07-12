@@ -61,6 +61,32 @@ bool zyTrySampleErosionPage(float3 dir, out float4 heightGradient, out float2 ma
     return found;
 }
 
+bool zyTerrainDeepestPageEvidence(
+    float3 dir,
+    out ZyPlanetPageMetadata selectedMetadata,
+    out ZyPlanetPageSummary selectedSummary,
+    out float4 selectedHeightGradient,
+    out float2 selectedMasks)
+{
+    selectedMetadata=(ZyPlanetPageMetadata)0;
+    selectedSummary=(ZyPlanetPageSummary)0;
+    selectedHeightGradient=0.0;
+    selectedMasks=0.0;
+    float selectedLevel=-1.0;
+    int pageCount=min((int)zy_planet_page_set[0].state.x,64);
+    [loop] for(int pageIndex=0;pageIndex<pageCount;pageIndex++)
+    {
+        float2 local; ZyPlanetPageMetadata metadata=zy_planet_page_metadata[pageIndex];
+        ZyPlanetPageSummary summary=zy_planet_page_summary[pageIndex];
+        if(metadata.address.y<selectedLevel||summary.metadata.w<=0.5||!zyTerrainPageLocal(dir,metadata,local))continue;
+        selectedLevel=metadata.address.y;
+        selectedMetadata=metadata;
+        selectedSummary=summary;
+        zySampleErosionPage(pageIndex,local,selectedHeightGradient,selectedMasks);
+    }
+    return selectedLevel>=0.0;
+}
+
 float zyTerrainConservativeDistanceScale(float3 dir)
 {
     float erosionSlope=0.0; int pageCount=min((int)zy_planet_page_set[0].state.x,64);

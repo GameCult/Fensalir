@@ -127,6 +127,11 @@ invariants:
     exact residual age, or a cross-face eviction midpoint. Capture priming is
     presentation evidence only: production arrival/departure ownership remains
     the time-based resident-page lifecycle.
+  - Planet patch debug modes 22-26 expose selected face/level/blend, page
+    bounds and unresolved error, refined normal, ridge/gully evidence, and
+    cross-edge discontinuity/missing residency. Direct-minus-page error remains
+    a numerical readback surface until an honest pixel-visible comparison
+    product is added; do not relabel the unresolved bound as measured error.
   - Planetary page residency separates content from presentation state.
     ContentVersion changes only when the resident tile set changes;
     PresentationVersion carries arrival/departure weights without regenerating

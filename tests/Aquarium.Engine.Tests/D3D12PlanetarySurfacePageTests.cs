@@ -196,12 +196,12 @@ public sealed class D3D12PlanetarySurfacePageTests
             CopyShaderTree(Path.GetFullPath(Path.Combine(RepositoryRoot(), "..", "CultMath", "shaders")), Path.Combine(temporaryRoot, "CultMath"));
             foreach (var shaderName in new[] { "D3D12ZyphosPlanet.hlsl", "D3D12ZyphosUmbros.hlsl", "D3D12ZyphosStar.hlsl" })
             {
-                var bytecode = D3D12ShaderCompiler.Compile(Path.Combine(temporaryRoot, shaderName), "D3D12SdfProxyPS", "ps_5_0", skipOptimizationInDebug: false);
+                var bytecode = D3D12ShaderCompiler.Compile(Path.Combine(temporaryRoot, shaderName), "D3D12SdfProxyPS", "ps_5_0");
                 Assert.False(bytecode.IsEmpty);
             }
             var patchPath = Path.Combine(temporaryRoot, "D3D12ZyphosTerrainPatch.hlsl");
-            Assert.False(D3D12ShaderCompiler.Compile(patchPath, "D3D12ZyphosTerrainPatchVS", "vs_5_0", skipOptimizationInDebug: false).IsEmpty);
-            Assert.False(D3D12ShaderCompiler.Compile(patchPath, "D3D12ZyphosTerrainPatchPS", "ps_5_0", skipOptimizationInDebug: false).IsEmpty);
+            Assert.False(D3D12ShaderCompiler.Compile(patchPath, "D3D12ZyphosTerrainPatchVS", "vs_5_0").IsEmpty);
+            Assert.False(D3D12ShaderCompiler.Compile(patchPath, "D3D12ZyphosTerrainPatchPS", "ps_5_0").IsEmpty);
         }
         finally
         {
@@ -220,6 +220,47 @@ public sealed class D3D12PlanetarySurfacePageTests
             var li=(left.BorderSize+y)*left.StorageSize+left.BorderSize+left.InteriorSize-1;
             var ri=(right.BorderSize+y)*right.StorageSize+right.BorderSize;
             Assert.Equal(leftOutput[li],rightOutput[ri]);
+        }
+    }
+
+    [Fact]
+    public void IndependentlyGeneratedRootPagesAgreeAcrossAllCubeEdgesAndCorners()
+    {
+        const int interior=9,border=2;
+        var groups=new Dictionary<(int X,int Y,int Z),List<PageOutput>>();
+        var requests=Enum.GetValues<CubeFace>().Select(face=>new PlanetarySurfacePageRequest(new CubeTileKey(face,0,0,0),interior,border)).ToArray();
+        const float radius=8.4f;
+        var inputs=requests.SelectMany(request=>
+        {
+            var spacing=PlanetarySurfacePageSampling.NominalAngularTexelSize(request)*radius;
+            return Enumerable.Range(0,request.StorageSize*request.StorageSize).Select(index=>
+            {
+                var x=index%request.StorageSize; var y=index/request.StorageSize;
+                return new PageInput(new Vector4(PlanetarySurfacePageSampling.Direction(request,x,y),radius),new Vector4(spacing,0,0,0));
+            });
+        }).ToArray();
+        var generated=D3D12ComputeProbe.Run<PageInput,PageOutput>(ShaderPath(),"D3D12ZyphosTerrainPageCS",inputs);
+        var outputOffset=0;
+        foreach(var request in requests)
+        {
+            for(var y=0;y<interior;y++) for(var x=0;x<interior;x++)
+            {
+                if(x!=0&&x!=interior-1&&y!=0&&y!=interior-1)continue;
+                var direction=PlanetarySurfacePageSampling.DirectionAtLocal(request,x/(float)(interior-1),y/(float)(interior-1));
+                var key=((int)MathF.Round(direction.X*1_000_000),(int)MathF.Round(direction.Y*1_000_000),(int)MathF.Round(direction.Z*1_000_000));
+                if(!groups.TryGetValue(key,out var samples))groups[key]=samples=[];
+                samples.Add(generated[outputOffset+(border+y)*request.StorageSize+border+x]);
+            }
+            outputOffset+=request.StorageSize*request.StorageSize;
+        }
+        var edges=groups.Values.Where(samples=>samples.Count==2).ToArray();
+        var corners=groups.Values.Where(samples=>samples.Count==3).ToArray();
+        Assert.Equal(12*(interior-2),edges.Length);
+        Assert.Equal(8,corners.Length);
+        foreach(var samples in edges.Concat(corners))
+        {
+            var expected=samples[0];
+            Assert.All(samples.Skip(1),actual=>AssertPageOutputClose(expected,actual,1.0e-5f));
         }
     }
 
@@ -268,6 +309,17 @@ public sealed class D3D12PlanetarySurfacePageTests
         { var d=PlanetarySurfacePageSampling.Direction(request,x,y); input[y*request.StorageSize+x]=new PageInput(new Vector4(d,radius),new Vector4(spacing,0,0,0)); }
         var shader=ShaderPath();
         return D3D12ComputeProbe.Run<PageInput,PageOutput>(shader,"D3D12ZyphosTerrainPageCS",input);
+    }
+
+    private static void AssertPageOutputClose(PageOutput expected,PageOutput actual,float tolerance)
+    {
+        static void Close(Vector4 a,Vector4 b,float epsilon)
+        {
+            Assert.InRange(MathF.Abs(a.X-b.X),0,epsilon); Assert.InRange(MathF.Abs(a.Y-b.Y),0,epsilon);
+            Assert.InRange(MathF.Abs(a.Z-b.Z),0,epsilon); Assert.InRange(MathF.Abs(a.W-b.W),0,epsilon);
+        }
+        Close(expected.HeightGradient,actual.HeightGradient,tolerance);
+        Close(expected.Masks,actual.Masks,tolerance);
     }
 
     private static string ShaderPath()=>Path.Combine(RepositoryRoot(),"src","Aquarium.Zyphos","Shaders","D3D12ZyphosTerrainPage.hlsl");

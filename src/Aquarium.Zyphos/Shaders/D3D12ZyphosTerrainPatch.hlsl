@@ -54,8 +54,33 @@ ZyPatchSceneOut D3D12ZyphosTerrainPatchPS(ZyPatchVertexOut input)
     float3 normal=cross(ddy(p),ddx(p));
     if(!all(isfinite(normal))||dot(normal,normal)<1.0e-10)normal=radial; else normal=normalize(normal);
     if(dot(normal,cameraPosition-p)<0.0)normal=-normal;
+    float3 terrainDir=zyPlanetDir(p-planet.centerRadius.xyz,planet);
+    ZyPlanetPageMetadata debugMetadata; ZyPlanetPageSummary debugSummary; float4 debugHeightGradient; float2 debugMasks;
+    bool hasDebugPage=zyTerrainDeepestPageEvidence(terrainDir,debugMetadata,debugSummary,debugHeightGradient,debugMasks);
+    float3 debugColor=0.0;
+    if(renderDebugMode>=21.5&&renderDebugMode<22.5)
+        debugColor=hasDebugPage?float3(debugMetadata.address.x/5.0,debugMetadata.address.y/5.0,saturate(debugMetadata.state.y)):float3(1,0,1);
+    else if(renderDebugMode>=22.5&&renderDebugMode<23.5)
+        debugColor=hasDebugPage?float3(saturate(0.5+debugHeightGradient.x*2.0),saturate(debugSummary.bounds.z*0.1),saturate(debugSummary.bounds.w*10.0)):float3(1,0,1);
+    else if(renderDebugMode>=23.5&&renderDebugMode<24.5)
+        debugColor=abs(normal);
+    else if(renderDebugMode>=24.5&&renderDebugMode<25.5)
+        debugColor=hasDebugPage?float3(saturate(debugMasks),saturate(debugMetadata.state.y)):float3(1,0,1);
+    else if(renderDebugMode>=25.5&&renderDebugMode<26.5)
+    {
+        float3 absoluteDirection=abs(terrainDir);
+        float dominant=max(absoluteDirection.x,max(absoluteDirection.y,absoluteDirection.z));
+        float second=absoluteDirection.x+absoluteDirection.y+absoluteDirection.z-dominant-min(absoluteDirection.x,min(absoluteDirection.y,absoluteDirection.z));
+        float3 dominantAxis=absoluteDirection.x>=absoluteDirection.y&&absoluteDirection.x>=absoluteDirection.z?float3(sign(terrainDir.x),0,0):absoluteDirection.y>=absoluteDirection.z?float3(0,sign(terrainDir.y),0):float3(0,0,sign(terrainDir.z));
+        float3 secondaryAxis=absoluteDirection.x<dominant&&absoluteDirection.x>=min(absoluteDirection.y,absoluteDirection.z)?float3(sign(terrainDir.x),0,0):absoluteDirection.y<dominant&&absoluteDirection.y>=min(absoluteDirection.x,absoluteDirection.z)?float3(0,sign(terrainDir.y),0):float3(0,0,sign(terrainDir.z));
+        float3 crossDirection=normalize(secondaryAxis-dominantAxis*dot(secondaryAxis,terrainDir));
+        float4 sideA,sideB; float2 sideMasks; bool hasA=zyTrySampleErosionPage(normalize(terrainDir-crossDirection*0.001),sideA,sideMasks); bool hasB=zyTrySampleErosionPage(normalize(terrainDir+crossDirection*0.001),sideB,sideMasks);
+        float edgeProximity=1.0-saturate((dominant-second)*100.0);
+        debugColor=float3(saturate(abs(sideA.x-sideB.x)*100.0)*edgeProximity,edgeProximity,(hasA&&hasB)?0.0:1.0);
+    }
     SdfSurface surface=sdfSurface(p,0);
-    ZyPatchSceneOut output; output.colorTravel=float4(shadeSdf(0.0,travel,p,normal,0,surface),min(travel,farDistance+1.0));
+    float3 shaded=(renderDebugMode>=21.5&&renderDebugMode<26.5)?debugColor:shadeSdf(0.0,travel,p,normal,0,surface);
+    ZyPatchSceneOut output; output.colorTravel=float4(shaded,min(travel,farDistance+1.0));
     output.metadata=float4(FIELD_ID_SDF_OBJECT_BASE,normal); output.control=float4(1,4.0/384.0,saturate(surface.temporalDetail),saturate(surface.reservoirConfidence));
     float3 forward,right,up; cameraBasis(cameraPosition,cameraTarget,forward,right,up);
     output.reservoirGuide=float4(saturate(surface.reservoirConfidence),0,1,0); output.overdraw=1;

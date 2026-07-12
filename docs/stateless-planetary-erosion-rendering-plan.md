@@ -319,6 +319,10 @@ Topology probes cover all twelve cube edges, all eight corners, sibling and
 parent/child neighbors, independent request order, eviction, and page-border
 overlap at several levels.
 
+The root-page GPU topology probe groups canonical spherical boundary samples
+and verifies all `12 * (9 - 2) = 84` non-corner edge groups plus all eight
+three-face corners within `1e-5`.
+
 Timeline probes cover direct load, orbital descent, cube-edge crossing,
 transition midpoint and arrival, missing-page fallback, page arrival, eviction,
 regeneration, reload, and field-version change.
@@ -326,6 +330,20 @@ regeneration, reload, and field-version change.
 Visible debug views expose face/tile/level, residency, field version, active
 wavelengths, height bounds, tangent gradient, final normal, ridge/gully masks,
 parent residual blend, direct-minus-page error, and cross-edge discontinuity.
+
+Patch-native runtime modes currently provide:
+
+- mode 22: selected face, deepest level, and residual blend;
+- mode 23: sampled height, maximum slope, and unresolved/error bound;
+- mode 24: refined raster normal;
+- mode 25: ridge, gully, and residual blend;
+- mode 26: cube-edge proximity, cross-edge height delta, and missing-side
+  residency.
+
+The direct-minus-page comparison is numerically covered by GPU readback but is
+not yet published as a visible runtime projection. Field version and wavelength
+identity are available in page metadata/capacity logs but likewise need a
+pixel-visible lowering before the debug requirement is complete.
 
 ## Performance questions
 
@@ -344,8 +362,9 @@ Measure the actual visible path.
 Finish the raster-patch proof before expanding the quadtree or polishing the
 surface:
 
-1. Audit every numerical, topology, timeline, and visible-debug requirement
-   against authoritative tests, captures, and runtime source.
+1. Publish a debug comparison surface for direct-minus-page error, field
+   version, and active wavelength identity rather than leaving them only in
+   tests and logs.
 2. Compare the four-step page-backed hit against the direct CPU/GPU oracle at
    patch interiors, silhouettes, cube edges, and transition midpoints.
 3. Complete the patch-stage compiler run and record its result separately from

@@ -3,6 +3,7 @@ static const int ZYPHOS_GEOMETRY_BRUSH_LIMIT = 4;
 
 #include "D3D12SdfCommon.hlsli"
 #include "D3D12SdfMath.hlsli"
+#include "CultMath/CultMath.hlsl"
 
 float3 zyRotateZ(float3 p, float angle)
 {
@@ -39,6 +40,30 @@ float zySphericalField(float3 dir)
         sin((dir.x * 1.3 - dir.y + dir.z * 1.9) * 13.0) * 0.08;
     float equatorialWarmth = cos(latitude) * 0.18;
     return 0.50 + plates + equatorialWarmth;
+}
+
+float3 zySphericalFieldGradient(float3 dir)
+{
+    const float epsilon = 0.0015;
+    float dx = zySphericalField(normalize(dir + float3(epsilon, 0, 0))) - zySphericalField(normalize(dir - float3(epsilon, 0, 0)));
+    float dy = zySphericalField(normalize(dir + float3(0, epsilon, 0))) - zySphericalField(normalize(dir - float3(0, epsilon, 0)));
+    float dz = zySphericalField(normalize(dir + float3(0, 0, epsilon))) - zySphericalField(normalize(dir - float3(0, 0, epsilon)));
+    float3 gradient = float3(dx, dy, dz) / (2.0 * epsilon);
+    return gradient - dir * dot(gradient, dir);
+}
+
+CultMathSphericalErosionSample zyErosion(float3 dir, float field)
+{
+    CultMathSphericalErosionParameters parameters;
+    parameters.frequency = 17.0;
+    parameters.amplitude = 0.012;
+    parameters.lacunarity = 2.03;
+    parameters.gain = 0.52;
+    parameters.slope_strength = 4.5;
+    parameters.detail = 1.35;
+    parameters.seed = 713.0;
+    parameters.octaves = 5;
+    return cultmath_spherical_erosion(dir, field, zySphericalFieldGradient(dir), parameters);
 }
 
 float zyHash21(float2 p)
@@ -227,6 +252,7 @@ float zyPebbleCluster(float3 dir)
 float zyTerrainOffset(float3 dir, SdfObject sdfObject)
 {
     float field = zySphericalField(dir);
+    CultMathSphericalErosionSample erosion = zyErosion(dir, field);
     float seaLevel = sdfObject.state.z;
     float land = smoothstep(seaLevel - 0.04, seaLevel + 0.08, field);
     float mountain = pow(saturate(field - seaLevel), 1.65);
@@ -234,7 +260,7 @@ float zyTerrainOffset(float3 dir, SdfObject sdfObject)
     float authoredMaterial;
     float authoredGeometry = zyAuthoredBrushTerrainLimited(dir, ZYPHOS_GEOMETRY_BRUSH_LIMIT, authoredMaterial);
     float tileRelief = zyQuadtreeSdfRelief(dir) * land + zyLeafCluster(dir) * 0.018 + zyPebbleCluster(dir) * 0.010;
-    return (field - seaLevel) * 0.10 + mountain * 0.13 + polarCap * land + tileRelief + authoredGeometry * 0.52;
+    return (field - seaLevel) * 0.10 + mountain * 0.13 + polarCap * land + tileRelief + authoredGeometry * 0.52 + erosion.height_offset * land;
 }
 
 float sdfDistance(float3 p, int sdfIndex)

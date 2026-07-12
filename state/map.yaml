@@ -71,6 +71,11 @@ invariants:
     terrain should be a quadtree of brush-painted surface tiles, subdivided by
     projected footprint, curvature, brush/material detail, silhouettes, and
     temporal uncertainty before SDF probes emit detail-adaptive surface splats.
+  - Stateless planetary erosion is owned by CultMath's spherical point kernel.
+    It reads unit planet position, base height, tangent gradient, seed, and
+    bounded octave parameters; cube faces and tiles are scheduling charts only.
+    CultMath maintains matching C# and HLSL bodies, while clients choose terrain
+    parameters and composition policy.
   - The shared reservoir is a fractal domain reservoir, not a texel cache.
     Pixel rows are the current D3D12 execution projection of selected domain
     evidence. Area-domain contributors must carry selected subpixel or local

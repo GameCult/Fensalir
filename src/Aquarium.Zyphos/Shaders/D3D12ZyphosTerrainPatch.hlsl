@@ -78,8 +78,22 @@ ZyPatchSceneOut D3D12ZyphosTerrainPatchPS(ZyPatchVertexOut input)
         float edgeProximity=1.0-saturate((dominant-second)*100.0);
         debugColor=float3(saturate(abs(sideA.x-sideB.x)*100.0)*edgeProximity,edgeProximity,(hasA&&hasB)?0.0:1.0);
     }
+    else if(renderDebugMode>=26.5&&renderDebugMode<27.5)
+    {
+        float4 pageField; float2 pageMasks; bool hasPage=zyTrySampleErosionPage(terrainDir,pageField,pageMasks);
+        float directHeight=hasDebugPage?zyAdvancedErosion(terrainDir,zySphericalField(terrainDir),planet.state.x,max(debugMetadata.state.w,1.0e-5)).x:0.0;
+        float error=abs(directHeight-pageField.x);
+        float bound=hasDebugPage?max(debugSummary.bounds.w,1.0e-5):1.0;
+        debugColor=hasPage?float3(saturate(error/bound),saturate(error*100.0),error<=bound?0.0:1.0):float3(1,0,1);
+    }
+    else if(renderDebugMode>=27.5&&renderDebugMode<28.5)
+    {
+        float spacing=hasDebugPage?max(debugMetadata.state.w,1.0e-6):1.0;
+        float wavelengthRatio=hasDebugPage?saturate(log2(max(planet.state.x,0.001)/spacing)/16.0):0.0;
+        debugColor=float3(frac(zy_planet_page_set[0].state.z),wavelengthRatio,hasDebugPage?saturate(debugMetadata.address.y/5.0):0.0);
+    }
     SdfSurface surface=sdfSurface(p,0);
-    float3 shaded=(renderDebugMode>=21.5&&renderDebugMode<26.5)?debugColor:shadeSdf(0.0,travel,p,normal,0,surface);
+    float3 shaded=(renderDebugMode>=21.5&&renderDebugMode<28.5)?debugColor:shadeSdf(0.0,travel,p,normal,0,surface);
     ZyPatchSceneOut output; output.colorTravel=float4(shaded,min(travel,farDistance+1.0));
     output.metadata=float4(FIELD_ID_SDF_OBJECT_BASE,normal); output.control=float4(1,4.0/384.0,saturate(surface.temporalDetail),saturate(surface.reservoirConfidence));
     float3 forward,right,up; cameraBasis(cameraPosition,cameraTarget,forward,right,up);

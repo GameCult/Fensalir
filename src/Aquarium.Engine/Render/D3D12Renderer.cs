@@ -3975,10 +3975,12 @@ public sealed class D3D12Renderer : IAquariumRenderer
             sampleOffset += page.Samples.Count;
         }
         var patchCells = Math.Clamp(activePlanetarySurfacePages.PatchCells, 1, 256);
-        if (residentPlanetarySurfacePagePresentationVersion != activePlanetarySurfacePages.PresentationVersion || residentPlanetarySurfacePatchCells != patchCells)
+        if (residentPlanetarySurfacePagePresentationVersion != activePlanetarySurfacePages.PresentationVersion || residentPlanetarySurfacePageContentVersion != activePlanetarySurfacePages.ContentVersion || residentPlanetarySurfacePatchCells != patchCells)
         {
+            var foldedContentVersion=(uint)(activePlanetarySurfacePages.ContentVersion^(activePlanetarySurfacePages.ContentVersion>>32));
+            var contentFingerprint=(foldedContentVersion&0x00ffffffu)/16777215.0f;
             planetarySurfacePageMetadataBuffer.Upload(activeCommandList, frameResources.UploadRing, metadata);
-            planetarySurfacePageSetBuffer.Upload(activeCommandList, frameResources.UploadRing, new[] { new Vector4(pages.Count, patchCells, 0, 1) });
+            planetarySurfacePageSetBuffer.Upload(activeCommandList, frameResources.UploadRing, new[] { new Vector4(pages.Count, patchCells, contentFingerprint, 1) });
             residentPlanetarySurfacePagePresentationVersion = activePlanetarySurfacePages.PresentationVersion;
             residentPlanetarySurfacePatchCells = patchCells;
         }

@@ -338,12 +338,11 @@ Patch-native runtime modes currently provide:
 - mode 24: refined raster normal;
 - mode 25: ridge, gully, and residual blend;
 - mode 26: cube-edge proximity, cross-edge height delta, and missing-side
-  residency.
-
-The direct-minus-page comparison is numerically covered by GPU readback but is
-not yet published as a visible runtime projection. Field version and wavelength
-identity are available in page metadata/capacity logs but likewise need a
-pixel-visible lowering before the debug requirement is complete.
+  residency;
+- mode 27: direct filtered erosion minus summed page height, normalized by the
+  declared error bound, with bound violations in blue;
+- mode 28: content-version fingerprint, active spacing ratio, and deepest
+  resident level.
 
 ## Performance questions
 
@@ -362,11 +361,10 @@ Measure the actual visible path.
 Finish the raster-patch proof before expanding the quadtree or polishing the
 surface:
 
-1. Publish a debug comparison surface for direct-minus-page error, field
-   version, and active wavelength identity rather than leaving them only in
-   tests and logs.
-2. Compare the four-step page-backed hit against the direct CPU/GPU oracle at
+1. Compare the four-step page-backed hit against the direct CPU/GPU oracle at
    patch interiors, silhouettes, cube edges, and transition midpoints.
+2. Run the complete roadmap audit and full relevant test suites; close only
+   requirements backed by current authoritative evidence.
 3. Complete the patch-stage compiler run and record its result separately from
    runtime shader-build latency.
 4. Profile page generation, patch refinement, candidate/reservoir work, total

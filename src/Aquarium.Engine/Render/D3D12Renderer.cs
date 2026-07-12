@@ -7015,99 +7015,14 @@ public sealed class D3D12Renderer : IAquariumRenderer
 
     private static ReadOnlyMemory<byte> CompileShader(string path, string entryPoint, string profile, bool skipOptimizationInDebug = true)
     {
-        var shaderFlags = ShaderFlags.EnableStrictness;
-#if DEBUG
-        shaderFlags |= ShaderFlags.Debug;
-        if (skipOptimizationInDebug)
-        {
-            shaderFlags |= ShaderFlags.SkipOptimization;
-        }
-#endif
-
-        var source = ExpandShaderIncludes(path, []);
         try
         {
-            return Compiler.Compile(source, entryPoint, path, profile, shaderFlags, EffectFlags.None);
+            return D3D12ShaderCompiler.Compile(path, entryPoint, profile, skipOptimizationInDebug);
         }
         catch (Exception ex)
         {
             throw new InvalidOperationException($"Failed to compile shader path={path} entry={entryPoint} profile={profile}: {ex.Message}", ex);
         }
-    }
-
-    private static string ExpandShaderIncludes(string path, HashSet<string> stack)
-    {
-        var fullPath = Path.GetFullPath(path);
-        if (!stack.Add(fullPath))
-        {
-            throw new InvalidOperationException($"Circular shader include detected at {fullPath}");
-        }
-
-        var lines = File.ReadAllLines(fullPath);
-        var expanded = new List<string>(lines.Length);
-        var directory = Path.GetDirectoryName(fullPath) ?? AppContext.BaseDirectory;
-        for (var lineIndex = 0; lineIndex < lines.Length; lineIndex++)
-        {
-            var line = lines[lineIndex];
-            var trimmed = line.TrimStart();
-            if (trimmed.StartsWith("#include \"", StringComparison.Ordinal))
-            {
-                var firstQuote = trimmed.IndexOf('"');
-                var secondQuote = trimmed.IndexOf('"', firstQuote + 1);
-                if (firstQuote >= 0 && secondQuote > firstQuote)
-                {
-                    var includeName = trimmed.Substring(firstQuote + 1, secondQuote - firstQuote - 1);
-                    var includePath = ResolveShaderIncludePath(directory, includeName);
-                    expanded.Add($"#line 1 \"{includePath.Replace("\\", "\\\\")}\"");
-                    expanded.Add(ExpandShaderIncludes(includePath, stack));
-                    expanded.Add($"#line {lineIndex + 2} \"{fullPath.Replace("\\", "\\\\")}\"");
-                    continue;
-                }
-            }
-
-            expanded.Add(line);
-        }
-
-        stack.Remove(fullPath);
-        return string.Join(Environment.NewLine, expanded);
-    }
-
-    private static string ResolveShaderIncludePath(string directory, string includeName)
-    {
-        var localPath = Path.GetFullPath(Path.Combine(directory, includeName));
-        if (File.Exists(localPath))
-        {
-            return localPath;
-        }
-
-        var normalized = includeName.Replace('\\', '/');
-        const string cultMathPrefix = "CultMath/";
-        if (normalized.StartsWith(cultMathPrefix, StringComparison.Ordinal))
-        {
-            var relative = normalized[cultMathPrefix.Length..].Replace('/', Path.DirectorySeparatorChar);
-            foreach (var start in new[] { directory, AppContext.BaseDirectory })
-            {
-                var current = Path.GetFullPath(start);
-                while (!string.IsNullOrWhiteSpace(current))
-                {
-                    var candidate = Path.Combine(current, "CultMath", "shaders", relative);
-                    if (File.Exists(candidate))
-                    {
-                        return candidate;
-                    }
-
-                    var parent = Path.GetDirectoryName(current);
-                    if (string.IsNullOrWhiteSpace(parent) || string.Equals(parent, current, StringComparison.OrdinalIgnoreCase))
-                    {
-                        break;
-                    }
-
-                    current = parent;
-                }
-            }
-        }
-
-        return localPath;
     }
 
     private readonly record struct D3D12PassContext(

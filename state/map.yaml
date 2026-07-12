@@ -80,6 +80,10 @@ invariants:
     docs/stateless-planetary-erosion-rendering-plan.md: direct evaluation is the
     oracle, while GPU-generated cube-sphere pages carry cached displacement,
     differential, mask, bound, and frequency-band evidence for rendering.
+  - CPU/GPU terrain parity is measured through a standalone D3D12 compute and
+    readback probe. Shader include expansion is owned by D3D12ShaderCompiler
+    and shared with the renderer; parity probes must not boot a swapchain or
+    duplicate CultMath equations.
   - The shared reservoir is a fractal domain reservoir, not a texel cache.
     Pixel rows are the current D3D12 execution projection of selected domain
     evidence. Area-domain contributors must carry selected subpixel or local

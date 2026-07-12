@@ -110,6 +110,11 @@ invariants:
     camera-basis convention, including clip-space Y inversion and normalized
     forward depth. Ordinary `LessEqual` depth owns front/back visibility;
     diagnostic `Always` depth is not a production path.
+  - Zyphos's legacy two-million-splat fractal reservoir is no longer a visible
+    planet writer. It previously ran after the raster patch and erased the
+    page-backed candidate. Fractal grammar and authored brushes remain inputs
+    to terrain composition; `PlanetarySurfacePages` plus the patch lowering own
+    the visible surface and corrected pixel depth.
   - Planetary page residency separates content from presentation state.
     ContentVersion changes only when the resident tile set changes;
     PresentationVersion carries arrival/departure weights without regenerating

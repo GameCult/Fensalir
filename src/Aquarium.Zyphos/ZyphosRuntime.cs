@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Globalization;
 using Aquarium.Engine;
 using Aquarium.Engine.Audio;
 using Aquarium.Engine.Input;
@@ -76,6 +77,15 @@ public sealed class ZyphosRuntime : IAquariumRuntime
 
     public ZyphosRuntime()
     {
+        if (float.TryParse(
+            Environment.GetEnvironmentVariable("AQUARIUM_ZYPHOS_ORBIT_DISTANCE"),
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var captureDistance))
+        {
+            orbitDistance = ClampOrbitDistance(captureDistance);
+            autoOrbit = false;
+        }
         var ui = new AquariumUiDocument()
             .Panel("Zyphos", 18.0f, 82.0f, 340.0f, panel =>
             {

@@ -74,6 +74,25 @@ float zyTerrainConservativeDistanceScale(float3 dir)
     return rsqrt(1.0 + totalSlopeBound * totalSlopeBound);
 }
 
+float zyTerrainPatchCaptureMargin(float3 dir)
+{
+    // The raster shell must contain unresolved relief between coarse vertices;
+    // otherwise the pixel refinement has no fragment on which to recover it.
+    float margin=0.03;
+    int pageCount=min((int)zy_planet_page_set[0].state.x,64);
+    [loop] for(int pageIndex=0;pageIndex<pageCount;pageIndex++)
+    {
+        float2 local; ZyPlanetPageMetadata metadata=zy_planet_page_metadata[pageIndex];
+        ZyPlanetPageSummary summary=zy_planet_page_summary[pageIndex];
+        if(!zyTerrainPageLocal(dir,metadata,local)||summary.metadata.w<=0.5)continue;
+        float blend=saturate(metadata.state.y);
+        margin+=max(abs(summary.bounds.x),abs(summary.bounds.y))*blend;
+        margin+=max(summary.bounds.w,0.0);
+    }
+    // Four 0.08 world-unit pixel corrections define the capture interval.
+    return min(margin,0.30);
+}
+
 float zySphericalField(float3 dir)
 {
     float latitude = asin(saturate(abs(dir.z)) * 2.0 - 1.0);

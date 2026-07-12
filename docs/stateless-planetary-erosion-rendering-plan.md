@@ -29,8 +29,10 @@ The production lowering is coarse cube-sphere raster patches with bounded
 per-pixel radial refinement against those pages. The general SDF renderer is a
 debug oracle, not the primary planet backend: enabling the full planet SDF has
 removed the D3D12 device under the current workload, while page generation with
-the planet SDF disabled completes cleanly. The patch draw is measured as cheap,
-but its candidate-buffer/depth integration is not yet visibly proven.
+the planet SDF disabled completes cleanly. The page-backed planet is visibly
+proven through the candidate reservoir with corrected pixel depth. Zyphos's
+legacy two-million-splat planet writer has been removed; it ran after the patch,
+erased the same surface, and consumed most of the former frame budget.
 
 ## Progress ledger
 
@@ -43,7 +45,7 @@ but its candidate-buffer/depth integration is not yet visibly proven.
 | 5. Page-backed intersection | Complete | Persistent page and summary buffers, conservative bounds/steps, bracketed refinement, radial hit parity |
 | 6. Quadtree transitions | In progress | Residual atlas and lifecycle probes complete; visible no-pop capture remains |
 | 7. Unified differentials/materials | Complete | World-gradient pages, composed radial normals, shared ridge/gully material evidence |
-| 8. Profiling/backend decision | In progress | Raster-patch lowering selected; page memory and patch GPU cost measured; visible integration and total-frame budget remain |
+| 8. Profiling/backend decision | In progress | Raster-patch lowering visible at 0.071 ms; 1.37 ms recorded GPU frame and 83.3 KiB roots; page-generation and traversal captures remain |
 
 “Complete” here means the phase exit criterion has evidence. It does not mean
 planetary-scale rendering as a whole is complete.
@@ -291,8 +293,12 @@ raster plus pixel refinement, no more than 1.0 ms amortized GPU for page
 generation, no more than 64 MiB resident terrain pages, and 16.67 ms total GPU
 for a 60 Hz frame. The first six-root measurement is 2,646 page samples,
 approximately 83.3 KiB resident, and about 0.04--0.05 ms for the patch draw.
-These are capacity signals, not acceptance evidence: the measured full GPU
-record remains roughly 24--26 ms and the current patch capture is black.
+The visible six-root capture measures approximately 0.071 ms for patch raster
+and refinement, 0.932 ms for the complete candidate pass, and 1.37 ms recorded
+GPU work, with 2,646 samples occupying about 83.3 KiB. The earlier 24--26 ms
+frame and black capture came from the obsolete fractal-splat planet writer,
+which repainted the patch and is no longer published by Zyphos. Page generation
+and descent/transition captures still require acceptance evidence.
 
 ## Verification matrix
 
@@ -329,15 +335,13 @@ Measure the actual visible path.
 Finish the raster-patch proof before expanding the quadtree or polishing the
 surface:
 
-1. Make a raw, finite patch candidate visible with depth forced out of the
-   equation; verify the same MRT layer consumed by the reservoir.
-2. Give front/back selection and depth one explicit owner. Remove diagnostic
-   `DepthFunc=Always` once the correct projected-depth contract is measured.
-3. Restore the four-step page-backed radial correction and finite fallbacks,
-   then compare its hit against the direct CPU/GPU oracle.
-4. Compile both patch stages in the shader test suite and capture orbit, LOD
-   midpoint, arrival, eviction, and ground views with the overlay hidden.
-5. Profile page generation, patch refinement, candidate/reservoir work, total
+1. Capture orbit, LOD midpoint, arrival, eviction, and ground views using the
+   deterministic camera-distance control.
+2. Compare the four-step page-backed hit against the direct CPU/GPU oracle at
+   patch interiors, silhouettes, cube edges, and transition midpoints.
+3. Complete the patch-stage compiler run and record its result separately from
+   runtime shader-build latency.
+4. Profile page generation, patch refinement, candidate/reservoir work, total
    GPU time, and page residency separately. The patch backend is accepted only
    when visible evidence and the named budgets agree.
 

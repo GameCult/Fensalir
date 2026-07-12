@@ -13,6 +13,7 @@ struct ZyPatchSceneOut
 {
     float4 colorTravel:SV_Target0; float4 metadata:SV_Target1; float4 control:SV_Target2;
     float4 reservoirGuide:SV_Target3; float overdraw:SV_Target4;
+    float depth:SV_Depth;
 };
 
 float3 zyPatchDirection(uint face,float2 local)
@@ -30,7 +31,8 @@ ZyPatchVertexOut D3D12ZyphosTerrainPatchVS(uint vertexId:SV_VertexID,uint instan
     float2 local=(float2(x,y)+offsets[corner])/(float)ZY_PATCH_CELLS;
     ZyPlanetPageMetadata root=zy_planet_page_metadata[instanceId]; float3 dir=zyPatchDirection((uint)root.address.x,local);
     SdfObject planet=sdfObjects[0]; float height=zyTerrainOffset(dir,planet); if(!isfinite(height))height=0.0;
-    float3 worldPosition=planet.centerRadius.xyz+zyRotateZ(dir,planet.state.y)*(planet.state.x+height);
+    float captureMargin=zyTerrainPatchCaptureMargin(dir);
+    float3 worldPosition=planet.centerRadius.xyz+zyRotateZ(dir,planet.state.y)*(planet.state.x+height+captureMargin);
     float3 forward,right,up; cameraBasis(cameraPosition,cameraTarget,forward,right,up);
     float3 delta=worldPosition-cameraPosition; float z=max(dot(delta,forward),0.0001);
     float2 frustumMin=float2(cameraFrustumXy.x,cameraFrustumXy.z),frustumMax=float2(cameraFrustumXy.y,cameraFrustumXy.w);
@@ -54,5 +56,7 @@ ZyPatchSceneOut D3D12ZyphosTerrainPatchPS(ZyPatchVertexOut input)
     SdfSurface surface=sdfSurface(p,0);
     ZyPatchSceneOut output; output.colorTravel=float4(shadeSdf(0.0,travel,p,normal,0,surface),min(travel,farDistance+1.0));
     output.metadata=float4(FIELD_ID_SDF_OBJECT_BASE,normal); output.control=float4(1,4.0/384.0,saturate(surface.temporalDetail),saturate(surface.reservoirConfidence));
-    output.reservoirGuide=float4(saturate(surface.reservoirConfidence),0,1,0); output.overdraw=1; return output;
+    float3 forward,right,up; cameraBasis(cameraPosition,cameraTarget,forward,right,up);
+    output.reservoirGuide=float4(saturate(surface.reservoirConfidence),0,1,0); output.overdraw=1;
+    output.depth=saturate(dot(p-cameraPosition,forward)/max(farDistance,0.0001)); return output;
 }

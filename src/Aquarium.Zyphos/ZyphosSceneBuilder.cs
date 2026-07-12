@@ -15,15 +15,10 @@ public static class ZyphosSceneBuilder
             TraceHeightFieldSurface = false,
             UseStarfieldBackground = true,
             HeightFieldBrushes = fractalPlan.HeightBrushes,
-            FractalReservoirField = new AquariumFractalReservoirField
-            {
-                SplatCount = 2_000_000,
-                SplatUpdatesPerFrame = 50_000,
-                ReservoirUpdatesPerPass = 20_000,
-                WorldCenterRadius = new Vector4(ZyphosUmbrosSystem.ZyphosCenter, ZyphosUmbrosSystem.ZyphosSurfaceRadius),
-                PriorityFocus = fractalPlan.ReservoirPriorityFocus,
-                ProgramTransforms = fractalPlan.GpuProgramTransforms,
-            },
+            // Planet visibility belongs to the page-backed raster patches.
+            // The fractal grammar still feeds authored terrain inputs, but its
+            // legacy splats may not independently repaint the same surface.
+            FractalReservoirField = AquariumFractalReservoirField.Empty,
             PlanetarySurfacePages = Environment.GetEnvironmentVariable("AQUARIUM_ZYPHOS_DISABLE_PLANETARY_PAGES") == "1"
                 ? AquariumPlanetarySurfacePageSet.Empty
                 : ZyphosPlanetarySurfacePages.ForCamera(cameraPosition, timeSeconds),

@@ -81,20 +81,15 @@ public sealed class ZyphosFractalTerrainTests
     }
 
     [Fact]
-    public void ZyphosSceneRequestsGpuFractalReservoirField()
+    public void ZyphosSceneLowersFractalTerrainIntoThePageBackedPlanetOwner()
     {
         var shot = ZyphosCameraComposer.Compose(ZyphosSpatialDomainCatalog.CanopyLeaf, 0.1f, 0.4f, 0.1f, 0.0f);
         var scene = ZyphosSceneBuilder.Build(1.0f, 0.9f, ZyphosFractalTerrain.BuildRenderPlan(shot));
 
-        Assert.True(scene.FractalReservoirField.HasInput);
-        Assert.Equal(2_000_000, scene.FractalReservoirField.SplatCount);
-        Assert.Equal(50_000, scene.FractalReservoirField.SplatUpdatesPerFrame);
-        Assert.Equal(20_000, scene.FractalReservoirField.ReservoirUpdatesPerPass);
-        Assert.Equal(2, scene.FractalReservoirField.CandidatesPerReservoirUpdate);
-        Assert.Equal(ZyphosUmbrosSystem.ZyphosSurfaceRadius, scene.FractalReservoirField.WorldCenterRadius.W);
-        Assert.True(scene.FractalReservoirField.PriorityFocus.Z > 0.0f);
-        Assert.True(scene.FractalReservoirField.PriorityFocus.W > 0.0f);
-        Assert.NotEmpty(scene.FractalReservoirField.ProgramTransforms);
+        Assert.False(scene.FractalReservoirField.HasInput);
+        Assert.True(scene.PlanetarySurfacePages.RenderCoarsePatches);
+        Assert.NotEmpty(scene.PlanetarySurfacePages.Pages);
+        Assert.NotEmpty(scene.HeightFieldBrushes);
     }
 
     [Fact]

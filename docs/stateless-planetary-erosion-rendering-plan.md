@@ -19,12 +19,18 @@ and a measured compute-shader parity surface. Zyphos can evaluate that field
 directly and can generate bordered cube-sphere pages whose overlapping samples
 and GPU-reduced summaries have dedicated tests.
 
-The renderer integration is in progress. A camera-selected root-face page can
-be generated into persistent D3D12 buffers and sampled by the planet shader,
-with direct field evaluation retained for missing pages. This is not yet the
-production planetary renderer: page summaries are not yet connected to the
-live intersection bounds, the resident set is not yet a quadtree, and stable
-parent/child residual transitions have not been built.
+The renderer now owns a persistent six-root page set plus camera-selected
+residual descendants. Pages carry height, world-space tangent gradient,
+material evidence, conservative summaries, and independent content and
+presentation versions. Parent/child arrival and eviction preserve one terrain
+field by fading only the child residual.
+
+The production lowering is coarse cube-sphere raster patches with bounded
+per-pixel radial refinement against those pages. The general SDF renderer is a
+debug oracle, not the primary planet backend: enabling the full planet SDF has
+removed the D3D12 device under the current workload, while page generation with
+the planet SDF disabled completes cleanly. The patch draw is measured as cheap,
+but its candidate-buffer/depth integration is not yet visibly proven.
 
 ## Progress ledger
 
@@ -37,7 +43,7 @@ parent/child residual transitions have not been built.
 | 5. Page-backed intersection | Complete | Persistent page and summary buffers, conservative bounds/steps, bracketed refinement, radial hit parity |
 | 6. Quadtree transitions | In progress | Residual atlas and lifecycle probes complete; visible no-pop capture remains |
 | 7. Unified differentials/materials | Complete | World-gradient pages, composed radial normals, shared ridge/gully material evidence |
-| 8. Profiling/backend decision | Not started | No frame-time or memory-budget claim yet |
+| 8. Profiling/backend decision | In progress | Raster-patch lowering selected; page memory and patch GPU cost measured; visible integration and total-frame budget remain |
 
 “Complete” here means the phase exit criterion has evidence. It does not mean
 planetary-scale rendering as a whole is complete.
@@ -97,9 +103,9 @@ planet seed + spherical position + client terrain policy
         quadtree residency + frequency-band LOD
                          |
                          v
-       conservative displaced-sphere intersection
+       coarse tessellated cube-sphere patches
                          |
-                bracketed height refine
+           bounded pixel radial refinement
                          |
                          v
        differential normal + material evaluation
@@ -133,16 +139,23 @@ does not depend on residency.
 
 ## Geometry and intersection
 
-The broad phase intersects a sphere expanded by the selected tile's maximum
-displacement. The near-surface phase refines the root against the page-backed
-radial height field. Tile summaries supply conservative bounds for stepping and
-culling.
+The primary backend rasterizes coarse cube-sphere quad patches. Vertex work
+places a conservative, low-frequency surface from the resident root and
+ancestor pages. The pixel shader follows the interpolated camera ray through a
+small fixed number of radial corrections against the complete resident page
+field, then evaluates the shared differential and material contract. Fine
+terrain therefore costs only covered pixels; the rasterizer supplies coverage,
+clipping, and coarse visibility instead of idling beside a full-screen marcher.
 
-The current general SDF path may remain the first backend, but near the terrain
-root it should use a bracketed method rather than assume an unproven global
-Lipschitz bound. A later tessellated cube-sphere or mesh-shader backend may
-render opaque terrain more cheaply. Both consume the same pages and cannot
-redefine terrain.
+Patch selection and tessellation use page-summary projected error. Fine bands
+do not force matching geometric subdivision unless their displacement error can
+move the silhouette or exceed the pixel-refinement capture range. Summary
+bounds must make the coarse patch conservative so the true surface cannot fall
+outside its rasterized coverage.
+
+The general SDF path remains a direct verification oracle and diagnostic view.
+It may use expanded-sphere broad phase and bracketed radial refinement, but it
+does not own production visibility or terrain truth.
 
 ## Differential and normal contract
 
@@ -264,10 +277,22 @@ Exit: geometry, lighting, materials, and CPU queries agree on one surface.
 
 - Measure per-ray calls, octave cost, page generation, occupancy, residency,
   cache hit rate, and frame cost from orbit to ground.
-- Compare page-backed SDF rendering with tessellated or mesh-shader patches.
+- Render coarse tessellated cube-sphere patches and perform a fixed, bounded
+  page-backed radial refinement in the pixel shader.
+- Use the SDF backend only as a correctness oracle and diagnostic comparison.
+- Prove candidate-buffer, depth, front/back-face, and reservoir ownership with
+  an actual visible capture before tuning appearance.
 - Keep one terrain contract regardless of backend.
 
 Exit: the chosen lowering fits named frame and memory budgets.
+
+Initial budgets at 640 by 360 are: no more than 1.0 ms GPU for terrain patch
+raster plus pixel refinement, no more than 1.0 ms amortized GPU for page
+generation, no more than 64 MiB resident terrain pages, and 16.67 ms total GPU
+for a 60 Hz frame. The first six-root measurement is 2,646 page samples,
+approximately 83.3 KiB resident, and about 0.04--0.05 ms for the patch draw.
+These are capacity signals, not acceptance evidence: the measured full GPU
+record remains roughly 24--26 ms and the current patch capture is black.
 
 ## Verification matrix
 
@@ -301,22 +326,20 @@ Measure the actual visible path.
 
 ## Immediate next cut
 
-Phase 6 replaces the single camera-face page with a projected-error resident
-quadtree:
+Finish the raster-patch proof before expanding the quadtree or polishing the
+surface:
 
-1. Define one page identity containing field version, parameter identity, tile,
-   and represented wavelength band.
-2. Keep all six root pages resident so the root fallback is stable across
-   camera-face changes.
-3. Select a quadtree cut from projected geometric error and current residency;
-   requests do not become visible until their page and summary are complete.
-4. Generate each child as only the newly resolvable residual band over its
-   parent's identical low-frequency field.
-5. Blend residual weight during arrival and eviction. The parent remains the
-   terrain owner until the child reaches full weight, and no path blends two
-   independent full-spectrum heights.
-6. Probe descent, lateral edge/corner crossing, teleport, reload, page arrival,
-   and eviction at transition midpoint as well as settled state.
+1. Make a raw, finite patch candidate visible with depth forced out of the
+   equation; verify the same MRT layer consumed by the reservoir.
+2. Give front/back selection and depth one explicit owner. Remove diagnostic
+   `DepthFunc=Always` once the correct projected-depth contract is measured.
+3. Restore the four-step page-backed radial correction and finite fallbacks,
+   then compare its hit against the direct CPU/GPU oracle.
+4. Compile both patch stages in the shader test suite and capture orbit, LOD
+   midpoint, arrival, eviction, and ground views with the overlay hidden.
+5. Profile page generation, patch refinement, candidate/reservoir work, total
+   GPU time, and page residency separately. The patch backend is accepted only
+   when visible evidence and the named budgets agree.
 
 ## Sources
 

@@ -34,7 +34,7 @@ parent/child residual transitions have not been built.
 | 2. CPU/GPU parity | Complete | Compute readback comparison over 2,052 samples |
 | 3. Physical bands | Complete | Wavelength selection, fractional terminal octave, unresolved bound |
 | 4. GPU pages | Complete | Spherical borders, sibling seam tests, GPU summary reduction |
-| 5. Page-backed intersection | In progress | Persistent page generation and direct fallback boot; conservative live bounds remain |
+| 5. Page-backed intersection | Complete | Persistent page and summary buffers, conservative bounds/steps, bracketed refinement, radial hit parity |
 | 6. Quadtree transitions | Not started | Parent/child residual ownership still to implement |
 | 7. Unified differentials/materials | Not started | Final composed derivative contract still to implement |
 | 8. Profiling/backend decision | Not started | No frame-time or memory-budget claim yet |
@@ -59,11 +59,13 @@ planetary-scale rendering as a whole is complete.
 - **Forbidden writers:** face-local terrain noise, tile-local seeds, seam repair
   passes, renderer-only erosion logic, and caches that change terrain when
   evicted.
-- **Shared path:** direct shader evaluation, CPU page baking, GPU page baking,
+- **Shared path:** direct compute evaluation, CPU page baking, GPU page baking,
   reload, and LOD transitions evaluate the same field contract.
 - **Deletion line:** remove direct full-spectrum erosion from the repeated
   sphere-tracing loop once page-backed geometry proves equivalent. Keep direct
-  evaluation only as a bounded fallback and verification oracle.
+  evaluation as a verification oracle. The visible fallback is the nearest
+  resident ancestor band; the root fallback is the uneroded base field until a
+  root page is available.
 
 ## Invariants
 
@@ -234,7 +236,8 @@ Exit: independently generated overlapping pages produce identical samples.
 - Add page lookup to the Zyphos intersection path.
 - Use min/max summaries for broad-phase culling and conservative stepping.
 - Add bracketed near-surface root refinement.
-- Preserve direct evaluation as oracle and missing-page fallback.
+- Preserve direct compute evaluation as the oracle. Use the nearest resident
+  ancestor, or the base field before root residency, as the visible fallback.
 - Remove repeated full-spectrum erosion from page-backed sphere tracing.
 
 Exit: direct and page-backed hits agree within declared page-filter error.
@@ -298,24 +301,22 @@ Measure the actual visible path.
 
 ## Immediate next cut
 
-Finish Phase 5 before expanding residency:
+Phase 6 replaces the single camera-face page with a projected-error resident
+quadtree:
 
-1. Dispatch the existing GPU page-summary reduction into a persistent summary
-   buffer beside the live page.
-2. Bind displacement bounds, unresolved error, and maximum slope to the planet
-   intersection shader.
-3. Use those values for expanded-sphere culling and a sign-preserving
-   conservative distance bound. Keep the existing bracketed sign-change
-   refinement as the near-root authority.
-4. Retain direct evaluation only as the missing-page fallback and verification
-   oracle.
-5. Prove direct and page-backed hit agreement within the declared page-filter
-   error, then exercise page absence, arrival, eviction, and field-version
-   replacement as a timeline.
-
-Only after that gate should the resident set become a projected-error quadtree.
-The next authority change is parent low-frequency terrain plus child residual
-bands; it is not “more pages” with independent full-spectrum terrain.
+1. Define one page identity containing field version, parameter identity, tile,
+   and represented wavelength band.
+2. Keep all six root pages resident so the root fallback is stable across
+   camera-face changes.
+3. Select a quadtree cut from projected geometric error and current residency;
+   requests do not become visible until their page and summary are complete.
+4. Generate each child as only the newly resolvable residual band over its
+   parent's identical low-frequency field.
+5. Blend residual weight during arrival and eviction. The parent remains the
+   terrain owner until the child reaches full weight, and no path blends two
+   independent full-spectrum heights.
+6. Probe descent, lateral edge/corner crossing, teleport, reload, page arrival,
+   and eviction at transition midpoint as well as settled state.
 
 ## Sources
 

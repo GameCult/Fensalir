@@ -14,6 +14,10 @@
 #define SDF_TRACE_MAX_STEP_RADIUS_SCALE 0.012
 #endif
 
+#ifndef SDF_TRACE_BOUND_RADIUS
+#define SDF_TRACE_BOUND_RADIUS(sdfObject) max((sdfObject).centerRadius.w * 1.42, 0.001)
+#endif
+
 float3 sdfNormal(float3 p, int sdfIndex)
 {
     float epsilon = 0.006;
@@ -50,7 +54,7 @@ bool refineSdfHit(float3 origin, float3 direction, int sdfIndex, float lowTravel
 bool traceSdf(float3 origin, float3 direction, int sdfIndex, out float travel, out float3 normal, out SdfSurface surface, out float stepCount)
 {
     SdfObject sdfObject = sdfObjects[sdfIndex];
-    float boundRadius = max(sdfObject.centerRadius.w * 1.42, 0.001);
+    float boundRadius = SDF_TRACE_BOUND_RADIUS(sdfObject);
     if (!traceSphere(origin, direction, sdfObject.centerRadius.xyz, boundRadius, travel))
     {
         normal = 0.0;

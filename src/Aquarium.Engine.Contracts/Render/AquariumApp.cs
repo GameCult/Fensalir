@@ -156,6 +156,18 @@ public sealed class AquariumShaderBuilder(AquariumShaderManifest manifest)
         return this;
     }
 
+    public AquariumShaderBuilder PlanetarySurfacePage(string path)
+    {
+        manifest.PlanetarySurfacePage(path);
+        return this;
+    }
+
+    public AquariumShaderBuilder PlanetarySurfacePageSummary(string path)
+    {
+        manifest.PlanetarySurfacePageSummary(path);
+        return this;
+    }
+
     public AquariumShaderBuilder Include(string path)
     {
         manifest.Include(path);

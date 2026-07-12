@@ -70,7 +70,7 @@ public sealed class ZyphosRuntime : IAquariumRuntime
                 shot.CameraTarget,
                 timeSeconds,
                 Vector2.Zero,
-                ZyphosSceneBuilder.Build(timeSeconds, previousTimeSeconds, fractalPlan));
+                ZyphosSceneBuilder.Build(timeSeconds, previousTimeSeconds, shot.CameraPosition, fractalPlan));
         }
     }
 

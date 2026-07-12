@@ -14,6 +14,10 @@ public static class ZyphosRenderPlan
         var app = new AquariumApp();
         app.Shaders
             .Core("D3D12HeightField.hlsl", "D3D12Scene.hlsl", "D3D12Post.hlsl")
+            .PlanetarySurfacePage("D3D12ZyphosTerrainPage.hlsl")
+            .PlanetarySurfacePageSummary("D3D12ZyphosTerrainPageSummary.hlsl")
+            .SdfShader("D3D12ZyphosPlanet.hlsl")
+            .SdfShader("D3D12ZyphosUmbros.hlsl")
             .SdfShader("D3D12ZyphosStar.hlsl");
 
         var heightField = app.RenderTargets.Create("height-field")

@@ -216,8 +216,11 @@ float zyPebbleCluster(float3 dir)
 float zyTerrainOffset(float3 dir, SdfObject sdfObject)
 {
     float field = zySphericalField(dir);
+    float4 pageHeightGradient; float2 pageMasks;
     float sampleSpacing = max(viewRadius / max(resolution.y, 1.0) * 2.0, max(sdfObject.state.x, 0.001) / 8192.0);
-    float erosionHeight = zyAdvancedErosion(dir, field, max(sdfObject.state.x, 0.001), sampleSpacing).x;
+    float erosionHeight = zyTrySampleErosionPage(dir,pageHeightGradient,pageMasks)
+        ? pageHeightGradient.x
+        : 0.0;
     float seaLevel = sdfObject.state.z;
     float land = smoothstep(seaLevel - 0.04, seaLevel + 0.08, field);
     float mountain = pow(saturate(field - seaLevel), 1.65);
@@ -234,7 +237,18 @@ float sdfDistance(float3 p, int sdfIndex)
     float planetRadius = max(sdfObject.state.x, 0.001);
     float3 local = p - sdfObject.centerRadius.xyz;
     float3 dir = zyPlanetDir(local, sdfObject);
-    return length(local) - (planetRadius + zyTerrainOffset(dir, sdfObject));
+    float radialDistance = length(local) - (planetRadius + zyTerrainOffset(dir, sdfObject));
+    return radialDistance * zyTerrainConservativeDistanceScale(dir);
+}
+
+float zyPlanetTraceBoundRadius(SdfObject sdfObject)
+{
+    float legacyBound = max(sdfObject.centerRadius.w * 1.42, 0.001);
+    ZyPlanetPageSummary summary = zy_planet_page_summary[0];
+    ZyPlanetPageMetadata metadata = zy_planet_page_metadata[0];
+    if (metadata.state.x < 0.5 || summary.metadata.w < 0.5) return legacyBound;
+    float erosionExtent = max(abs(summary.bounds.x), abs(summary.bounds.y)) + max(summary.bounds.w, 0.0);
+    return max(legacyBound, max(sdfObject.state.x, 0.001) + erosionExtent);
 }
 
 SdfSurface sdfSurface(float3 p, int sdfIndex)
@@ -301,4 +315,5 @@ float3 shadeSdf(float2 uv, float travel, float3 p, float3 normal, int sdfIndex, 
     return shadeSdfPbr(p, normal, surface) * daylight + city + atmosphere + eclipseTint;
 }
 
+#define SDF_TRACE_BOUND_RADIUS(sdfObject) zyPlanetTraceBoundRadius(sdfObject)
 #include "D3D12SdfProxy.hlsli"

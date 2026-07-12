@@ -31,6 +31,13 @@ public static class PlanetarySurfacePageSampling
         if ((uint)storageX >= request.StorageSize || (uint)storageY >= request.StorageSize) throw new ArgumentOutOfRangeException();
         var localU = (storageX - request.BorderSize) / (double)(request.InteriorSize - 1);
         var localV = (storageY - request.BorderSize) / (double)(request.InteriorSize - 1);
+        return DirectionAtLocal(request, localU, localV);
+    }
+
+    public static Vector3 DirectionAtLocal(PlanetarySurfacePageRequest request, double localU, double localV)
+    {
+        request.Validate();
+        if (!double.IsFinite(localU) || !double.IsFinite(localV)) throw new ArgumentOutOfRangeException();
         var count = request.Tile.AxisTileCount;
         var faceU = -1.0 + 2.0 * (request.Tile.X + localU) / count;
         var faceV = -1.0 + 2.0 * (request.Tile.Y + localV) / count;

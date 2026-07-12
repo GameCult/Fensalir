@@ -36,6 +36,10 @@ public sealed class AquariumShaderManifest
 
     public string FractalSplatRenderShader { get; private set; } = "D3D12FractalSplatRender.hlsl";
 
+    public string PlanetarySurfacePageShader { get; private set; } = "D3D12PlanetarySurfacePage.hlsl";
+
+    public string PlanetarySurfacePageSummaryShader { get; private set; } = "D3D12PlanetarySurfacePageSummary.hlsl";
+
     public string PostShader { get; private set; } = "D3D12Post.hlsl";
 
     public string SdfCommonInclude { get; private set; } = "D3D12SdfCommon.hlsli";
@@ -89,6 +93,18 @@ public sealed class AquariumShaderManifest
     public AquariumShaderManifest FractalSplatRender(string path)
     {
         FractalSplatRenderShader = path;
+        return this;
+    }
+
+    public AquariumShaderManifest PlanetarySurfacePage(string path)
+    {
+        PlanetarySurfacePageShader = path;
+        return this;
+    }
+
+    public AquariumShaderManifest PlanetarySurfacePageSummary(string path)
+    {
+        PlanetarySurfacePageSummaryShader = path;
         return this;
     }
 
@@ -499,6 +515,8 @@ public sealed class AquariumSceneState
 
     public AquariumFractalReservoirField FractalReservoirField { get; init; } = AquariumFractalReservoirField.Empty;
 
+    public AquariumPlanetarySurfacePageSet PlanetarySurfacePages { get; init; } = AquariumPlanetarySurfacePageSet.Empty;
+
     public AquariumGpuSensorFrame GpuSensorFrame { get; init; } = AquariumGpuSensorFrame.Empty;
 
     public AquariumAcousticFieldFrame AcousticFieldFrame { get; init; } = AquariumAcousticFieldFrame.Empty;
@@ -514,6 +532,22 @@ public sealed class AquariumSceneState
     public AquariumBokushoBrushFrame BokushoBrushFrame { get; init; } = AquariumBokushoBrushFrame.Empty;
 
     public AquariumSplineFrame SplineFrame { get; init; } = AquariumSplineFrame.Empty;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public readonly record struct AquariumPlanetarySurfacePageInput(Vector4 DirectionRadius, Vector4 Sampling);
+
+[StructLayout(LayoutKind.Sequential)]
+public readonly record struct AquariumPlanetarySurfacePageMetadata(Vector4 Address, Vector4 Layout, Vector4 Bounds, Vector4 State);
+
+public sealed class AquariumPlanetarySurfacePageSet
+{
+    public static AquariumPlanetarySurfacePageSet Empty { get; } = new();
+    public string GeneratorEntryPoint { get; init; } = "D3D12PlanetaryTerrainPageCS";
+    public long Version { get; init; }
+    public IReadOnlyList<AquariumPlanetarySurfacePageInput> Samples { get; init; } = [];
+    public AquariumPlanetarySurfacePageMetadata Metadata { get; init; }
+    public bool HasInput => Version > 0 && Samples.Count > 0;
 }
 
 public sealed class AquariumBokushoBrushFrame

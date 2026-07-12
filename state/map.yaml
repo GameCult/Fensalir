@@ -93,6 +93,18 @@ invariants:
     band selection. Per-tile projection distortion is summary evidence only;
     it may not change terrain at a shared boundary. Page borders evaluate the
     spherical field beyond tile bounds without reading neighbor residency.
+  - D3D12 owns persistent planetary page input, output, metadata, and summary
+    buffers. Client compute shaders generate the page and reduce min/max
+    displacement, maximum slope, and unresolved error before SDF proxies read
+    them at t81-t83. Zyphos registers planet, Umbros, and star proxies in object
+    index order and publishes all three SDF objects from one scene builder.
+  - Advanced erosion is not evaluated inside the pixel-shader sphere-trace
+    loop. Shader Model 5 cannot carry its nested dynamic octave loops there,
+    and doing so would multiply the full filter by every ray step. Missing
+    pages therefore lower to the nearest resident ancestor (the base field at
+    root); direct CultMath evaluation remains the CPU/compute verification
+    oracle. Page summaries expand broad-phase bounds and scale radial steps,
+    while the shared SDF proxy owns bracketed sign-change refinement.
   - The shared reservoir is a fractal domain reservoir, not a texel cache.
     Pixel rows are the current D3D12 execution projection of selected domain
     evidence. Area-domain contributors must carry selected subpixel or local

@@ -3,6 +3,59 @@
 
 #include "CultMath/CultMath.hlsl"
 
+struct ZyPlanetPageOutput { float4 height_gradient; float4 masks; };
+struct ZyPlanetPageMetadata { float4 address; float4 layout; float4 bounds; float4 state; };
+struct ZyPlanetPageSummary { float4 bounds; float4 metadata; };
+StructuredBuffer<ZyPlanetPageOutput> zy_planet_page : register(t81);
+StructuredBuffer<ZyPlanetPageMetadata> zy_planet_page_metadata : register(t82);
+StructuredBuffer<ZyPlanetPageSummary> zy_planet_page_summary : register(t83);
+
+static const float ZY_TERRAIN_NON_EROSION_SLOPE_BOUND = 8.0;
+
+float2 zyTerrainCubeFaceUv(float3 dir, out float face)
+{
+    float3 a=abs(dir);
+    if(a.x>=a.y&&a.x>=a.z){if(dir.x>=0){face=0;return float2(-dir.z,dir.y)/a.x;}face=1;return float2(dir.z,dir.y)/a.x;}
+    if(a.y>=a.z){if(dir.y>=0){face=2;return float2(dir.x,-dir.z)/a.y;}face=3;return float2(dir.x,dir.z)/a.y;}
+    if(dir.z>=0){face=4;return dir.xy/a.z;}face=5;return float2(-dir.x,dir.y)/a.z;
+}
+
+bool zyTrySampleErosionPage(float3 dir, out float4 heightGradient, out float2 masks)
+{
+    ZyPlanetPageMetadata metadata=zy_planet_page_metadata[0]; heightGradient=0; masks=0;
+    if(metadata.state.x<0.5)return false;
+    float face; float2 uv=zyTerrainCubeFaceUv(dir,face); if(abs(face-metadata.address.x)>0.25)return false;
+    float axisTiles=exp2(metadata.address.y); float2 local=(uv*0.5+0.5)*axisTiles-metadata.address.zw;
+    if(any(local<0.0)||any(local>1.0))return false;
+    float storage=metadata.layout.y, interior=metadata.layout.z, border=metadata.layout.w;
+    float2 texel=local*(interior-1.0)+border; float2 base=floor(texel); float2 fraction=frac(texel);
+    int2 p0=(int2)clamp(base,0.0,storage-1.0); int2 p1=min(p0+1,(int2)(storage-1.0));
+    ZyPlanetPageOutput a=zy_planet_page[p0.y*(int)storage+p0.x], b=zy_planet_page[p0.y*(int)storage+p1.x];
+    ZyPlanetPageOutput c=zy_planet_page[p1.y*(int)storage+p0.x], d=zy_planet_page[p1.y*(int)storage+p1.x];
+    heightGradient=lerp(lerp(a.height_gradient,b.height_gradient,fraction.x),lerp(c.height_gradient,d.height_gradient,fraction.x),fraction.y);
+    masks=lerp(lerp(a.masks.xy,b.masks.xy,fraction.x),lerp(c.masks.xy,d.masks.xy,fraction.x),fraction.y); return true;
+}
+
+bool zyTryGetErosionPageSummary(float3 dir, out ZyPlanetPageSummary summary)
+{
+    summary = zy_planet_page_summary[0];
+    ZyPlanetPageMetadata metadata = zy_planet_page_metadata[0];
+    if (metadata.state.x < 0.5 || summary.metadata.w < 0.5) return false;
+    float face; float2 uv = zyTerrainCubeFaceUv(dir, face);
+    if (abs(face - metadata.address.x) > 0.25) return false;
+    float axisTiles = exp2(metadata.address.y);
+    float2 local = (uv * 0.5 + 0.5) * axisTiles - metadata.address.zw;
+    return all(local >= 0.0) && all(local <= 1.0);
+}
+
+float zyTerrainConservativeDistanceScale(float3 dir)
+{
+    ZyPlanetPageSummary summary;
+    float erosionSlope = zyTryGetErosionPageSummary(dir, summary) ? summary.bounds.z : 0.0;
+    float totalSlopeBound = ZY_TERRAIN_NON_EROSION_SLOPE_BOUND + max(erosionSlope, 0.0);
+    return rsqrt(1.0 + totalSlopeBound * totalSlopeBound);
+}
+
 float zySphericalField(float3 dir)
 {
     float latitude = asin(saturate(abs(dir.z)) * 2.0 - 1.0);

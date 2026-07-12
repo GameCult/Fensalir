@@ -11,6 +11,7 @@ float zyPageErosion(float3 direction, float radius, float spacing)
     float3 dir=normalize(direction); return zyAdvancedErosion(dir,zySphericalField(dir),radius,spacing).x;
 }
 
+
 [numthreads(64,1,1)]
 void D3D12ZyphosTerrainPageCS(uint3 id : SV_DispatchThreadID)
 {

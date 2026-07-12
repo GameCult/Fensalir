@@ -89,6 +89,10 @@ invariants:
     fractionally and reports its omitted-height bound; Zyphos lowers the planar
     reference filter through smooth planet-space triplanar charts, not cube-face
     terrain ownership.
+  - Planetary surface pages use one level-global nominal angular footprint for
+    band selection. Per-tile projection distortion is summary evidence only;
+    it may not change terrain at a shared boundary. Page borders evaluate the
+    spherical field beyond tile bounds without reading neighbor residency.
   - The shared reservoir is a fractal domain reservoir, not a texel cache.
     Pixel rows are the current D3D12 execution projection of selected domain
     evidence. Area-domain contributors must carry selected subpixel or local

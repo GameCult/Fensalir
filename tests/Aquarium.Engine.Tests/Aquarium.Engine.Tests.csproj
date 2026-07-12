@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Aquarium.Engine\Aquarium.Engine.csproj" />
+    <ProjectReference Include="..\..\src\Aquarium.Engine.Fractal\Aquarium.Engine.Fractal.csproj" />
   </ItemGroup>
 
 </Project>

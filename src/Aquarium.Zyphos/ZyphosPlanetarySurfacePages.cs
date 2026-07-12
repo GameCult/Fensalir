@@ -24,6 +24,12 @@ internal static class ZyphosPlanetarySurfacePages
         lastTimeSeconds=float.NegativeInfinity;
     }
 
+    internal static void PrimeForCapture(Vector3 cameraPosition, float pageAgeSeconds)
+    {
+        Reset();
+        _ = ForCamera(cameraPosition, -Math.Max(pageAgeSeconds, 0.0f));
+    }
+
     public static AquariumPlanetarySurfacePageSet ForCamera(Vector3 cameraPosition, float timeSeconds)
     {
         if (timeSeconds < lastTimeSeconds)
@@ -69,6 +75,7 @@ internal static class ZyphosPlanetarySurfacePages
             PresentationVersion = presentationVersion,
             Pages = pages,
             RenderCoarsePatches = true,
+            PatchCells = 64,
         };
     }
 

@@ -88,6 +88,7 @@ public sealed class ZyphosFractalTerrainTests
 
         Assert.False(scene.FractalReservoirField.HasInput);
         Assert.True(scene.PlanetarySurfacePages.RenderCoarsePatches);
+        Assert.Equal(64, scene.PlanetarySurfacePages.PatchCells);
         Assert.NotEmpty(scene.PlanetarySurfacePages.Pages);
         Assert.NotEmpty(scene.HeightFieldBrushes);
     }

@@ -115,6 +115,14 @@ invariants:
     page-backed candidate. Fractal grammar and authored brushes remain inputs
     to terrain composition; `PlanetarySurfacePages` plus the patch lowering own
     the visible surface and corrected pixel depth.
+  - Patch density is explicit page-set policy, carried to GPU in page-set state
+    rather than hardcoded independently in C# and HLSL. Zyphos currently uses a
+    64 by 64 grid per root face; fine relief remains a four-step per-pixel page
+    refinement. Raster normals use derivatives of the refined world position,
+    while CPU/direct queries retain the analytic planet-space differential.
+    `AQUARIUM_PROFILE_PLANETARY_PAGES=1` deliberately regenerates unchanged
+    pages so their one-shot GPU cost can be measured; production content-version
+    caching remains authoritative.
   - Planetary page residency separates content from presentation state.
     ContentVersion changes only when the resident tile set changes;
     PresentationVersion carries arrival/departure weights without regenerating

@@ -564,6 +564,7 @@ public sealed class AquariumPlanetarySurfacePageSet
     public long PresentationVersion { get; init; }
     public IReadOnlyList<AquariumPlanetarySurfacePage> Pages { get; init; } = [];
     public bool RenderCoarsePatches { get; init; }
+    public int PatchCells { get; init; } = 16;
     public int SampleCount => Pages.Sum(page => page.Samples.Count);
     public bool HasInput => ContentVersion != 0 && Pages.Count > 0 && Pages.All(page => page.HasInput);
 }

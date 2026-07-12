@@ -43,9 +43,9 @@ erased the same surface, and consumed most of the former frame budget.
 | 3. Physical bands | Complete | Wavelength selection, fractional terminal octave, unresolved bound |
 | 4. GPU pages | Complete | Spherical borders, sibling seam tests, GPU summary reduction |
 | 5. Page-backed intersection | Complete | Persistent page and summary buffers, conservative bounds/steps, bracketed refinement, radial hit parity |
-| 6. Quadtree transitions | In progress | Residual atlas and lifecycle probes complete; visible no-pop capture remains |
+| 6. Quadtree transitions | In progress | Exact 0/0.5/1 arrival captures and lifecycle probes complete; visible edge/eviction traversal remains |
 | 7. Unified differentials/materials | Complete | World-gradient pages, composed radial normals, shared ridge/gully material evidence |
-| 8. Profiling/backend decision | In progress | Raster-patch lowering visible at 0.071 ms; 1.37 ms recorded GPU frame and 83.3 KiB roots; page-generation and traversal captures remain |
+| 8. Profiling/backend decision | Complete | Orbit-to-ground raster path, page generation, residency, and total frame fit named budgets |
 
 “Complete” here means the phase exit criterion has evidence. It does not mean
 planetary-scale rendering as a whole is complete.
@@ -179,6 +179,12 @@ Cube-face UV differences are not the visible-normal authority. Authored
 residuals publish compatible derivatives or use the same bounded sampling
 contract.
 
+The raster lowering derives its visible normal from screen derivatives of the
+four-step refined world position, oriented toward the camera with a radial
+fallback. This differentiates the final composed surface without repeating five
+base-field evaluations per pixel. CPU queries and the direct oracle retain the
+analytic planet-space differential contract.
+
 ## LOD and frequency bands
 
 The terrain is one spectrum evaluated through different filters, not separate
@@ -295,10 +301,13 @@ for a 60 Hz frame. The first six-root measurement is 2,646 page samples,
 approximately 83.3 KiB resident, and about 0.04--0.05 ms for the patch draw.
 The visible six-root capture measures approximately 0.071 ms for patch raster
 and refinement, 0.932 ms for the complete candidate pass, and 1.37 ms recorded
-GPU work, with 2,646 samples occupying about 83.3 KiB. The earlier 24--26 ms
+GPU work, with 2,646 samples occupying about 83.3 KiB. At the exterior ground
+camera, eleven pages occupy 152.6 KiB, repeated page generation measures 0.624
+ms, the 64 by 64 patch measures 0.799 ms, and recorded GPU work is 1.649 ms.
+The earlier 24--26 ms
 frame and black capture came from the obsolete fractal-splat planet writer,
 which repainted the patch and is no longer published by Zyphos. Page generation
-and descent/transition captures still require acceptance evidence.
+and the selected raster lowering therefore fit the named budgets.
 
 ## Verification matrix
 
@@ -335,8 +344,8 @@ Measure the actual visible path.
 Finish the raster-patch proof before expanding the quadtree or polishing the
 surface:
 
-1. Capture orbit, LOD midpoint, arrival, eviction, and ground views using the
-   deterministic camera-distance control.
+1. Capture cube-edge lateral traversal and a frozen residual-eviction sequence;
+   arrival, orbit, and exterior-ground evidence are complete.
 2. Compare the four-step page-backed hit against the direct CPU/GPU oracle at
    patch interiors, silhouettes, cube edges, and transition midpoints.
 3. Complete the patch-stage compiler run and record its result separately from

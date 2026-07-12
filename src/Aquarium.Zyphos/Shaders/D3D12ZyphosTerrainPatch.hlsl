@@ -1,8 +1,5 @@
 #include "D3D12ZyphosPlanet.hlsl"
 
-static const uint ZY_PATCH_CELLS = 16u;
-static const uint ZY_PATCH_VERTICES = ZY_PATCH_CELLS * ZY_PATCH_CELLS * 6u;
-
 struct ZyPatchVertexOut
 {
     float4 position : SV_Position;
@@ -26,9 +23,10 @@ float3 zyPatchDirection(uint face,float2 local)
 
 ZyPatchVertexOut D3D12ZyphosTerrainPatchVS(uint vertexId:SV_VertexID,uint instanceId:SV_InstanceID)
 {
-    uint cell=vertexId/6u,corner=vertexId%6u; uint x=cell%ZY_PATCH_CELLS,y=cell/ZY_PATCH_CELLS;
+    uint patchCells=(uint)max(zy_planet_page_set[0].state.y,1.0);
+    uint cell=vertexId/6u,corner=vertexId%6u; uint x=cell%patchCells,y=cell/patchCells;
     uint2 offsets[6]={uint2(0,0),uint2(1,0),uint2(1,1),uint2(0,0),uint2(1,1),uint2(0,1)};
-    float2 local=(float2(x,y)+offsets[corner])/(float)ZY_PATCH_CELLS;
+    float2 local=(float2(x,y)+offsets[corner])/(float)patchCells;
     ZyPlanetPageMetadata root=zy_planet_page_metadata[instanceId]; float3 dir=zyPatchDirection((uint)root.address.x,local);
     SdfObject planet=sdfObjects[0]; float height=zyTerrainOffset(dir,planet); if(!isfinite(height))height=0.0;
     float captureMargin=zyTerrainPatchCaptureMargin(dir);
@@ -52,7 +50,10 @@ ZyPatchSceneOut D3D12ZyphosTerrainPatchPS(ZyPatchVertexOut input)
     }
     if(!all(isfinite(p)))p=coarsePosition;
     float travel=length(p-cameraPosition); if(!isfinite(travel)||travel<=0.0||travel>farDistance)discard;
-    float3 radial=normalize(p-planet.centerRadius.xyz); float3 normal=zyPlanetSurfaceNormal(p,0); if(!all(isfinite(normal))||dot(normal,normal)<0.25)normal=radial;
+    float3 radial=normalize(p-planet.centerRadius.xyz);
+    float3 normal=cross(ddy(p),ddx(p));
+    if(!all(isfinite(normal))||dot(normal,normal)<1.0e-10)normal=radial; else normal=normalize(normal);
+    if(dot(normal,cameraPosition-p)<0.0)normal=-normal;
     SdfSurface surface=sdfSurface(p,0);
     ZyPatchSceneOut output; output.colorTravel=float4(shadeSdf(0.0,travel,p,normal,0,surface),min(travel,farDistance+1.0));
     output.metadata=float4(FIELD_ID_SDF_OBJECT_BASE,normal); output.control=float4(1,4.0/384.0,saturate(surface.temporalDetail),saturate(surface.reservoirConfidence));

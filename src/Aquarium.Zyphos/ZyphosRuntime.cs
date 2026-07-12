@@ -77,6 +77,17 @@ public sealed class ZyphosRuntime : IAquariumRuntime
 
     public ZyphosRuntime()
     {
+        var captureDomain = Environment.GetEnvironmentVariable("AQUARIUM_ZYPHOS_DOMAIN");
+        if (!string.IsNullOrWhiteSpace(captureDomain))
+        {
+            var domain = ZyphosSpatialDomainCatalog.Domains.FirstOrDefault(candidate =>
+                string.Equals(candidate.Key.Value, captureDomain, StringComparison.OrdinalIgnoreCase));
+            if (domain is not null)
+            {
+                selectedDomainKey = domain.Key;
+                autoOrbit = false;
+            }
+        }
         if (float.TryParse(
             Environment.GetEnvironmentVariable("AQUARIUM_ZYPHOS_ORBIT_DISTANCE"),
             NumberStyles.Float,
@@ -85,6 +96,16 @@ public sealed class ZyphosRuntime : IAquariumRuntime
         {
             orbitDistance = ClampOrbitDistance(captureDistance);
             autoOrbit = false;
+        }
+        if (float.TryParse(
+            Environment.GetEnvironmentVariable("AQUARIUM_ZYPHOS_PAGE_AGE_SECONDS"),
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var pageAgeSeconds))
+        {
+            timeScale = 0.0f;
+            autoOrbit = false;
+            ZyphosPlanetarySurfacePages.PrimeForCapture(CurrentShot().CameraPosition, pageAgeSeconds);
         }
         var ui = new AquariumUiDocument()
             .Panel("Zyphos", 18.0f, 82.0f, 340.0f, panel =>

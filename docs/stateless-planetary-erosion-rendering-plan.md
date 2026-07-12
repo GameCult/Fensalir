@@ -13,12 +13,34 @@ measured CPU/GPU parity surface, or a production planetary renderer.
 
 ## Current mechanism
 
-Zyphos evaluates its continental field inside the planet SDF shader, estimates
-the field gradient with finite differences, applies the CultMath spherical
-erosion prototype directly, and adds authored brush and decorative residuals.
-Every SDF distance query therefore pays for the base-field samples and erosion
-octaves. The result is deterministic and independent of cube-face addressing,
-but it has not been visually or numerically validated at planetary scale.
+CultMath now owns the source-grounded erosion filter in matching C# and HLSL,
+including deterministic integer cell hashing, physical wavelength selection,
+and a measured compute-shader parity surface. Zyphos can evaluate that field
+directly and can generate bordered cube-sphere pages whose overlapping samples
+and GPU-reduced summaries have dedicated tests.
+
+The renderer integration is in progress. A camera-selected root-face page can
+be generated into persistent D3D12 buffers and sampled by the planet shader,
+with direct field evaluation retained for missing pages. This is not yet the
+production planetary renderer: page summaries are not yet connected to the
+live intersection bounds, the resident set is not yet a quadtree, and stable
+parent/child residual transitions have not been built.
+
+## Progress ledger
+
+| Phase | State | Evidence |
+|---|---|---|
+| 1. Faithful filter | Complete | C# reference fixtures and adapted HLSL contract |
+| 2. CPU/GPU parity | Complete | Compute readback comparison over 2,052 samples |
+| 3. Physical bands | Complete | Wavelength selection, fractional terminal octave, unresolved bound |
+| 4. GPU pages | Complete | Spherical borders, sibling seam tests, GPU summary reduction |
+| 5. Page-backed intersection | In progress | Persistent page generation and direct fallback boot; conservative live bounds remain |
+| 6. Quadtree transitions | Not started | Parent/child residual ownership still to implement |
+| 7. Unified differentials/materials | Not started | Final composed derivative contract still to implement |
+| 8. Profiling/backend decision | Not started | No frame-time or memory-budget claim yet |
+
+“Complete” here means the phase exit criterion has evidence. It does not mean
+planetary-scale rendering as a whole is complete.
 
 ## Authority map
 
@@ -276,11 +298,24 @@ Measure the actual visible path.
 
 ## Immediate next cut
 
-Do not add more Zyphos terrain decoration. Implement the faithful CultMath
-filter and compute-based CPU/GPU parity harness first. Then generate one
-cross-face page with min/max reduction and render it beside direct evaluation
-under an error debug view. That is the smallest slice testing the architecture
-rather than flattering the prototype.
+Finish Phase 5 before expanding residency:
+
+1. Dispatch the existing GPU page-summary reduction into a persistent summary
+   buffer beside the live page.
+2. Bind displacement bounds, unresolved error, and maximum slope to the planet
+   intersection shader.
+3. Use those values for expanded-sphere culling and a sign-preserving
+   conservative distance bound. Keep the existing bracketed sign-change
+   refinement as the near-root authority.
+4. Retain direct evaluation only as the missing-page fallback and verification
+   oracle.
+5. Prove direct and page-backed hit agreement within the declared page-filter
+   error, then exercise page absence, arrival, eviction, and field-version
+   replacement as a timeline.
+
+Only after that gate should the resident set become a projected-error quadtree.
+The next authority change is parent low-frequency terrain plus child residual
+bands; it is not “more pages” with independent full-spectrum terrain.
 
 ## Sources
 

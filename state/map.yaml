@@ -118,6 +118,14 @@ invariants:
     residuals during transitions. Independent full-spectrum pages are never
     blended. D3D12 flattens resident payloads into one output atlas with indexed
     metadata and one GPU summary per page at t81-t84.
+  - Planetary page differentials are world-distance tangent gradients expressed
+    as a 3D planet-space vector, not face-local UV derivatives. Zyphos composes
+    the page gradient with finite differentials of its authored/base residual,
+    including the land-mask product term, and derives the radial graph normal
+    as `normalize(direction - tangentGradient)`. The generic SDF proxy exposes
+    a client normal hook; other SDFs retain its finite-distance fallback.
+    Ridge and gully page evidence feeds the same planet material evaluation.
+    `PlanetarySurfaceDifferential.SurfaceNormal` is the matching CPU contract.
   - The shared reservoir is a fractal domain reservoir, not a texel cache.
     Pixel rows are the current D3D12 execution projection of selected domain
     evidence. Area-domain contributors must carry selected subpixel or local

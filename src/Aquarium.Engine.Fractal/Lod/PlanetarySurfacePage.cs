@@ -67,3 +67,17 @@ public static class PlanetarySurfacePageSampling
         return (MathF.PI * 0.5f) / (request.Tile.AxisTileCount * (request.InteriorSize - 1));
     }
 }
+
+public static class PlanetarySurfaceDifferential
+{
+    public static Vector3 SurfaceNormal(Vector3 unitDirection, Vector3 worldDistanceTangentGradient)
+    {
+        if (!float.IsFinite(unitDirection.X) || !float.IsFinite(unitDirection.Y) || !float.IsFinite(unitDirection.Z) || unitDirection.LengthSquared() < 1.0e-12f)
+            throw new ArgumentOutOfRangeException(nameof(unitDirection));
+        if (!float.IsFinite(worldDistanceTangentGradient.X) || !float.IsFinite(worldDistanceTangentGradient.Y) || !float.IsFinite(worldDistanceTangentGradient.Z))
+            throw new ArgumentOutOfRangeException(nameof(worldDistanceTangentGradient));
+        var direction=Vector3.Normalize(unitDirection);
+        var tangentGradient=worldDistanceTangentGradient-direction*Vector3.Dot(worldDistanceTangentGradient,direction);
+        return Vector3.Normalize(direction-tangentGradient);
+    }
+}

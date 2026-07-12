@@ -18,7 +18,11 @@
 #define SDF_TRACE_BOUND_RADIUS(sdfObject) max((sdfObject).centerRadius.w * 1.42, 0.001)
 #endif
 
-float3 sdfNormal(float3 p, int sdfIndex)
+#ifndef SDF_SURFACE_NORMAL
+#define SDF_SURFACE_NORMAL(p,sdfIndex) sdfFiniteDifferenceNormal(p,sdfIndex)
+#endif
+
+float3 sdfFiniteDifferenceNormal(float3 p, int sdfIndex)
 {
     float epsilon = 0.006;
     float dx = sdfDistance(p + float3(epsilon, 0.0, 0.0), sdfIndex) - sdfDistance(p - float3(epsilon, 0.0, 0.0), sdfIndex);
@@ -47,7 +51,7 @@ bool refineSdfHit(float3 origin, float3 direction, int sdfIndex, float lowTravel
     travel = highTravel;
     float3 p = origin + direction * travel;
     surface = sdfSurface(p, sdfIndex);
-    normal = sdfNormal(p, sdfIndex);
+    normal = SDF_SURFACE_NORMAL(p, sdfIndex);
     return true;
 }
 
@@ -100,7 +104,7 @@ bool traceSdf(float3 origin, float3 direction, int sdfIndex, out float travel, o
             }
 
             surface = sdfSurface(p, sdfIndex);
-            normal = sdfNormal(p, sdfIndex);
+            normal = SDF_SURFACE_NORMAL(p, sdfIndex);
             return true;
         }
 

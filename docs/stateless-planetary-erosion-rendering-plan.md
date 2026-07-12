@@ -36,7 +36,7 @@ parent/child residual transitions have not been built.
 | 4. GPU pages | Complete | Spherical borders, sibling seam tests, GPU summary reduction |
 | 5. Page-backed intersection | Complete | Persistent page and summary buffers, conservative bounds/steps, bracketed refinement, radial hit parity |
 | 6. Quadtree transitions | In progress | Residual atlas and lifecycle probes complete; visible no-pop capture remains |
-| 7. Unified differentials/materials | Not started | Final composed derivative contract still to implement |
+| 7. Unified differentials/materials | Complete | World-gradient pages, composed radial normals, shared ridge/gully material evidence |
 | 8. Profiling/backend decision | Not started | No frame-time or memory-budget claim yet |
 
 “Complete” here means the phase exit criterion has evidence. It does not mean

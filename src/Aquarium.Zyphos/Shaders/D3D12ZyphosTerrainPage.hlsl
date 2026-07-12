@@ -26,6 +26,7 @@ void D3D12ZyphosTerrainPageCS(uint3 id : SV_DispatchThreadID)
     float dx=(zyPageErosion(normalize(dir+tangent_x*angular),radius,spacing,parent_spacing)-zyPageErosion(normalize(dir-tangent_x*angular),radius,spacing,parent_spacing))/(2.0*spacing);
     float dy=(zyPageErosion(normalize(dir+tangent_y*angular),radius,spacing,parent_spacing)-zyPageErosion(normalize(dir-tangent_y*angular),radius,spacing,parent_spacing))/(2.0*spacing);
     float4 erosion=zyAdvancedErosion(dir,zySphericalField(dir),radius,spacing);
-    page_outputs[id.x].height_gradient=float4(center,dx,dy,erosion.w);
-    page_outputs[id.x].masks=float4(erosion.y,erosion.z,0,1);
+    float3 world_gradient=tangent_x*dx+tangent_y*dy;
+    page_outputs[id.x].height_gradient=float4(center,world_gradient);
+    page_outputs[id.x].masks=float4(erosion.y,erosion.z,0,erosion.w);
 }

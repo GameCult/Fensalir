@@ -17,8 +17,8 @@ void D3D12ZyphosTerrainPageSummaryCS(uint3 id : SV_DispatchThreadID)
         float4 sample = summary_inputs[page_sample_offset + index].height_gradient;
         minimum_height = min(minimum_height, sample.x);
         maximum_height = max(maximum_height, sample.x);
-        maximum_slope = max(maximum_slope, length(sample.yz));
-        maximum_unresolved = max(maximum_unresolved, sample.w);
+        maximum_slope = max(maximum_slope, length(sample.yzw));
+        maximum_unresolved = max(maximum_unresolved, summary_inputs[page_sample_offset + index].masks.w);
     }
     summary_outputs[page_summary_index].bounds = float4(minimum_height, maximum_height, maximum_slope, maximum_unresolved);
     summary_outputs[page_summary_index].metadata = float4(page_sample_count, page_sample_offset, page_summary_index, 1.0);

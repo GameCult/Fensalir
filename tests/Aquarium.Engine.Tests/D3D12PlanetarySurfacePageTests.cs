@@ -10,6 +10,18 @@ namespace Aquarium.Engine.Tests;
 public sealed class D3D12PlanetarySurfacePageTests
 {
     [Fact]
+    public void CpuSurfaceNormalUsesTheSameWorldDistanceGradientContract()
+    {
+        var direction=Vector3.Normalize(new Vector3(0.31f,-0.27f,0.91f));
+        var tangentX=Vector3.Normalize(Vector3.Cross(Vector3.UnitY,direction));
+        var tangentY=Vector3.Normalize(Vector3.Cross(direction,tangentX));
+        var gradient=tangentX*0.35f+tangentY*-0.18f;
+        var normal=PlanetarySurfaceDifferential.SurfaceNormal(direction,gradient);
+        Assert.InRange(MathF.Abs(Vector3.Dot(normal,Vector3.Normalize(direction-gradient)))-1.0f,-1.0e-6f,1.0e-6f);
+        Assert.True(Vector3.Dot(normal,direction)>0.0f);
+    }
+
+    [Fact]
     public void ZyphosRegistersAndPublishesAllSdfAuthoritiesInIndexOrder()
     {
         var plan = ZyphosRenderPlan.Create();
@@ -58,6 +70,7 @@ public sealed class D3D12PlanetarySurfacePageTests
         Assert.InRange(MathF.Abs(output[0].HeightGradient.X-(output[1].HeightGradient.X+output[2].HeightGradient.X)),0,2.0e-5f);
         Assert.InRange(MathF.Abs(output[0].HeightGradient.Y-(output[1].HeightGradient.Y+output[2].HeightGradient.Y)),0,2.0e-4f);
         Assert.InRange(MathF.Abs(output[0].HeightGradient.Z-(output[1].HeightGradient.Z+output[2].HeightGradient.Z)),0,2.0e-4f);
+        Assert.InRange(MathF.Abs(output[0].HeightGradient.W-(output[1].HeightGradient.W+output[2].HeightGradient.W)),0,2.0e-4f);
     }
 
     [Fact]
@@ -174,12 +187,12 @@ public sealed class D3D12PlanetarySurfacePageTests
     {
         var request=new PlanetarySurfacePageRequest(new CubeTileKey(CubeFace.PositiveX,2,1,2),9,2);
         var output=Generate(request);
-        Assert.All(output,s=>{Assert.True(float.IsFinite(s.HeightGradient.X));Assert.True(float.IsFinite(s.HeightGradient.Y));Assert.InRange(s.Masks.X,0,1);Assert.InRange(s.Masks.Y,0,1);});
-        var min=output.Min(s=>s.HeightGradient.X); var max=output.Max(s=>s.HeightGradient.X); var slope=output.Max(s=>MathF.Sqrt(s.HeightGradient.Y*s.HeightGradient.Y+s.HeightGradient.Z*s.HeightGradient.Z));
-        Assert.True(min<=max); Assert.True(slope>=0); Assert.True(output.Max(s=>s.HeightGradient.W)>=0);
+        Assert.All(output,s=>{Assert.True(float.IsFinite(s.HeightGradient.X));Assert.True(float.IsFinite(s.HeightGradient.Y));Assert.True(float.IsFinite(s.HeightGradient.Z));Assert.True(float.IsFinite(s.HeightGradient.W));Assert.InRange(s.Masks.X,0,1);Assert.InRange(s.Masks.Y,0,1);});
+        var min=output.Min(s=>s.HeightGradient.X); var max=output.Max(s=>s.HeightGradient.X); var slope=output.Max(s=>new Vector3(s.HeightGradient.Y,s.HeightGradient.Z,s.HeightGradient.W).Length());
+        Assert.True(min<=max); Assert.True(slope>=0); Assert.True(output.Max(s=>s.Masks.W)>=0);
         var shader=Path.Combine(RepositoryRoot(),"src","Aquarium.Zyphos","Shaders","D3D12ZyphosTerrainPageSummary.hlsl");
         var summary=D3D12ComputeProbe.Run<PageOutput,PageSummary>(shader,"D3D12ZyphosTerrainPageSummaryCS",output)[0];
-        Assert.Equal(min,summary.Bounds.X); Assert.Equal(max,summary.Bounds.Y); Assert.Equal(slope,summary.Bounds.Z); Assert.Equal(output.Max(s=>s.HeightGradient.W),summary.Bounds.W);
+        Assert.Equal(min,summary.Bounds.X); Assert.Equal(max,summary.Bounds.Y); Assert.Equal(slope,summary.Bounds.Z); Assert.Equal(output.Max(s=>s.Masks.W),summary.Bounds.W);
     }
 
     [Fact]
@@ -193,7 +206,7 @@ public sealed class D3D12PlanetarySurfacePageTests
         var direct=D3D12ComputeProbe.Run<PageInput,PageOutput>(ShaderPath(),"D3D12ZyphosTerrainPageCS",directInput);
         float H(int px,int py)=>page[py*request.StorageSize+px].HeightGradient.X;
         float Lerp(float a,float b,float t)=>a+(b-a)*t;
-        var maximumSlope=page.Max(s=>MathF.Sqrt(s.HeightGradient.Y*s.HeightGradient.Y+s.HeightGradient.Z*s.HeightGradient.Z));
+        var maximumSlope=page.Max(s=>new Vector3(s.HeightGradient.Y,s.HeightGradient.Z,s.HeightGradient.W).Length());
         for(var index=0;index<points.Length;index++)
         {
             var texel=points[index]*(request.InteriorSize-1)+new Vector2(request.BorderSize);
@@ -201,7 +214,7 @@ public sealed class D3D12PlanetarySurfacePageTests
             var interpolated=Lerp(Lerp(H(x,y),H(x+1,y),f.X),Lerp(H(x,y+1),H(x+1,y+1),f.X),f.Y);
             var directTravel=rayOriginRadius-(radius+direct[index].HeightGradient.X);
             var pageTravel=rayOriginRadius-(radius+interpolated);
-            var declaredError=direct[index].HeightGradient.W+maximumSlope*spacing*1.414214f;
+            var declaredError=direct[index].Masks.W+maximumSlope*spacing*1.414214f;
             Assert.InRange(MathF.Abs(pageTravel-directTravel),0,declaredError);
         }
     }

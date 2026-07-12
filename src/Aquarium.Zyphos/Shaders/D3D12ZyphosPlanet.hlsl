@@ -213,22 +213,25 @@ float zyPebbleCluster(float3 dir)
     return coast * smoothstep(0.48, 0.94, grains * 0.5 + 0.5);
 }
 
-float zyTerrainOffset(float3 dir, SdfObject sdfObject)
+float zyTerrainBaseOffset(float3 dir, SdfObject sdfObject, out float land)
 {
     float field = zySphericalField(dir);
-    float4 pageHeightGradient; float2 pageMasks;
-    float sampleSpacing = max(viewRadius / max(resolution.y, 1.0) * 2.0, max(sdfObject.state.x, 0.001) / 8192.0);
-    float erosionHeight = zyTrySampleErosionPage(dir,pageHeightGradient,pageMasks)
-        ? pageHeightGradient.x
-        : 0.0;
     float seaLevel = sdfObject.state.z;
-    float land = smoothstep(seaLevel - 0.04, seaLevel + 0.08, field);
+    land = smoothstep(seaLevel - 0.04, seaLevel + 0.08, field);
     float mountain = pow(saturate(field - seaLevel), 1.65);
     float polarCap = pow(abs(dir.z), 8.0) * 0.035;
     float authoredMaterial;
     float authoredGeometry = zyAuthoredBrushTerrainLimited(dir, ZYPHOS_GEOMETRY_BRUSH_LIMIT, authoredMaterial);
     float tileRelief = zyQuadtreeSdfRelief(dir) * land + zyLeafCluster(dir) * 0.018 + zyPebbleCluster(dir) * 0.010;
-    return (field - seaLevel) * 0.10 + mountain * 0.13 + polarCap * land + tileRelief + authoredGeometry * 0.52 + erosionHeight * land;
+    return (field - seaLevel) * 0.10 + mountain * 0.13 + polarCap * land + tileRelief + authoredGeometry * 0.52;
+}
+
+float zyTerrainOffset(float3 dir, SdfObject sdfObject)
+{
+    float land; float baseOffset=zyTerrainBaseOffset(dir,sdfObject,land);
+    float4 pageHeightGradient; float2 pageMasks;
+    float erosionHeight=zyTrySampleErosionPage(dir,pageHeightGradient,pageMasks)?pageHeightGradient.x:0.0;
+    return baseOffset+erosionHeight*land;
 }
 
 float sdfDistance(float3 p, int sdfIndex)
@@ -254,6 +257,28 @@ float zyPlanetTraceBoundRadius(SdfObject sdfObject)
     return max(legacyBound, max(sdfObject.state.x, 0.001) + erosionExtent);
 }
 
+float3 zyPlanetSurfaceNormal(float3 p, int sdfIndex)
+{
+    SdfObject sdfObject=sdfObjects[sdfIndex]; float radius=max(sdfObject.state.x,0.001);
+    float3 local=p-sdfObject.centerRadius.xyz; float3 dir=zyPlanetDir(local,sdfObject);
+    float3 reference=abs(dir.z)<0.8?float3(0,0,1):float3(0,1,0);
+    float3 tangentX=normalize(cross(reference,dir)); float3 tangentY=normalize(cross(dir,tangentX));
+    float spacing=max(radius/8192.0,0.0005); float angular=spacing/radius;
+    float landCenter; zyTerrainBaseOffset(dir,sdfObject,landCenter);
+    float landXp,landXm,landYp,landYm;
+    float baseXp=zyTerrainBaseOffset(normalize(dir+tangentX*angular),sdfObject,landXp);
+    float baseXm=zyTerrainBaseOffset(normalize(dir-tangentX*angular),sdfObject,landXm);
+    float baseYp=zyTerrainBaseOffset(normalize(dir+tangentY*angular),sdfObject,landYp);
+    float baseYm=zyTerrainBaseOffset(normalize(dir-tangentY*angular),sdfObject,landYm);
+    float3 baseGradient=tangentX*((baseXp-baseXm)/(2.0*spacing))+tangentY*((baseYp-baseYm)/(2.0*spacing));
+    float3 landGradient=tangentX*((landXp-landXm)/(2.0*spacing))+tangentY*((landYp-landYm)/(2.0*spacing));
+    float4 erosion; float2 masks; erosion=0.0;
+    zyTrySampleErosionPage(dir,erosion,masks);
+    float3 erosionGradient=erosion.yzw;
+    float3 planetNormal=normalize(dir-(baseGradient+landCenter*erosionGradient+erosion.x*landGradient));
+    return normalize(zyRotateZ(planetNormal,sdfObject.state.y));
+}
+
 SdfSurface sdfSurface(float3 p, int sdfIndex)
 {
     SdfObject sdfObject = sdfObjects[sdfIndex];
@@ -269,6 +294,9 @@ SdfSurface sdfSurface(float3 p, int sdfIndex)
     float leafCluster = zyLeafCluster(dir);
     float pebbleCluster = zyPebbleCluster(dir);
     float polar = smoothstep(0.72, 0.92, abs(dir.z));
+    float4 erosionDifferential; float2 erosionMasks;
+    zyTrySampleErosionPage(dir,erosionDifferential,erosionMasks);
+    float ridge=erosionMasks.x, gully=erosionMasks.y;
     float cloud = smoothstep(0.73, 0.91, sin(dir.x * 18.0 + dir.y * 13.0 + dir.z * 9.0 + timeSeconds * 0.19) * 0.5 + 0.5);
 
     float3 ocean = lerp(float3(0.004, 0.070, 0.130), float3(0.010, 0.220, 0.330), saturate(field));
@@ -281,12 +309,14 @@ SdfSurface sdfSurface(float3 p, int sdfIndex)
     landColor = lerp(landColor, float3(0.78, 0.56, 0.30), saturate(authoredMaterial * 2.6 + authoredHeight * 5.0));
     landColor = lerp(landColor, float3(0.025, 0.24, 0.08), leafCluster * 0.82);
     landColor = lerp(landColor, float3(0.42, 0.39, 0.34), pebbleCluster * 0.65);
+    landColor = lerp(landColor, float3(0.49,0.44,0.36), ridge*0.34);
+    landColor = lerp(landColor, float3(0.035,0.16,0.11), gully*0.28);
 
     SdfSurface surface;
     surface.baseColor = lerp(ocean, landColor, land);
     surface.baseColor = lerp(surface.baseColor, float3(0.78, 0.84, 0.80), cloud * 0.16);
     surface.metallic = 0.0;
-    surface.roughness = lerp(0.34, 0.84, land);
+    surface.roughness = saturate(lerp(0.34,0.84,land)+ridge*0.09-gully*0.12);
     surface.emission = 0.0;
     surface.temporalDetail = saturate(authoredMaterial * 3.0);
     surface.reservoirConfidence = saturate(0.42 + authoredMaterial * 2.2 + leafCluster * 0.25 + pebbleCluster * 0.20);
@@ -319,4 +349,5 @@ float3 shadeSdf(float2 uv, float travel, float3 p, float3 normal, int sdfIndex, 
 }
 
 #define SDF_TRACE_BOUND_RADIUS(sdfObject) zyPlanetTraceBoundRadius(sdfObject)
+#define SDF_SURFACE_NORMAL(p,sdfIndex) zyPlanetSurfaceNormal(p,sdfIndex)
 #include "D3D12SdfProxy.hlsli"

@@ -13,6 +13,9 @@ historical branch scar.
 
 ## Fields, Reservoirs, And Fractals
 
+- `stateless-planetary-erosion-rendering-plan.md`: authority map and staged
+  implementation plan for spherical erosion, cube-sphere pages, LOD,
+  intersection, differential shading, and verification.
 - `../src/Saga/README.md`: studio-facing Saga middleware pitch and subproject
   overview for stochastic planetary flow.
 - `papers/fensalir-pipeline.tex`: living MiKTeX paper for the Fensalir

@@ -76,6 +76,10 @@ invariants:
     bounded octave parameters; cube faces and tiles are scheduling charts only.
     CultMath maintains matching C# and HLSL bodies, while clients choose terrain
     parameters and composition policy.
+  - The production lowering for stateless planetary erosion is specified in
+    docs/stateless-planetary-erosion-rendering-plan.md: direct evaluation is the
+    oracle, while GPU-generated cube-sphere pages carry cached displacement,
+    differential, mask, bound, and frequency-band evidence for rendering.
   - The shared reservoir is a fractal domain reservoir, not a texel cache.
     Pixel rows are the current D3D12 execution projection of selected domain
     evidence. Area-domain contributors must carry selected subpixel or local

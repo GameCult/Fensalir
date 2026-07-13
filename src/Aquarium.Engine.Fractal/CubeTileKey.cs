@@ -1,3 +1,5 @@
+using CultMath;
+
 namespace Aquarium.Engine.Fractal;
 
 public readonly record struct CubeTileKey
@@ -70,21 +72,11 @@ public readonly record struct CubeTileKey
 
     public CubeFacePosition PositionAt(double localU, double localV)
     {
-        if (!double.IsFinite(localU) || localU is < 0.0 or > 1.0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(localU), localU, "Local U must be finite and in [0, 1].");
-        }
-
-        if (!double.IsFinite(localV) || localV is < 0.0 or > 1.0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(localV), localV, "Local V must be finite and in [0, 1].");
-        }
-
-        var axisTileCount = AxisTileCount;
-        var faceU = -1.0 + (2.0 * (X + localU) / axisTileCount);
-        var faceV = -1.0 + (2.0 * (Y + localV) / axisTileCount);
-        return new CubeFacePosition(Face, faceU, faceV);
+        var coordinate = ToCultMath().PositionAt(localU, localV);
+        return new CubeFacePosition(Face, coordinate.U, coordinate.V);
     }
+
+    public PlanetaryTileAddress ToCultMath() => new((PlanetaryCubeFace)Face, Level, X, Y);
 
     public override string ToString()
     {

@@ -15,10 +15,7 @@ struct ZyPatchSceneOut
 
 float3 zyPatchDirection(uint face,float2 local)
 {
-    float2 faceCoordinate=local*2.0-1.0;
-    float u=tan(faceCoordinate.x*PI*0.25),v=tan(faceCoordinate.y*PI*0.25);
-    float3 cube=face==0u?float3(1,v,-u):face==1u?float3(-1,v,u):face==2u?float3(u,1,-v):face==3u?float3(u,-1,v):face==4u?float3(u,v,1):float3(-u,v,-1);
-    return normalize(cube);
+    return cultmath_planetary_face_direction((int)face,local*2.0-1.0);
 }
 
 ZyPatchVertexOut D3D12ZyphosTerrainPatchVS(uint vertexId:SV_VertexID,uint instanceId:SV_InstanceID)

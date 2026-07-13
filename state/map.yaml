@@ -71,11 +71,14 @@ invariants:
     terrain should be a quadtree of brush-painted surface tiles, subdivided by
     projected footprint, curvature, brush/material detail, silhouettes, and
     temporal uncertainty before SDF probes emit detail-adaptive surface splats.
-  - Stateless planetary erosion is owned by CultMath's spherical point kernel.
-    It reads unit planet position, base height, tangent gradient, seed, and
-    bounded octave parameters; cube faces and tiles are scheduling charts only.
-    CultMath maintains matching C# and HLSL bodies, while clients choose terrain
-    parameters and composition policy.
+  - Deterministic planetary geometry is owned by CultMath's scale-aware
+    planetary field runtime. It owns field identity, point/batch and
+    double-position CPU queries, tangent/QSC cube-sphere topology, bordered
+    pages and child residual composition, projected-error LOD, residual
+    lifecycle, ray/path/region queries, coarse patch topology, and map
+    projections/tiles. CultMath maintains matching HLSL for field evaluation,
+    topology, page interpolation/residuals, and radial refinement. Clients own
+    base fields, terrain parameters, gameplay meaning, and presentation policy.
   - The production lowering for stateless planetary erosion is specified in
     docs/stateless-planetary-erosion-rendering-plan.md: direct evaluation is the
     oracle, while GPU-generated cube-sphere pages carry cached displacement,
@@ -94,10 +97,12 @@ invariants:
     it may not change terrain at a shared boundary. Page borders evaluate the
     spherical field beyond tile bounds without reading neighbor residency.
   - D3D12 owns persistent planetary page input, output, metadata, and summary
-    buffers. Client compute shaders generate the page and reduce min/max
-    displacement, maximum slope, and unresolved error before SDF proxies read
-    them at t81-t83. Zyphos registers planet, Umbros, and star proxies in object
-    index order and publishes all three SDF objects from one scene builder.
+    buffers, their bindings, dispatch, and draw submission. CultMath owns the
+    page layout, spherical sample directions, residual semantics, interpolation,
+    and summaries. Client compute entry points bind the client base field to
+    those functions before GPU reduction. Zyphos registers planet, Umbros, and
+    star proxies in object index order and publishes all three SDF objects from
+    one scene builder.
   - Production planet visibility is owned by coarse cube-sphere raster patches,
     not the general SDF proxy. Patch vertices consume the resident ancestor
     field; covered pixels perform four bounded radial corrections against the
@@ -136,13 +141,13 @@ invariants:
   - The bounded radial correction step is owned by CultMath in matching C# and
     HLSL bodies. Zyphos composes four steps with its terrain-offset callback;
     the renderer does not carry a private correction equation.
-  - Planetary page residency separates content from presentation state.
-    ContentVersion changes only when the resident tile set changes;
-    PresentationVersion carries arrival/departure weights without regenerating
-    erosion. Six root pages remain resident. A projected-error selector uses
-    CultMath's unresolved-height bound against the camera footprint to request
-    one ancestor chain, and departing chains remain addressable until their
-    residual weights reach zero.
+  - Planetary page residency is owned by CultMath and separates content from
+    presentation state. ContentVersion changes only when the resident tile set
+    changes; PresentationVersion carries arrival/departure weights without
+    regenerating erosion. Six root pages remain resident. CultMath's
+    projected-error selector uses unresolved-height bounds against camera
+    footprint to request one ancestor chain, and its residual lifecycle keeps
+    departing chains addressable until their weights reach zero.
   - Root pages contain the resolvable low-frequency erosion field. Every child
     page stores `child filtered field - parent filtered field`; the planet
     shader sums the containing ancestor contributions and weights only those

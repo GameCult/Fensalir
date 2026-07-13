@@ -14,23 +14,9 @@ StructuredBuffer<ZyPlanetPageSet> zy_planet_page_set : register(t84);
 
 static const float ZY_TERRAIN_NON_EROSION_SLOPE_BOUND = 8.0;
 
-float2 zyTerrainCubeFaceUv(float3 dir, out float face)
-{
-    float3 a=abs(dir);
-    if(a.x>=a.y&&a.x>=a.z){if(dir.x>=0){face=0;return float2(-dir.z,dir.y)/a.x;}face=1;return float2(dir.z,dir.y)/a.x;}
-    if(a.y>=a.z){if(dir.y>=0){face=2;return float2(dir.x,-dir.z)/a.y;}face=3;return float2(dir.x,dir.z)/a.y;}
-    if(dir.z>=0){face=4;return dir.xy/a.z;}face=5;return float2(-dir.x,dir.y)/a.z;
-}
-
 bool zyTerrainPageLocal(float3 dir, ZyPlanetPageMetadata metadata, out float2 local)
 {
-    float face; float2 uv=zyTerrainCubeFaceUv(dir,face); local=0.0;
-    if(metadata.state.x<0.5||abs(face-metadata.address.x)>0.25)return false;
-    float axisTiles=exp2(metadata.address.y); float2 scaled=(uv*0.5+0.5)*axisTiles;
-    float2 canonical=floor(min(scaled,axisTiles-1.0e-5));
-    if(any(abs(canonical-metadata.address.zw)>0.25))return false;
-    local=scaled-metadata.address.zw;
-    return all(local>=0.0)&&all(local<=1.0);
+    return cultmath_planetary_page_local(dir,metadata.address,metadata.state.x,local);
 }
 
 void zySampleErosionPage(int pageIndex, float2 local, out float4 heightGradient, out float2 masks)
@@ -42,8 +28,13 @@ void zySampleErosionPage(int pageIndex, float2 local, out float4 heightGradient,
     int offset=(int)metadata.layout.x;
     ZyPlanetPageOutput a=zy_planet_page[offset+p0.y*(int)storage+p0.x], b=zy_planet_page[offset+p0.y*(int)storage+p1.x];
     ZyPlanetPageOutput c=zy_planet_page[offset+p1.y*(int)storage+p0.x], d=zy_planet_page[offset+p1.y*(int)storage+p1.x];
-    heightGradient=lerp(lerp(a.height_gradient,b.height_gradient,fraction.x),lerp(c.height_gradient,d.height_gradient,fraction.x),fraction.y);
-    masks=lerp(lerp(a.masks.xy,b.masks.xy,fraction.x),lerp(c.masks.xy,d.masks.xy,fraction.x),fraction.y);
+    CultMathPlanetaryPageSample ca,cb,cc,cd;
+    ca.height_gradient=a.height_gradient; ca.masks=a.masks.xy;
+    cb.height_gradient=b.height_gradient; cb.masks=b.masks.xy;
+    cc.height_gradient=c.height_gradient; cc.masks=c.masks.xy;
+    cd.height_gradient=d.height_gradient; cd.masks=d.masks.xy;
+    CultMathPlanetaryPageSample sample=cultmath_planetary_page_lerp(ca,cb,cc,cd,fraction);
+    heightGradient=sample.height_gradient; masks=sample.masks;
 }
 
 bool zyTrySampleErosionPage(float3 dir, out float4 heightGradient, out float2 masks)
@@ -145,19 +136,21 @@ CultMathAdvancedErosionParameters zyErosionParameters(float radius)
     p.cell_scale=0.7; p.normalization=0.5; p.octaves=7; p.lacunarity=2.0; p.gain=0.5; return p;
 }
 
+CultMathPlanetarySurfaceSample zyAdvancedErosionSurface(float3 dir, float field, float radius, float sampleSpacing)
+{
+    CultMathPlanetaryFieldDefinition definition;
+    definition.radius=radius; definition.seed=0; definition.erosion=zyErosionParameters(radius);
+    CultMathPlanetaryBaseFieldSample base_sample;
+    base_sample.radial_displacement=0.0; base_sample.radial_gradient=0.0;
+    base_sample.field_value=field; base_sample.field_gradient=zySphericalFieldGradient(dir)/radius;
+    base_sample.fade_target=saturate(field*0.5+0.5)*2.0-1.0;
+    return cultmath_planetary_field_sample(definition,dir,base_sample,sampleSpacing);
+}
+
 float4 zyAdvancedErosion(float3 dir, float field, float radius, float sampleSpacing)
 {
-    float3 world=dir*radius; float3 gradient=zySphericalFieldGradient(dir)/radius;
-    float3 weights=pow(abs(dir),4.0); weights/=max(weights.x+weights.y+weights.z,1.0e-6);
-    CultMathAdvancedErosionParameters p=zyErosionParameters(radius);
-    CultMathErosionBandSelection band=cultmath_select_erosion_bands(p.scale*p.cell_scale,sampleSpacing,p.octaves,p.lacunarity,p.strength*p.scale,p.gain,2.0);
-    float fade=saturate(field*0.5+0.5)*2.0-1.0;
-    CultMathAdvancedErosionResult xy=cultmath_advanced_erosion_filter_banded(world.xy+float2(713,-291),float3(field,gradient.x,gradient.y),fade,p,band);
-    CultMathAdvancedErosionResult yz=cultmath_advanced_erosion_filter_banded(world.yz+float2(-431,887),float3(field,gradient.y,gradient.z),fade,p,band);
-    CultMathAdvancedErosionResult zx=cultmath_advanced_erosion_filter_banded(world.zx+float2(197,557),float3(field,gradient.z,gradient.x),fade,p,band);
-    float height=xy.delta.x*weights.z+yz.delta.x*weights.x+zx.delta.x*weights.y;
-    float ridge=xy.ridge_map*weights.z+yz.ridge_map*weights.x+zx.ridge_map*weights.y;
-    return float4(height,saturate(ridge*0.5+0.5),saturate(0.5-ridge*0.5),band.unresolved_height_bound);
+    CultMathPlanetarySurfaceSample sample=zyAdvancedErosionSurface(dir,field,radius,sampleSpacing);
+    return float4(sample.radial_displacement,sample.ridge,sample.gully,sample.unresolved_height_bound);
 }
 
 #endif

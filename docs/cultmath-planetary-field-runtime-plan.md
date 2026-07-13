@@ -18,12 +18,20 @@ The intended end state is:
 
 ## Current mechanism
 
-CultMath currently owns the matching C# and HLSL erosion operator, physical
-frequency-band selection, spherical field primitives, and bounded radial
-refinement. Fensalir and Zyphos currently own most of the surrounding planetary
-machine: cube-sphere addressing, page contracts, residual generation, page
-summaries, projected-error selection, residency transitions, page sampling,
-patch construction, and renderer bindings.
+CultMath now owns the matching C# and HLSL erosion operator, physical
+frequency-band selection, scale-aware field definition and sampling,
+tangent/QSC cube-sphere topology, bordered page layouts, CPU residual baking and
+composition, projected-error LOD selection, residual residency transitions,
+renderer-neutral patch meshes, CPU ray/path/region queries, map projections,
+and versioned projected tile baking. Fensalir and Zyphos consume the CultMath
+topology, field, LOD, residency, page, patch-direction, and refinement functions
+while retaining D3D12 buffers, bindings, dispatch, scene policy, and drawing.
+
+Fensalir still exposes compatibility types for its existing fractal API, and
+Zyphos still owns its geological base-field preset, authored brush chart, page
+resource structures, shader entry points, and scene/material policy. Unity,
+Electron, CultMesh tile publication, WGSL, and Aetheria daemon integration are
+not implemented by the restricted pass recorded below.
 
 The completed Fensalir implementation proves the approach, but its ownership
 boundary is too renderer-shaped for Aetheria. The reusable algorithms should
@@ -34,6 +42,30 @@ Unity objects, Electron canvases, local GPU pages, and projected map tiles are
 derived state. Terrain queries that affect movement, visibility, construction,
 resources, physics, or combat must be available to the daemon without booting a
 renderer or depending on client cache residency.
+
+## Restricted implementation ledger
+
+This ledger records the pass performed without modifying Aetheria. A phase is
+complete only when its stated exit criterion is proved; generic machinery alone
+does not impersonate a consumer integration.
+
+| Phase | State | Current evidence |
+|---|---|---|
+| 0. Contract and parity corpus | In progress | Field identity, query scale, samples, errors, topology/page/projection fixtures, D3D12 QSC readback, and equirectangular/Equal Earth HLSL parity exist; remaining projection HLSL parity remains |
+| 1. Topology extraction | In progress | CultMath owns CPU/HLSL QSC mapping and page directions; Fensalir compatibility types and non-planet fractal projection APIs remain |
+| 2. Authoritative CPU queries | In progress | Point, batch, double-position, ray, clearance, great-circle, and region queries exist; the forbidden Aetheria daemon smoke remains |
+| 3. Page machinery extraction | In progress | CultMath owns CPU baking, residuals, summaries, composition, HLSL page interpolation/residual functions, and residency; renderer resource contracts and GPU entry points remain adapters |
+| 4. Residency and patch extraction | In progress | CultMath owns LOD, lifecycle, mesh generation, QSC patch direction, and radial refinement; Unity equivalence remains |
+| 5. Unity adapter and viewer | In progress | A separate `CultMath.Unity` assembly converts canonical patches and residency snapshots into Unity meshes/page payloads and compiles against Unity 6; a renderer/viewer remains, and Aetheria was explicitly out of scope |
+| 6. Projections and map tiles | In progress | All named CPU projections and versioned surface-tile baking exist; publication and Electron lowering remain |
+| 7. Optional WebGPU lowering | Not started | Still correctly optional |
+| 8. Delete obsolete owners | In progress | Zyphos private page addressing, LOD, lifecycle, triplanar erosion composition, page interpolation, and patch direction were removed or delegated |
+
+Current verification from this pass includes CultMath managed tests, the full
+Fensalir fractal suite, a zero-warning solution build, CPU lifecycle/LOD
+integration probes, advanced erosion CPU/GPU parity, QSC CPU/GPU readback,
+focused shader compilation, page residual generation, all cube-edge/corner seam
+probes, finite summary evidence, and page-backed radial-hit parity.
 
 ## Authority map
 

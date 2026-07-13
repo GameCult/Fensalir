@@ -57,39 +57,21 @@ float zyCompactBrush(float2 delta, float2 radii, float rotation, float falloff, 
 
 float2 zyCubeFaceUv(float3 dir, out float face)
 {
+    // Authored brush packets retain their legacy cube-ratio chart. Planetary
+    // page addressing and patch geometry use CultMath's QSC topology.
     float3 a = abs(dir);
     if (a.x >= a.y && a.x >= a.z)
     {
-        if (dir.x >= 0.0)
-        {
-            face = 0.0;
-            return float2(-dir.z, dir.y) / max(a.x, 0.0001);
-        }
-
-        face = 1.0;
-        return float2(dir.z, dir.y) / max(a.x, 0.0001);
+        if (dir.x >= 0.0) { face = 0.0; return float2(-dir.z, dir.y) / max(a.x, 0.0001); }
+        face = 1.0; return float2(dir.z, dir.y) / max(a.x, 0.0001);
     }
-
     if (a.y >= a.z)
     {
-        if (dir.y >= 0.0)
-        {
-            face = 2.0;
-            return float2(dir.x, -dir.z) / max(a.y, 0.0001);
-        }
-
-        face = 3.0;
-        return float2(dir.x, dir.z) / max(a.y, 0.0001);
+        if (dir.y >= 0.0) { face = 2.0; return float2(dir.x, -dir.z) / max(a.y, 0.0001); }
+        face = 3.0; return float2(dir.x, dir.z) / max(a.y, 0.0001);
     }
-
-    if (dir.z >= 0.0)
-    {
-        face = 4.0;
-        return dir.xy / max(a.z, 0.0001);
-    }
-
-    face = 5.0;
-    return float2(-dir.x, dir.y) / max(a.z, 0.0001);
+    if (dir.z >= 0.0) { face = 4.0; return dir.xy / max(a.z, 0.0001); }
+    face = 5.0; return float2(-dir.x, dir.y) / max(a.z, 0.0001);
 }
 
 float2 zyTileBrushPlane(float2 faceUv, float level, float tileX, float tileY, out float inTile)

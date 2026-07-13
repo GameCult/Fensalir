@@ -16,6 +16,9 @@ historical branch scar.
 - `stateless-planetary-erosion-rendering-plan.md`: authority map and staged
   implementation plan for spherical erosion, cube-sphere pages, LOD,
   intersection, differential shading, and verification.
+- `cultmath-planetary-field-runtime-plan.md`: extraction and authority plan for
+  one CultMath planetary field shared by Aetheria daemon CPU simulation,
+  Fensalir and Unity 3D rendering, and Electron/Web map projections.
 - `../src/Saga/README.md`: studio-facing Saga middleware pitch and subproject
   overview for stochastic planetary flow.
 - `papers/fensalir-pipeline.tex`: living MiKTeX paper for the Fensalir

@@ -91,7 +91,7 @@ because the schedule got nervous.
 
 Saga lives inside Fensalir because Fensalir already owns the machinery it needs:
 
-- `CubeTileKey` and cube-sphere projection math;
+- CultMath `PlanetaryTileAddress` and cube-sphere projection math;
 - field evidence layers, especially `Transport`;
 - selected cuts and residency planning;
 - GPU resource pages and debug telemetry;

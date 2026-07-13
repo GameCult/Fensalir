@@ -1,6 +1,7 @@
 using System.Numerics;
 using Aquarium.Engine.Fractal;
 using Aquarium.Engine.Fractal.Grammar;
+using CultMath;
 
 namespace Aquarium.Engine.Fractal.Tests;
 
@@ -9,7 +10,7 @@ public sealed class FractalGrammarContractTests
     [Fact]
     public void CubeTileStableKeyIncludesTileAddressAndNormalizedGrammarPath()
     {
-        var tile = new CubeTileKey(CubeFace.PositiveZ, 3, 2, 5);
+        var tile = new PlanetaryTileAddress(PlanetaryCubeFace.PositiveZ, 3, 2, 5);
 
         var key = FractalStableKeyBuilder.ForCubeTile(tile, @"terrain\ridge/root");
 

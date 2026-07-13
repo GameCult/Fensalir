@@ -98,8 +98,9 @@ invariants:
     spherical field beyond tile bounds without reading neighbor residency.
   - D3D12 owns persistent planetary page input, output, metadata, and summary
     buffers, their bindings, dispatch, and draw submission. CultMath owns the
-    page layout, spherical sample directions, residual semantics, interpolation,
-    and summaries. Client compute entry points bind the client base field to
+    page layout, spherical sample directions, canonical GPU input/metadata
+    payload, residual semantics, interpolation, and summaries. Client adapters
+    only convert CultMath vectors to their host ABI. Client compute entry points bind the client base field to
     those functions before GPU reduction. Zyphos registers planet, Umbros, and
     star proxies in object index order and publishes all three SDF objects from
     one scene builder.

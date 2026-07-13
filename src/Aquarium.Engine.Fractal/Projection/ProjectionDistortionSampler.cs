@@ -1,4 +1,5 @@
 using System.Numerics;
+using CultMath;
 
 namespace Aquarium.Engine.Fractal.Projection;
 
@@ -9,7 +10,7 @@ public static class ProjectionDistortionSampler
 
     public static ProjectionDistortionResult SampleFace(
         ICubeSphereProjection projection,
-        CubeFace face,
+        PlanetaryCubeFace face,
         int samplesPerAxis)
     {
         ArgumentNullException.ThrowIfNull(projection);
@@ -56,14 +57,14 @@ public static class ProjectionDistortionSampler
             Math.Sqrt(totalSquaredRelativeError / sampleCount));
     }
 
-    private static double SurfaceAreaScale(ICubeSphereProjection projection, CubeFace face, double u, double v)
+    private static double SurfaceAreaScale(ICubeSphereProjection projection, PlanetaryCubeFace face, double u, double v)
     {
         var du = Derivative(projection, face, u, v, DerivativeAxis.U);
         var dv = Derivative(projection, face, u, v, DerivativeAxis.V);
         return Vector3.Cross(du, dv).Length();
     }
 
-    private static Vector3 Derivative(ICubeSphereProjection projection, CubeFace face, double u, double v, DerivativeAxis axis)
+    private static Vector3 Derivative(ICubeSphereProjection projection, PlanetaryCubeFace face, double u, double v, DerivativeAxis axis)
     {
         var low = axis == DerivativeAxis.U ? u : v;
         var high = low;
@@ -86,13 +87,13 @@ public static class ProjectionDistortionSampler
         Vector3 highPoint;
         if (axis == DerivativeAxis.U)
         {
-            lowPoint = projection.Project(new CubeFacePosition(face, lowCoordinate, v));
-            highPoint = projection.Project(new CubeFacePosition(face, highCoordinate, v));
+            lowPoint = projection.Project(new PlanetaryFaceCoordinate(face, lowCoordinate, v));
+            highPoint = projection.Project(new PlanetaryFaceCoordinate(face, highCoordinate, v));
         }
         else
         {
-            lowPoint = projection.Project(new CubeFacePosition(face, u, lowCoordinate));
-            highPoint = projection.Project(new CubeFacePosition(face, u, highCoordinate));
+            lowPoint = projection.Project(new PlanetaryFaceCoordinate(face, u, lowCoordinate));
+            highPoint = projection.Project(new PlanetaryFaceCoordinate(face, u, highCoordinate));
         }
 
         return (highPoint - lowPoint) / (float)(forward + backward);

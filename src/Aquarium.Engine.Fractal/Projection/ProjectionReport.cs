@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 
+using CultMath;
+
 namespace Aquarium.Engine.Fractal.Projection;
 
 public static class ProjectionReport
@@ -25,7 +27,7 @@ public static class ProjectionReport
 
         foreach (var projection in projections)
         {
-            foreach (var face in Enum.GetValues<CubeFace>())
+            foreach (var face in Enum.GetValues<PlanetaryCubeFace>())
             {
                 var result = ProjectionDistortionSampler.SampleFace(projection, face, samplesPerAxis);
                 builder.Append("| ")

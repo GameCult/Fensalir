@@ -3,6 +3,7 @@ using Aquarium.Engine.Fractal;
 using Aquarium.Engine.Fractal.Brushes;
 using Aquarium.Engine.Fractal.Grammar;
 using Aquarium.Engine.Fractal.Lod;
+using CultMath;
 
 namespace Aquarium.Engine.Fractal.Tests;
 
@@ -11,7 +12,7 @@ public sealed class FractalPipelineFixtureTests
     [Fact]
     public void CubeTileClaimPipelineProducesRenderableBudgetedBrush()
     {
-        var tile = new CubeTileKey(CubeFace.PositiveZ, 2, 1, 1);
+        var tile = new PlanetaryTileAddress(PlanetaryCubeFace.PositiveZ, 2, 1, 1);
         var domainKey = FractalStableKeyBuilder.ForCubeTile(tile, "terrain/ridges");
         var rootKey = FractalStableKeyBuilder.Child(domainKey, "root");
         var claimKey = FractalStableKeyBuilder.Child(rootKey, "claim/0");

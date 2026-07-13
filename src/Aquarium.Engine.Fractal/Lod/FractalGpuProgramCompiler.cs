@@ -1,4 +1,5 @@
 using System.Numerics;
+using CultMath;
 using Aquarium.Engine.Fractal.Grammar;
 
 namespace Aquarium.Engine.Fractal.Lod;
@@ -79,7 +80,7 @@ public static class FractalGpuProgramCompiler
         var tileAddress = domains.TryGetValue(claim.DomainKey, out var domainRow)
             && domainRow.Kind == AquariumFractalDomainKind.CubeSphereTile
             ? domainRow.Parameters0
-            : new Vector4((float)CubeFace.PositiveZ, 0.0f, 0.0f, 0.0f);
+            : new Vector4((float)PlanetaryCubeFace.PositiveZ, 0.0f, 0.0f, 0.0f);
         var rotationCos = MathF.Cos(claim.RotationRadians);
         var rotationSin = MathF.Sin(claim.RotationRadians);
 

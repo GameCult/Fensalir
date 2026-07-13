@@ -1,10 +1,10 @@
-using Aquarium.Engine.Fractal;
+using CultMath;
 
 namespace Aquarium.Engine.Fractal.Grammar;
 
 public static class FractalStableKeyBuilder
 {
-    public static AquariumFractalKey ForCubeTile(CubeTileKey tile, string grammarPath)
+    public static AquariumFractalKey ForCubeTile(PlanetaryTileAddress tile, string grammarPath)
     {
         return new AquariumFractalKey($"cube/{tile.Face}/L{tile.Level:D2}/{tile.X}/{tile.Y}:{NormalizePath(grammarPath)}");
     }

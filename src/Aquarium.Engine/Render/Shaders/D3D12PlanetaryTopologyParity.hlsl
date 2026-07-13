@@ -4,6 +4,7 @@ struct PlanetaryTopologyInput
 {
     float4 direction_face;
     float4 coordinate_mode;
+    float4 projection_parameters;
 };
 
 struct PlanetaryTopologyOutput
@@ -50,10 +51,24 @@ void D3D12PlanetaryTopologyParityCS(uint3 id : SV_DispatchThreadID)
         output.direction_face = float4(normalize(input.direction_face.xyz), 0.0);
         output.coordinate_valid = float4(cultmath_planetary_equal_earth_forward(input.direction_face.xyz), 0.0, 1.0);
     }
-    else
+    else if (input.coordinate_mode.z < 5.5)
     {
         output.direction_face = float4(cultmath_planetary_equal_earth_inverse(input.coordinate_mode.xy), 0.0);
         output.coordinate_valid = float4(input.coordinate_mode.xy, 0.0, 1.0);
+    }
+    else if (input.coordinate_mode.z < 6.5)
+    {
+        float2 coordinate;
+        bool valid=cultmath_planetary_projection_forward(input.direction_face.xyz,(int)input.coordinate_mode.w,input.projection_parameters.xyz,coordinate);
+        output.direction_face=float4(normalize(input.direction_face.xyz),0);
+        output.coordinate_valid=float4(coordinate,0,valid?1.0:0.0);
+    }
+    else
+    {
+        float3 direction;
+        bool valid=cultmath_planetary_projection_inverse(input.coordinate_mode.xy,(int)input.coordinate_mode.w,input.projection_parameters.xyz,direction);
+        output.direction_face=float4(direction,0);
+        output.coordinate_valid=float4(input.coordinate_mode.xy,0,valid?1.0:0.0);
     }
     topology_outputs[id.x] = output;
 }

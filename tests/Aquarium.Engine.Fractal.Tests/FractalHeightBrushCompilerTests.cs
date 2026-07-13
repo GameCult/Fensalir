@@ -3,6 +3,7 @@ using Aquarium.Engine.Fractal;
 using Aquarium.Engine.Fractal.Brushes;
 using Aquarium.Engine.Fractal.Grammar;
 using Aquarium.Engine.Fractal.Lod;
+using CultMath;
 
 namespace Aquarium.Engine.Fractal.Tests;
 
@@ -64,7 +65,7 @@ public sealed class FractalHeightBrushCompilerTests
             new AquariumFractalKey("cube/NegativeX/L02/2/1:zyphos/leaf"),
             AquariumFractalDomainKind.CubeSphereTile,
             default,
-            new Vector4((float)CubeFace.NegativeX, 2.0f, 2.0f, 1.0f),
+            new Vector4((float)PlanetaryCubeFace.NegativeX, 2.0f, 2.0f, 1.0f),
             Vector4.Zero);
         var rootKey = new AquariumFractalKey("cube/NegativeX/L02/2/1:zyphos/leaf/root");
         var claim = new AquariumBrushClaim(
@@ -84,7 +85,7 @@ public sealed class FractalHeightBrushCompilerTests
 
         var brush = Assert.Single(FractalHeightBrushCompiler.CompileTree(tree));
 
-        Assert.Equal((float)CubeFace.NegativeX, brush.DomainFace);
+        Assert.Equal((float)PlanetaryCubeFace.NegativeX, brush.DomainFace);
         Assert.Equal(2.0f, brush.DomainLevel);
         Assert.Equal(2.0f, brush.DomainX);
         Assert.Equal(1.0f, brush.DomainY);
@@ -126,6 +127,6 @@ public sealed class FractalHeightBrushCompilerTests
         var brush = Assert.Single(FractalHeightBrushCompiler.CompileSelectedTree(tree, selectedCut));
 
         Assert.Equal(1.0f, brush.Center.X);
-        Assert.Equal((float)CubeFace.PositiveX, brush.DomainFace);
+        Assert.Equal((float)PlanetaryCubeFace.PositiveX, brush.DomainFace);
     }
 }

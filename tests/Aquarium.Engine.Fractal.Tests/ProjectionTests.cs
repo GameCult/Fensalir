@@ -1,6 +1,7 @@
 using System.Numerics;
 using Aquarium.Engine.Fractal;
 using Aquarium.Engine.Fractal.Projection;
+using CultMath;
 
 namespace Aquarium.Engine.Fractal.Tests;
 
@@ -17,7 +18,7 @@ public sealed class ProjectionTests
     {
         foreach (var projection in Projections)
         {
-            var point = projection.Project(new CubeFacePosition(CubeFace.PositiveZ, 0.35, -0.25));
+            var point = projection.Project(new PlanetaryFaceCoordinate(PlanetaryCubeFace.PositiveZ, 0.35, -0.25));
 
             Assert.Equal(1.0f, point.Length(), 5);
         }
@@ -26,12 +27,12 @@ public sealed class ProjectionTests
     [Fact]
     public void FaceEdgesMeetAtTheSameProjectedPoints()
     {
-        var edges = new (CubeFacePosition A, CubeFacePosition B)[]
+        var edges = new (PlanetaryFaceCoordinate A, PlanetaryFaceCoordinate B)[]
         {
-            (new CubeFacePosition(CubeFace.PositiveZ, 1.0, -0.5), new CubeFacePosition(CubeFace.PositiveX, -1.0, -0.5)),
-            (new CubeFacePosition(CubeFace.PositiveZ, -1.0, 0.25), new CubeFacePosition(CubeFace.NegativeX, 1.0, 0.25)),
-            (new CubeFacePosition(CubeFace.PositiveZ, 0.5, 1.0), new CubeFacePosition(CubeFace.PositiveY, 0.5, -1.0)),
-            (new CubeFacePosition(CubeFace.PositiveZ, -0.25, -1.0), new CubeFacePosition(CubeFace.NegativeY, -0.25, 1.0)),
+            (new PlanetaryFaceCoordinate(PlanetaryCubeFace.PositiveZ, 1.0, -0.5), new PlanetaryFaceCoordinate(PlanetaryCubeFace.PositiveX, -1.0, -0.5)),
+            (new PlanetaryFaceCoordinate(PlanetaryCubeFace.PositiveZ, -1.0, 0.25), new PlanetaryFaceCoordinate(PlanetaryCubeFace.NegativeX, 1.0, 0.25)),
+            (new PlanetaryFaceCoordinate(PlanetaryCubeFace.PositiveZ, 0.5, 1.0), new PlanetaryFaceCoordinate(PlanetaryCubeFace.PositiveY, 0.5, -1.0)),
+            (new PlanetaryFaceCoordinate(PlanetaryCubeFace.PositiveZ, -0.25, -1.0), new PlanetaryFaceCoordinate(PlanetaryCubeFace.NegativeY, -0.25, 1.0)),
         };
 
         foreach (var projection in Projections)
@@ -46,8 +47,8 @@ public sealed class ProjectionTests
     [Fact]
     public void TangentProjectionHasLowerSampledAreaSpreadThanNormalizeBaseline()
     {
-        var normalize = ProjectionDistortionSampler.SampleFace(new NormalizeCubeSphereProjection(), CubeFace.PositiveZ, 16);
-        var tangent = ProjectionDistortionSampler.SampleFace(new TangentCubeSphereProjection(), CubeFace.PositiveZ, 16);
+        var normalize = ProjectionDistortionSampler.SampleFace(new NormalizeCubeSphereProjection(), PlanetaryCubeFace.PositiveZ, 16);
+        var tangent = ProjectionDistortionSampler.SampleFace(new TangentCubeSphereProjection(), PlanetaryCubeFace.PositiveZ, 16);
 
         Assert.True(tangent.RootMeanSquareRelativeAreaError < normalize.RootMeanSquareRelativeAreaError);
         Assert.True(tangent.MeanAbsoluteRelativeAreaError < normalize.MeanAbsoluteRelativeAreaError);

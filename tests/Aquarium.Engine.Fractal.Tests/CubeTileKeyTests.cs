@@ -1,13 +1,13 @@
-using Aquarium.Engine.Fractal;
+using CultMath;
 
 namespace Aquarium.Engine.Fractal.Tests;
 
-public sealed class CubeTileKeyTests
+public sealed class PlanetaryTileAddressTests
 {
     [Fact]
     public void PositionAtMapsTileLocalCoordinatesIntoFaceCoordinates()
     {
-        var key = new CubeTileKey(CubeFace.PositiveZ, 2, 1, 2);
+        var key = new PlanetaryTileAddress(PlanetaryCubeFace.PositiveZ, 2, 1, 2);
 
         var lowerLeft = key.PositionAt(0.0, 0.0);
         var upperRight = key.PositionAt(1.0, 1.0);
@@ -21,11 +21,11 @@ public sealed class CubeTileKeyTests
     [Fact]
     public void ChildAndParentPreserveQuadtreeAddress()
     {
-        var root = new CubeTileKey(CubeFace.NegativeY, 0, 0, 0);
+        var root = new PlanetaryTileAddress(PlanetaryCubeFace.NegativeY, 0, 0, 0);
         var child = root.Child(1, 0).Child(0, 1);
 
-        Assert.Equal(new CubeTileKey(CubeFace.NegativeY, 2, 2, 1), child);
-        Assert.Equal(new CubeTileKey(CubeFace.NegativeY, 1, 1, 0), child.Parent());
+        Assert.Equal(new PlanetaryTileAddress(PlanetaryCubeFace.NegativeY, 2, 2, 1), child);
+        Assert.Equal(new PlanetaryTileAddress(PlanetaryCubeFace.NegativeY, 1, 1, 0), child.Parent());
         Assert.Equal("NegativeY/L02/2/1", child.ToString());
     }
 }

@@ -1,4 +1,4 @@
-using Aquarium.Engine.Fractal;
+using CultMath;
 using System.Numerics;
 
 namespace Saga;
@@ -19,7 +19,7 @@ public readonly record struct SagaFlowDomain(
 
 public readonly record struct SagaFlowRequest(
     SagaFlowDomain Domain,
-    CubeTileKey Tile,
+    PlanetaryTileAddress Tile,
     int SampleResolution,
     double TimeSeconds,
     SagaCoriolisFrame Coriolis,

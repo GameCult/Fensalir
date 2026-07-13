@@ -10,7 +10,7 @@ internal static class ZyphosPlanetarySurfacePages
     private const int BorderSize = 2;
     private const int MaximumLevel = 5;
     private const float ArrivalSeconds = 0.35f;
-    private static readonly Dictionary<ulong, AquariumPlanetarySurfacePageInput[]> Content = [];
+    private static readonly Dictionary<ulong, CachedPageContent> Content = [];
     private static readonly PlanetaryResidualResidency Residency = new();
 
     internal static void Reset()
@@ -59,36 +59,37 @@ internal static class ZyphosPlanetarySurfacePages
 
     private static AquariumPlanetarySurfacePage BuildPage(PlanetaryTileAddress tile, float blend)
     {
-        var request = new PlanetaryPageLayout(tile, InteriorSize, BorderSize);
+        var layout = new PlanetaryPageLayout(tile, InteriorSize, BorderSize);
         var key = tile.StableKey;
         var radius = ZyphosUmbrosSystem.ZyphosSurfaceRadius;
-        var spacing = PlanetaryPageSampling.NominalAngularTexelSize(request) * radius;
-        var parentSpacing = tile.Level == 0
-            ? 0.0f
-            : PlanetaryPageSampling.NominalAngularTexelSize(new PlanetaryPageLayout(tile.Parent(), InteriorSize, BorderSize)) * radius;
-        if (!Content.TryGetValue(key, out var samples))
+        if (!Content.TryGetValue(key, out var cached))
         {
-            samples = new AquariumPlanetarySurfacePageInput[request.StorageSize * request.StorageSize];
-            for (var y = 0; y < request.StorageSize; y++) for (var x = 0; x < request.StorageSize; x++)
-            {
-                var sampleDirection = (Vector3)PlanetaryPageSampling.Direction(request, x, y);
-                samples[y * request.StorageSize + x] = new AquariumPlanetarySurfacePageInput(
-                    new Vector4(sampleDirection, radius), new Vector4(spacing, parentSpacing, 0, 0));
-            }
-            Content[key] = samples;
+            var common = PlanetaryGpuPageBuilder.BuildContent(layout, radius);
+            var samples = common.Inputs.Select(input => new AquariumPlanetarySurfacePageInput(
+                ToNumerics(input.DirectionRadius), ToNumerics(input.Sampling))).ToArray();
+            cached = new(common, samples);
+            Content[key] = cached;
         }
+
+        var metadata = PlanetaryGpuPageBuilder.Metadata(cached.Common, 0, blend);
 
         return new AquariumPlanetarySurfacePage
         {
             ContentKey = unchecked((long)key),
-            Samples = samples,
+            Samples = cached.Samples,
             Metadata = new AquariumPlanetarySurfacePageMetadata(
-                new Vector4((int)tile.Face, tile.Level, tile.X, tile.Y),
-                new Vector4(0, request.StorageSize, request.InteriorSize, request.BorderSize),
-                Vector4.Zero,
-                new Vector4(1, blend, PlanetaryPageSampling.NominalAngularTexelSize(request), spacing)),
+                ToNumerics(metadata.Address),
+                ToNumerics(metadata.Layout),
+                ToNumerics(metadata.Bounds),
+                ToNumerics(metadata.State)),
         };
     }
+
+    private static Vector4 ToNumerics(float4 value) => new(value.x, value.y, value.z, value.w);
+
+    private sealed record CachedPageContent(
+        PlanetaryGpuPageContent Common,
+        AquariumPlanetarySurfacePageInput[] Samples);
 
     private static PlanetaryFieldDefinition FieldDefinition(float radius)
     {

@@ -1,9 +1,8 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
-using Aquarium.Engine.Fractal;
-using Aquarium.Engine.Fractal.Lod;
 using Aquarium.Engine.Render;
 using Aquarium.Zyphos;
+using CultMath;
 
 namespace Aquarium.Engine.Tests;
 
@@ -16,7 +15,7 @@ public sealed class D3D12PlanetarySurfacePageTests
         var tangentX=Vector3.Normalize(Vector3.Cross(Vector3.UnitY,direction));
         var tangentY=Vector3.Normalize(Vector3.Cross(direction,tangentX));
         var gradient=tangentX*0.35f+tangentY*-0.18f;
-        var normal=PlanetarySurfaceDifferential.SurfaceNormal(direction,gradient);
+        var normal=(Vector3)PlanetaryTopology.SurfaceNormal((float3)direction,(float3)gradient);
         Assert.InRange(MathF.Abs(Vector3.Dot(normal,Vector3.Normalize(direction-gradient)))-1.0f,-1.0e-6f,1.0e-6f);
         Assert.True(Vector3.Dot(normal,direction)>0.0f);
     }
@@ -46,26 +45,46 @@ public sealed class D3D12PlanetarySurfacePageTests
         var near = ZyphosSceneBuilder.Build(2.0f, 1.0f, center + Vector3.Normalize(new Vector3(0.13f, 0.19f, 1.0f)) * (ZyphosUmbrosSystem.ZyphosSurfaceRadius + 0.05f), default).PlanetarySurfacePages;
 
         Assert.Equal(6, orbital.Pages.Count);
-        Assert.Equal(Enum.GetValues<CubeFace>().Select(face => (float)face), orbital.Pages.Select(page => page.Metadata.Address.X));
+        Assert.Equal(Enum.GetValues<PlanetaryCubeFace>().Select(face => (float)face), orbital.Pages.Select(page => page.Metadata.Address.X));
         Assert.True(near.Pages.Count > 6);
         Assert.Equal(Enumerable.Range(1, near.Pages.Count - 6).Select(level => (float)level), near.Pages.Skip(6).Select(page => page.Metadata.Address.Y));
         Assert.All(near.Pages.Skip(6), page => Assert.True(page.Samples[0].Sampling.Y > page.Samples[0].Sampling.X));
     }
 
     [Fact]
+    public void ZyphosUploadUsesCultMathGpuPageContractWithoutPrivateRecalculation()
+    {
+        ZyphosPlanetarySurfacePages.Reset();
+        var pages = ZyphosPlanetarySurfacePages.ForCamera(
+            ZyphosUmbrosSystem.ZyphosCenter + Vector3.UnitZ * 1000.0f,
+            0.0f);
+        var actual = pages.Pages[0];
+        var tile = new PlanetaryTileAddress((PlanetaryCubeFace)(int)actual.Metadata.Address.X, 0, 0, 0);
+        var layout = new PlanetaryPageLayout(tile, 17, 2);
+        var common = PlanetaryGpuPageBuilder.BuildContent(layout, ZyphosUmbrosSystem.ZyphosSurfaceRadius);
+        var metadata = PlanetaryGpuPageBuilder.Metadata(common, 0, 1.0f);
+
+        Assert.Equal((Vector4)metadata.Address, actual.Metadata.Address);
+        Assert.Equal((Vector4)metadata.Layout, actual.Metadata.Layout);
+        Assert.Equal((Vector4)metadata.State, actual.Metadata.State);
+        Assert.Equal((Vector4)common.Inputs[0].DirectionRadius, actual.Samples[0].DirectionRadius);
+        Assert.Equal((Vector4)common.Inputs[0].Sampling, actual.Samples[0].Sampling);
+    }
+
+    [Fact]
     public void ChildPageStoresOnlyTheNewlyResolvableResidualBand()
     {
         const float radius=8.4f;
-        var parent=new PlanetarySurfacePageRequest(new CubeTileKey(CubeFace.PositiveZ,2,2,1),9,2);
-        var child=new PlanetarySurfacePageRequest(parent.Tile.Child(1,0),9,2);
-        var direction=PlanetarySurfacePageSampling.DirectionAtLocal(child,0.43,0.57);
-        var childSpacing=PlanetarySurfacePageSampling.NominalAngularTexelSize(child)*radius;
-        var parentSpacing=PlanetarySurfacePageSampling.NominalAngularTexelSize(parent)*radius;
+        var parent=new PlanetaryPageLayout(new PlanetaryTileAddress(PlanetaryCubeFace.PositiveZ,2,2,1),9,2);
+        var child=new PlanetaryPageLayout(parent.Tile.Child(1,0),9,2);
+        var direction=PlanetaryPageSampling.DirectionAtLocal(child,0.43,0.57);
+        var childSpacing=PlanetaryPageSampling.NominalAngularTexelSize(child)*radius;
+        var parentSpacing=PlanetaryPageSampling.NominalAngularTexelSize(parent)*radius;
         var input=new[]
         {
-            new PageInput(new Vector4(direction,radius),new Vector4(childSpacing,0,0,0)),
-            new PageInput(new Vector4(direction,radius),new Vector4(parentSpacing,0,0,0)),
-            new PageInput(new Vector4(direction,radius),new Vector4(childSpacing,parentSpacing,0,0)),
+            new PageInput(new Vector4((Vector3)direction,radius),new Vector4(childSpacing,0,0,0)),
+            new PageInput(new Vector4((Vector3)direction,radius),new Vector4(parentSpacing,0,0,0)),
+            new PageInput(new Vector4((Vector3)direction,radius),new Vector4(childSpacing,parentSpacing,0,0)),
         };
         var output=D3D12ComputeProbe.Run<PageInput,PageOutput>(ShaderPath(),"D3D12ZyphosTerrainPageCS",input);
         Assert.InRange(MathF.Abs(output[0].HeightGradient.X-(output[1].HeightGradient.X+output[2].HeightGradient.X)),0,2.0e-5f);
@@ -127,7 +146,7 @@ public sealed class D3D12PlanetarySurfacePageTests
         for(var index=0;index<distances.Length;index++)
         {
             var pages=ZyphosSceneBuilder.Build((float)index,(float)index-0.1f,center+direction*distances[index],default).PlanetarySurfacePages;
-            levels.Add((int)pages.Pages.Where(page=>page.Metadata.Address.X==(float)CubeFace.PositiveZ).Max(page=>page.Metadata.Address.Y));
+            levels.Add((int)pages.Pages.Where(page=>page.Metadata.Address.X==(float)PlanetaryCubeFace.PositiveZ).Max(page=>page.Metadata.Address.Y));
         }
         Assert.Equal(levels.Order(),levels);
         Assert.True(levels[^1]>levels[0]);
@@ -176,8 +195,8 @@ public sealed class D3D12PlanetarySurfacePageTests
             Assert.NotEmpty(residuals);
             Assert.Contains(residuals,page=>MathF.Abs(page.Metadata.State.Y-0.5f)<0.001f);
             Assert.All(residuals,page=>Assert.InRange(page.Metadata.State.Y,0.5f,1.0f));
-            Assert.Contains(residuals,page=>page.Metadata.Address.X==(float)CubeFace.PositiveX);
-            Assert.Contains(residuals,page=>page.Metadata.Address.X==(float)CubeFace.PositiveZ);
+            Assert.Contains(residuals,page=>page.Metadata.Address.X==(float)PlanetaryCubeFace.PositiveX);
+            Assert.Contains(residuals,page=>page.Metadata.Address.X==(float)PlanetaryCubeFace.PositiveZ);
         }
         finally
         {
@@ -213,8 +232,8 @@ public sealed class D3D12PlanetarySurfacePageTests
     [Fact]
     public void IndependentlyGeneratedSiblingPagesAgreeOnSharedBoundary()
     {
-        var left = new PlanetarySurfacePageRequest(new CubeTileKey(CubeFace.PositiveZ,1,0,0),9,2);
-        var right = new PlanetarySurfacePageRequest(new CubeTileKey(CubeFace.PositiveZ,1,1,0),9,2);
+        var left = new PlanetaryPageLayout(new PlanetaryTileAddress(PlanetaryCubeFace.PositiveZ,1,0,0),9,2);
+        var right = new PlanetaryPageLayout(new PlanetaryTileAddress(PlanetaryCubeFace.PositiveZ,1,1,0),9,2);
         var leftOutput = Generate(left); var rightOutput = Generate(right);
         for(int y=0;y<left.InteriorSize;y++)
         {
@@ -229,15 +248,15 @@ public sealed class D3D12PlanetarySurfacePageTests
     {
         const int interior=9,border=2;
         var groups=new Dictionary<(int X,int Y,int Z),List<PageOutput>>();
-        var requests=Enum.GetValues<CubeFace>().Select(face=>new PlanetarySurfacePageRequest(new CubeTileKey(face,0,0,0),interior,border)).ToArray();
+        var requests=Enum.GetValues<PlanetaryCubeFace>().Select(face=>new PlanetaryPageLayout(new PlanetaryTileAddress(face,0,0,0),interior,border)).ToArray();
         const float radius=8.4f;
         var inputs=requests.SelectMany(request=>
         {
-            var spacing=PlanetarySurfacePageSampling.NominalAngularTexelSize(request)*radius;
+            var spacing=PlanetaryPageSampling.NominalAngularTexelSize(request)*radius;
             return Enumerable.Range(0,request.StorageSize*request.StorageSize).Select(index=>
             {
                 var x=index%request.StorageSize; var y=index/request.StorageSize;
-                return new PageInput(new Vector4(PlanetarySurfacePageSampling.Direction(request,x,y),radius),new Vector4(spacing,0,0,0));
+                return new PageInput(new Vector4((Vector3)PlanetaryPageSampling.Direction(request,x,y),radius),new Vector4(spacing,0,0,0));
             });
         }).ToArray();
         var generated=D3D12ComputeProbe.Run<PageInput,PageOutput>(ShaderPath(),"D3D12ZyphosTerrainPageCS",inputs);
@@ -247,7 +266,7 @@ public sealed class D3D12PlanetarySurfacePageTests
             for(var y=0;y<interior;y++) for(var x=0;x<interior;x++)
             {
                 if(x!=0&&x!=interior-1&&y!=0&&y!=interior-1)continue;
-                var direction=PlanetarySurfacePageSampling.DirectionAtLocal(request,x/(float)(interior-1),y/(float)(interior-1));
+                var direction=(Vector3)PlanetaryPageSampling.DirectionAtLocal(request,x/(float)(interior-1),y/(float)(interior-1));
                 var key=((int)MathF.Round(direction.X*1_000_000),(int)MathF.Round(direction.Y*1_000_000),(int)MathF.Round(direction.Z*1_000_000));
                 if(!groups.TryGetValue(key,out var samples))groups[key]=samples=[];
                 samples.Add(generated[outputOffset+(border+y)*request.StorageSize+border+x]);
@@ -268,7 +287,7 @@ public sealed class D3D12PlanetarySurfacePageTests
     [Fact]
     public void GeneratedPagePublishesFiniteChannelsAndSummaryEvidence()
     {
-        var request=new PlanetarySurfacePageRequest(new CubeTileKey(CubeFace.PositiveX,2,1,2),9,2);
+        var request=new PlanetaryPageLayout(new PlanetaryTileAddress(PlanetaryCubeFace.PositiveX,2,1,2),9,2);
         var output=Generate(request);
         Assert.All(output,s=>{Assert.True(float.IsFinite(s.HeightGradient.X));Assert.True(float.IsFinite(s.HeightGradient.Y));Assert.True(float.IsFinite(s.HeightGradient.Z));Assert.True(float.IsFinite(s.HeightGradient.W));Assert.InRange(s.Masks.X,0,1);Assert.InRange(s.Masks.Y,0,1);});
         var min=output.Min(s=>s.HeightGradient.X); var max=output.Max(s=>s.HeightGradient.X); var slope=output.Max(s=>new Vector3(s.HeightGradient.Y,s.HeightGradient.Z,s.HeightGradient.W).Length());
@@ -281,11 +300,11 @@ public sealed class D3D12PlanetarySurfacePageTests
     [Fact]
     public void PageBackedRadialHitsAgreeWithDirectOracleWithinDeclaredError()
     {
-        var request=new PlanetarySurfacePageRequest(new CubeTileKey(CubeFace.PositiveZ,1,1,0),9,2);
+        var request=new PlanetaryPageLayout(new PlanetaryTileAddress(PlanetaryCubeFace.PositiveZ,1,1,0),9,2);
         var page=Generate(request); const float radius=8.4f,rayOriginRadius=12.0f;
-        var spacing=PlanetarySurfacePageSampling.NominalAngularTexelSize(request)*radius;
+        var spacing=PlanetaryPageSampling.NominalAngularTexelSize(request)*radius;
         var points=new[]{new Vector2(0.08f,0.11f),new Vector2(0.37f,0.61f),new Vector2(0.52f,0.48f),new Vector2(0.79f,0.22f),new Vector2(0.91f,0.88f)};
-        var directInput=points.Select(point=>new PageInput(new Vector4(PlanetarySurfacePageSampling.DirectionAtLocal(request,point.X,point.Y),radius),new Vector4(spacing,0,0,0))).ToArray();
+        var directInput=points.Select(point=>new PageInput(new Vector4((Vector3)PlanetaryPageSampling.DirectionAtLocal(request,point.X,point.Y),radius),new Vector4(spacing,0,0,0))).ToArray();
         var direct=D3D12ComputeProbe.Run<PageInput,PageOutput>(ShaderPath(),"D3D12ZyphosTerrainPageCS",directInput);
         float H(int px,int py)=>page[py*request.StorageSize+px].HeightGradient.X;
         float Lerp(float a,float b,float t)=>a+(b-a)*t;
@@ -302,12 +321,12 @@ public sealed class D3D12PlanetarySurfacePageTests
         }
     }
 
-    private static PageOutput[] Generate(PlanetarySurfacePageRequest request)
+    private static PageOutput[] Generate(PlanetaryPageLayout request)
     {
-        const float radius=8.4f; var spacing=PlanetarySurfacePageSampling.NominalAngularTexelSize(request)*radius;
+        const float radius=8.4f; var spacing=PlanetaryPageSampling.NominalAngularTexelSize(request)*radius;
         var input=new PageInput[request.StorageSize*request.StorageSize];
         for(int y=0;y<request.StorageSize;y++) for(int x=0;x<request.StorageSize;x++)
-        { var d=PlanetarySurfacePageSampling.Direction(request,x,y); input[y*request.StorageSize+x]=new PageInput(new Vector4(d,radius),new Vector4(spacing,0,0,0)); }
+        { var d=(Vector3)PlanetaryPageSampling.Direction(request,x,y); input[y*request.StorageSize+x]=new PageInput(new Vector4(d,radius),new Vector4(spacing,0,0,0)); }
         var shader=ShaderPath();
         return D3D12ComputeProbe.Run<PageInput,PageOutput>(shader,"D3D12ZyphosTerrainPageCS",input);
     }

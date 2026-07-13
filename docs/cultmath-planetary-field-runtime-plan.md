@@ -23,15 +23,19 @@ frequency-band selection, scale-aware field definition and sampling,
 tangent/QSC cube-sphere topology, bordered page layouts, CPU residual baking and
 composition, projected-error LOD selection, residual residency transitions,
 renderer-neutral patch meshes, CPU ray/path/region queries, map projections,
-and versioned projected tile baking. Fensalir and Zyphos consume the CultMath
-topology, field, LOD, residency, page, patch-direction, and refinement functions
-while retaining D3D12 buffers, bindings, dispatch, scene policy, and drawing.
+versioned projected tile baking, and canonical GPU page input/metadata payloads.
+Fensalir and Zyphos consume the CultMath topology, field, LOD, residency, page,
+patch-direction, refinement, and upload-contract functions while retaining
+D3D12 buffers, bindings, dispatch, scene policy, and drawing.
 
-Fensalir still exposes compatibility types for its existing fractal API, and
-Zyphos still owns its geological base-field preset, authored brush chart, page
-resource structures, shader entry points, and scene/material policy. Unity,
-Electron, CultMesh tile publication, WGSL, and Aetheria daemon integration are
-not implemented by the restricted pass recorded below.
+Fensalir's former cube-face, cube-position, tile-key, page-layout, page-sampling,
+and differential compatibility types have been deleted; fractal, Saga, tests,
+and projection-analysis code consume CultMath directly. Zyphos still owns its
+geological base-field preset, authored brush chart, page resource structures,
+shader entry points, and scene/material policy. CultMath now ships a runnable
+Unity package sample and a browser tile decoder. Electron integration, CultMesh
+tile publication, WGSL, and Aetheria daemon integration are not implemented by
+the restricted pass recorded below.
 
 The completed Fensalir implementation proves the approach, but its ownership
 boundary is too renderer-shaped for Aetheria. The reusable algorithms should
@@ -51,21 +55,26 @@ does not impersonate a consumer integration.
 
 | Phase | State | Current evidence |
 |---|---|---|
-| 0. Contract and parity corpus | In progress | Field identity, query scale, samples, errors, topology/page/projection fixtures, D3D12 QSC readback, and equirectangular/Equal Earth HLSL parity exist; remaining projection HLSL parity remains |
-| 1. Topology extraction | In progress | CultMath owns CPU/HLSL QSC mapping and page directions; Fensalir compatibility types and non-planet fractal projection APIs remain |
+| 0. Contract and parity corpus | Complete | Field identity, query scale, samples, errors, topology/page/projection fixtures, D3D12 QSC readback, and forward/inverse HLSL parity for all eight projections exist |
+| 1. Topology extraction | Complete | CultMath owns CPU/HLSL QSC mapping, normalized-cube baseline, tile addresses, page directions, and all edge/corner fixtures; the former Fensalir types were deleted |
 | 2. Authoritative CPU queries | In progress | Point, batch, double-position, ray, clearance, great-circle, and region queries exist; the forbidden Aetheria daemon smoke remains |
-| 3. Page machinery extraction | In progress | CultMath owns CPU baking, residuals, summaries, composition, HLSL page interpolation/residual functions, and residency; renderer resource contracts and GPU entry points remain adapters |
-| 4. Residency and patch extraction | In progress | CultMath owns LOD, lifecycle, mesh generation, QSC patch direction, and radial refinement; Unity equivalence remains |
-| 5. Unity adapter and viewer | In progress | A separate `CultMath.Unity` assembly converts canonical patches and residency snapshots into Unity meshes/page payloads and compiles against Unity 6; a renderer/viewer remains, and Aetheria was explicitly out of scope |
-| 6. Projections and map tiles | In progress | All named CPU projections and versioned surface-tile baking exist; publication and Electron lowering remain |
+| 3. Page machinery extraction | Complete | CultMath owns CPU baking, residuals, summaries, composition, HLSL page interpolation/residual/summary functions, and residency; Fensalir retains only resource, binding, dispatch, and entry-point adapters |
+| 4. Residency and patch extraction | Complete | CultMath owns LOD, lifecycle, mesh generation, QSC patch direction, radial refinement, and the GPU page payload; Unity and Fensalir are type-conversion lowerings of the same builders |
+| 5. Unity adapter and viewer | In progress | `CultMath.Unity` converts canonical patches/residency into Unity meshes/page payloads; a one-click sample renders the shared HLSL field and exposes matching CPU queries, and a clean Unity 6 project imports/compiles it; Aetheria binding remains out of scope |
+| 6. Projections and map tiles | In progress | All named CPU projections, versioned tile baking, the `CMPT` binary codec, and a tested TypeScript decoder exist; CultMesh publication and Electron presentation remain |
 | 7. Optional WebGPU lowering | Not started | Still correctly optional |
-| 8. Delete obsolete owners | In progress | Zyphos private page addressing, LOD, lifecycle, triplanar erosion composition, page interpolation, and patch direction were removed or delegated |
+| 8. Delete obsolete owners | In progress | Zyphos private page addressing, LOD, lifecycle, GPU payload calculation, triplanar erosion composition, page interpolation, and patch direction were removed or delegated; the Aetheria cut is outside this pass |
 
-Current verification from this pass includes CultMath managed tests, the full
+Current verification from this pass includes CultMath managed and browser-codec tests, the full
 Fensalir fractal suite, a zero-warning solution build, CPU lifecycle/LOD
-integration probes, advanced erosion CPU/GPU parity, QSC CPU/GPU readback,
-focused shader compilation, page residual generation, all cube-edge/corner seam
-probes, finite summary evidence, and page-backed radial-hit parity.
+integration probes, advanced erosion CPU/GPU parity, QSC CPU/GPU readback, all
+eight projection forward/inverse GPU readbacks, focused shader compilation,
+page residual generation, all cube-edge/corner seam
+probes, finite summary evidence, page-backed radial-hit parity, and a clean
+Unity 6 package/sample import with C# domain reload and ShaderLab compilation.
+The final restricted-pass run was 68 CultMath tests, 170 Fensalir fractal tests,
+126 engine/GPU tests, a zero-warning solution build, a C#-produced tile decoded
+by Node's TypeScript runtime, and Unity 6.0.4.2f1 batchmode exit code zero.
 
 ## Authority map
 

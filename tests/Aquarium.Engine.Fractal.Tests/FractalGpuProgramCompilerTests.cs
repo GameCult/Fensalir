@@ -1,5 +1,6 @@
 using Aquarium.Engine.Fractal.Grammar;
 using Aquarium.Engine.Fractal.Lod;
+using CultMath;
 
 namespace Aquarium.Engine.Fractal.Tests;
 
@@ -30,7 +31,7 @@ public sealed class FractalGpuProgramCompilerTests
             Assert.InRange(transform.MaterialSeedShape.X, 0.0f, 1.0f);
         });
         Assert.Contains(transforms, transform =>
-            transform.TileAddress.X == (float)CubeFace.PositiveZ
+            transform.TileAddress.X == (float)PlanetaryCubeFace.PositiveZ
             && transform.TileAddress.Y == 2.0f
             && transform.TileAddress.Z == 1.0f
             && transform.TileAddress.W == 1.0f);

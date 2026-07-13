@@ -1,4 +1,5 @@
 using Aquarium.Engine.Fractal;
+using CultMath;
 
 namespace Aquarium.Engine.Fractal.Tests;
 
@@ -7,7 +8,7 @@ public sealed class FractalBoundaryTests
     [Fact]
     public void FractalAssemblyDoesNotReferenceRendererOrD3D12Assemblies()
     {
-        var references = typeof(CubeTileKey)
+        var references = typeof(PlanetaryTileAddress)
             .Assembly
             .GetReferencedAssemblies()
             .Select(reference => reference.Name ?? string.Empty);

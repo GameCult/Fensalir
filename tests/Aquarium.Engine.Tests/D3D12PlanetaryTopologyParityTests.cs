@@ -71,6 +71,70 @@ public sealed class D3D12PlanetaryTopologyParityTests
         }
     }
 
+    [Theory]
+    [InlineData(PlanetaryProjectionKind.Equirectangular)]
+    [InlineData(PlanetaryProjectionKind.WebMercator)]
+    [InlineData(PlanetaryProjectionKind.EqualEarth)]
+    [InlineData(PlanetaryProjectionKind.Orthographic)]
+    [InlineData(PlanetaryProjectionKind.AzimuthalEquidistant)]
+    [InlineData(PlanetaryProjectionKind.AzimuthalEqualArea)]
+    [InlineData(PlanetaryProjectionKind.CubeAtlas)]
+    [InlineData(PlanetaryProjectionKind.LocalTangent)]
+    public void PortableProjectionDispatcherMatchesEveryCpuProjection(PlanetaryProjectionKind kind)
+    {
+        var projection = new PlanetaryProjectionParameters(kind);
+        var inputs = new List<TopologyInput>();
+        var expected = new List<(Vector3 Direction, Vector2 Coordinate)>();
+        foreach (var longitude in new[] { -1.2, -0.3, 0.2, 0.9 })
+        foreach (var latitude in new[] { -0.7, -0.1, 0.45 })
+        {
+            var cos = Math.Cos(latitude);
+            var direction = new Vector3((float)(cos * Math.Cos(longitude)), (float)(cos * Math.Sin(longitude)), (float)Math.Sin(latitude));
+            if (!PlanetaryProjection.TryForward((float3)direction, projection, out var coordinate)) continue;
+            var map = new Vector2((float)coordinate.x, (float)coordinate.y);
+            inputs.Add(new(new Vector4(direction, 0), new Vector4(0, 0, 6, (int)kind)));
+            inputs.Add(new(Vector4.Zero, new Vector4(map, 7, (int)kind)));
+            expected.Add((direction, map));
+        }
+        var output = D3D12ComputeProbe.Run<TopologyInput, TopologyOutput>(ShaderPath(), "D3D12PlanetaryTopologyParityCS", inputs.ToArray());
+        for (var i = 0; i < expected.Count; i++)
+        {
+            Assert.Equal(1, output[i * 2].CoordinateValid.W);
+            Assert.InRange(Vector2.Distance(expected[i].Coordinate, new(output[i * 2].CoordinateValid.X, output[i * 2].CoordinateValid.Y)), 0, 3.0e-4f);
+            Assert.Equal(1, output[i * 2 + 1].CoordinateValid.W);
+            var inverse = output[i * 2 + 1].DirectionFace;
+            Assert.InRange(Vector3.Distance(expected[i].Direction, new(inverse.X, inverse.Y, inverse.Z)), 0, 5.0e-4f);
+        }
+    }
+
+    [Theory]
+    [InlineData(PlanetaryProjectionKind.Equirectangular)]
+    [InlineData(PlanetaryProjectionKind.WebMercator)]
+    [InlineData(PlanetaryProjectionKind.EqualEarth)]
+    [InlineData(PlanetaryProjectionKind.Orthographic)]
+    [InlineData(PlanetaryProjectionKind.AzimuthalEquidistant)]
+    [InlineData(PlanetaryProjectionKind.AzimuthalEqualArea)]
+    [InlineData(PlanetaryProjectionKind.CubeAtlas)]
+    [InlineData(PlanetaryProjectionKind.LocalTangent)]
+    public void ProjectionDispatcherHonorsCenterAndScale(PlanetaryProjectionKind kind)
+    {
+        var projection = new PlanetaryProjectionParameters(kind, 0.31, -0.22, 1.4);
+        var parameters = new Vector4((float)projection.CenterLongitude, (float)projection.CenterLatitude, (float)projection.Scale, 0);
+        var direction = Vector3.Normalize(new Vector3(0.91f, 0.23f, 0.34f));
+        if (!PlanetaryProjection.TryForward((float3)direction, projection, out var coordinate)) return;
+        var map = new Vector2((float)coordinate.x, (float)coordinate.y);
+        var inputs = new[]
+        {
+            new TopologyInput(new Vector4(direction,0),new Vector4(0,0,6,(int)kind),parameters),
+            new TopologyInput(Vector4.Zero,new Vector4(map,7,(int)kind),parameters),
+        };
+        var output = D3D12ComputeProbe.Run<TopologyInput, TopologyOutput>(ShaderPath(), "D3D12PlanetaryTopologyParityCS", inputs);
+        Assert.Equal(1, output[0].CoordinateValid.W);
+        Assert.InRange(Vector2.Distance(map, new(output[0].CoordinateValid.X, output[0].CoordinateValid.Y)), 0, 4.0e-4f);
+        Assert.Equal(1, output[1].CoordinateValid.W);
+        Assert.InRange(Vector3.Distance(direction, new(output[1].DirectionFace.X, output[1].DirectionFace.Y, output[1].DirectionFace.Z)), 0, 6.0e-4f);
+    }
+
     private static string ShaderPath() => Path.Combine(RepositoryRoot(), "src", "Aquarium.Engine", "Render", "Shaders", "D3D12PlanetaryTopologyParity.hlsl");
 
     private static string RepositoryRoot()
@@ -84,6 +148,12 @@ public sealed class D3D12PlanetaryTopologyParityTests
         throw new InvalidOperationException("Could not locate Fensalir repository root.");
     }
 
-    private readonly record struct TopologyInput(Vector4 DirectionFace, Vector4 CoordinateMode);
+    private readonly record struct TopologyInput(Vector4 DirectionFace, Vector4 CoordinateMode, Vector4 ProjectionParameters)
+    {
+        public TopologyInput(Vector4 directionFace, Vector4 coordinateMode)
+            : this(directionFace, coordinateMode, new Vector4(0, 0, 1, 0))
+        {
+        }
+    }
     private readonly record struct TopologyOutput(Vector4 DirectionFace, Vector4 CoordinateValid);
 }

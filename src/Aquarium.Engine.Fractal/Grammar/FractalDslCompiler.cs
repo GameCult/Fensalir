@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Numerics;
 using Aquarium.Engine.Fractal;
+using CultMath;
 
 namespace Aquarium.Engine.Fractal.Grammar;
 
@@ -37,7 +38,7 @@ public static class FractalDslCompiler
                     break;
                 case "tile":
                     EnsureTokenCount(tokens, 6, lineIndex);
-                    var tile = new CubeTileKey(ParseFace(tokens[1], lineIndex), ParseInt(tokens[2], lineIndex), ParseInt(tokens[3], lineIndex), ParseInt(tokens[4], lineIndex));
+                    var tile = new PlanetaryTileAddress(ParseFace(tokens[1], lineIndex), ParseInt(tokens[2], lineIndex), ParseInt(tokens[3], lineIndex), ParseInt(tokens[4], lineIndex));
                     var domainKey = FractalStableKeyBuilder.ForCubeTile(tile, tokens[5]);
                     var parentKey = tokens.Length >= 7 ? new AquariumFractalKey(tokens[6]) : default;
                     rootKey = FractalStableKeyBuilder.Child(domainKey, "root");
@@ -500,9 +501,9 @@ public static class FractalDslCompiler
         return new Vector4(minX, minY, maxX, maxY);
     }
 
-    private static CubeFace ParseFace(string value, int lineIndex)
+    private static PlanetaryCubeFace ParseFace(string value, int lineIndex)
     {
-        if (Enum.TryParse<CubeFace>(value, ignoreCase: false, out var face))
+        if (Enum.TryParse<PlanetaryCubeFace>(value, ignoreCase: false, out var face))
         {
             return face;
         }

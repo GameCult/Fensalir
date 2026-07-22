@@ -3,7 +3,7 @@ static const int ZYPHOS_GEOMETRY_BRUSH_LIMIT = 4;
 
 #include "D3D12SdfCommon.hlsli"
 #include "D3D12SdfMath.hlsli"
-#include "CultMath/CultMath.hlsl"
+#include "GameCult.Geometry/GameCult.Geometry.hlsl"
 #include "D3D12ZyphosTerrain.hlsli"
 
 float3 zyRotateZ(float3 p, float angle)
@@ -58,7 +58,7 @@ float zyCompactBrush(float2 delta, float2 radii, float rotation, float falloff, 
 float2 zyCubeFaceUv(float3 dir, out float face)
 {
     // Authored brush packets retain their legacy cube-ratio chart. Planetary
-    // page addressing and patch geometry use CultMath's QSC topology.
+    // Page addressing and patch geometry use GameCult.Geometry's QSC topology.
     float3 a = abs(dir);
     if (a.x >= a.y && a.x >= a.z)
     {

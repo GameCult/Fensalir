@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\CultMath\src\CultMath\CultMath.csproj" />
+    <ProjectReference Include="..\..\..\CultLib\src\GameCult.Geometry\GameCult.Geometry.csproj" />
   </ItemGroup>
 
   <ItemGroup>

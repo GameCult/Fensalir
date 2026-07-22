@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\Aquarium.Engine.Contracts\Aquarium.Engine.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Aquarium.Fensalir\Aquarium.Fensalir.csproj" />
     <ProjectReference Include="..\..\src\Aquarium.Zyphos\Aquarium.Zyphos.csproj" />
+    <ProjectReference Include="..\..\..\CultLib\src\GameCult.Geometry\GameCult.Geometry.csproj" />
   </ItemGroup>
 
 </Project>

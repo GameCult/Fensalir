@@ -71,12 +71,12 @@ invariants:
     terrain should be a quadtree of brush-painted surface tiles, subdivided by
     projected footprint, curvature, brush/material detail, silhouettes, and
     temporal uncertainty before SDF probes emit detail-adaptive surface splats.
-  - Deterministic planetary geometry is owned by CultMath's scale-aware
+  - Deterministic planetary geometry is owned by GameCult.Geometry's scale-aware
     planetary field runtime. It owns field identity, point/batch and
     double-position CPU queries, tangent/QSC cube-sphere topology, bordered
     pages and child residual composition, projected-error LOD, residual
     lifecycle, ray/path/region queries, coarse patch topology, and map
-    projections/tiles. CultMath maintains matching HLSL for field evaluation,
+    projections/tiles. GameCult.Geometry maintains matching HLSL for field evaluation,
     topology, page interpolation/residuals, and radial refinement. Clients own
     base fields, terrain parameters, gameplay meaning, and presentation policy.
   - The production lowering for stateless planetary erosion is specified in
@@ -86,7 +86,7 @@ invariants:
   - CPU/GPU terrain parity is measured through a standalone D3D12 compute and
     readback probe. Shader include expansion is owned by D3D12ShaderCompiler
     and shared with the renderer; parity probes must not boot a swapchain or
-    duplicate CultMath equations.
+    duplicate GameCult.Geometry equations.
   - Planetary erosion frequencies are selected in world-distance wavelengths
     from the current sample footprint. The last resolvable octave fades
     fractionally and reports its omitted-height bound; Zyphos lowers the planar
@@ -97,10 +97,10 @@ invariants:
     it may not change terrain at a shared boundary. Page borders evaluate the
     spherical field beyond tile bounds without reading neighbor residency.
   - D3D12 owns persistent planetary page input, output, metadata, and summary
-    buffers, their bindings, dispatch, and draw submission. CultMath owns the
+    buffers, their bindings, dispatch, and draw submission. GameCult.Geometry owns the
     page layout, spherical sample directions, canonical GPU input/metadata
     payload, residual semantics, interpolation, and summaries. Client adapters
-    only convert CultMath vectors to their host ABI. Client compute entry points bind the client base field to
+    only convert CultMath primitives to their host ABI. Client compute entry points bind the client base field to
     those functions before GPU reduction. Zyphos registers planet, Umbros, and
     star proxies in object index order and publishes all three SDF objects from
     one scene builder.
@@ -109,7 +109,7 @@ invariants:
     field; covered pixels perform four bounded radial corrections against the
     complete resident page field, then use the shared differential/material
     contract. Missing pages lower to the nearest resident ancestor (the base
-    field at root). Direct CultMath evaluation and the bracketed planet SDF are
+    field at root). Direct GameCult.Geometry evaluation and the bracketed planet SDF are
     verification oracles only; neither owns production visibility.
   - D3D12 binds the page atlas, metadata, summaries, and page set to both patch
     shader stages at t81-t84. Patch projection follows the renderer's established
@@ -139,13 +139,13 @@ invariants:
     filtered erosion against the summed page field at the selected spacing;
     mode 28 exposes content fingerprint, spacing ratio, and deepest level.
     The unresolved bound and measured direct error remain distinct signals.
-  - The bounded radial correction step is owned by CultMath in matching C# and
+  - The bounded radial correction step is owned by GameCult.Geometry in matching C# and
     HLSL bodies. Zyphos composes four steps with its terrain-offset callback;
     the renderer does not carry a private correction equation.
-  - Planetary page residency is owned by CultMath and separates content from
+  - Planetary page residency is owned by GameCult.Geometry and separates content from
     presentation state. ContentVersion changes only when the resident tile set
     changes; PresentationVersion carries arrival/departure weights without
-    regenerating erosion. Six root pages remain resident. CultMath's
+    regenerating erosion. Six root pages remain resident. GameCult.Geometry's
     projected-error selector uses unresolved-height bounds against camera
     footprint to request one ancestor chain, and its residual lifecycle keeps
     departing chains addressable until their weights reach zero.

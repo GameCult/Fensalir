@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\Aquarium.Engine\Aquarium.Engine.csproj" />
     <ProjectReference Include="..\..\src\Aquarium.Engine.Fractal\Aquarium.Engine.Fractal.csproj" />
     <ProjectReference Include="..\..\src\Aquarium.Zyphos\Aquarium.Zyphos.csproj" />
+    <ProjectReference Include="..\..\..\CultLib\src\GameCult.Geometry\GameCult.Geometry.csproj" />
   </ItemGroup>
 
 </Project>

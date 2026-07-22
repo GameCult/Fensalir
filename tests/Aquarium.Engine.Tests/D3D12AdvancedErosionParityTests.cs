@@ -2,13 +2,14 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using Aquarium.Engine.Render;
 using CultMath;
+using GameCult.Geometry;
 
 namespace Aquarium.Engine.Tests;
 
 public sealed class D3D12AdvancedErosionParityTests
 {
     [Fact]
-    public void AdvancedErosionMatchesCultMathCpuAcrossDeterministicCorpus()
+    public void AdvancedErosionMatchesGameCultGeometryCpuAcrossDeterministicCorpus()
     {
         if (!OperatingSystem.IsWindows()) return;
         var parameters = AdvancedErosionParameters.Default;

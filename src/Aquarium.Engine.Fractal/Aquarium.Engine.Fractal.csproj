@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Aquarium.Engine.Contracts\Aquarium.Engine.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\CultLib\src\GameCult.Geometry\GameCult.Geometry.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

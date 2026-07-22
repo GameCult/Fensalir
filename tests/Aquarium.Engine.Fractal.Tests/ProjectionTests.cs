@@ -2,6 +2,7 @@ using System.Numerics;
 using Aquarium.Engine.Fractal;
 using Aquarium.Engine.Fractal.Projection;
 using CultMath;
+using GameCult.Geometry;
 
 namespace Aquarium.Engine.Fractal.Tests;
 

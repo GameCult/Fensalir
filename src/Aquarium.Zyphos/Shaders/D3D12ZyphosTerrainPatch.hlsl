@@ -15,7 +15,7 @@ struct ZyPatchSceneOut
 
 float3 zyPatchDirection(uint face,float2 local)
 {
-    return cultmath_planetary_face_direction((int)face,local*2.0-1.0);
+    return gamecult_geometry_planetary_face_direction((int)face,local*2.0-1.0);
 }
 
 ZyPatchVertexOut D3D12ZyphosTerrainPatchVS(uint vertexId:SV_VertexID,uint instanceId:SV_InstanceID)
@@ -43,7 +43,7 @@ ZyPatchSceneOut D3D12ZyphosTerrainPatchPS(ZyPatchVertexOut input)
     {
         float3 local=p-planet.centerRadius.xyz; float3 dir=zyPlanetDir(local,planet);
         float targetRadius=planet.state.x+zyTerrainOffset(dir,planet);
-        p=cultmath_planetary_radial_refinement_step(p,ray,planet.centerRadius.xyz,targetRadius,0.2,0.08);
+        p=gamecult_geometry_planetary_radial_refinement_step(p,ray,planet.centerRadius.xyz,targetRadius,0.2,0.08);
     }
     if(!all(isfinite(p)))p=coarsePosition;
     float travel=length(p-cameraPosition); if(!isfinite(travel)||travel<=0.0||travel>farDistance)discard;

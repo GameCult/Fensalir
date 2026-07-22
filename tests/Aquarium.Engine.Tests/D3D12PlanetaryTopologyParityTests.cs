@@ -1,13 +1,14 @@
 using System.Numerics;
 using Aquarium.Engine.Render;
 using CultMath;
+using GameCult.Geometry;
 
 namespace Aquarium.Engine.Tests;
 
 public sealed class D3D12PlanetaryTopologyParityTests
 {
     [Fact]
-    public void QscFaceDirectionsAndInverseCoordinatesMatchCultMathCpu()
+    public void QscFaceDirectionsAndInverseCoordinatesMatchGameCultGeometryCpu()
     {
         var cases = new List<TopologyInput>();
         foreach (var face in Enum.GetValues<PlanetaryCubeFace>())
@@ -41,7 +42,7 @@ public sealed class D3D12PlanetaryTopologyParityTests
     [Theory]
     [InlineData(PlanetaryProjectionKind.Equirectangular, 2, 3)]
     [InlineData(PlanetaryProjectionKind.EqualEarth, 4, 5)]
-    public void MapProjectionForwardAndInverseMatchCultMathCpu(PlanetaryProjectionKind kind, int forwardMode, int inverseMode)
+    public void MapProjectionForwardAndInverseMatchGameCultGeometryCpu(PlanetaryProjectionKind kind, int forwardMode, int inverseMode)
     {
         var projection = new PlanetaryProjectionParameters(kind);
         var inputs = new List<TopologyInput>();

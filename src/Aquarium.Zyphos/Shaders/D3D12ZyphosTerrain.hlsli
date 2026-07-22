@@ -1,7 +1,7 @@
 #ifndef D3D12_ZYPHOS_TERRAIN_HLSLI
 #define D3D12_ZYPHOS_TERRAIN_HLSLI
 
-#include "CultMath/CultMath.hlsl"
+#include "GameCult.Geometry/GameCult.Geometry.hlsl"
 
 struct ZyPlanetPageOutput { float4 height_gradient; float4 masks; };
 struct ZyPlanetPageMetadata { float4 address; float4 layout; float4 bounds; float4 state; };
@@ -16,7 +16,7 @@ static const float ZY_TERRAIN_NON_EROSION_SLOPE_BOUND = 8.0;
 
 bool zyTerrainPageLocal(float3 dir, ZyPlanetPageMetadata metadata, out float2 local)
 {
-    return cultmath_planetary_page_local(dir,metadata.address,metadata.state.x,local);
+    return gamecult_geometry_planetary_page_local(dir,metadata.address,metadata.state.x,local);
 }
 
 void zySampleErosionPage(int pageIndex, float2 local, out float4 heightGradient, out float2 masks)
@@ -28,12 +28,12 @@ void zySampleErosionPage(int pageIndex, float2 local, out float4 heightGradient,
     int offset=(int)metadata.layout.x;
     ZyPlanetPageOutput a=zy_planet_page[offset+p0.y*(int)storage+p0.x], b=zy_planet_page[offset+p0.y*(int)storage+p1.x];
     ZyPlanetPageOutput c=zy_planet_page[offset+p1.y*(int)storage+p0.x], d=zy_planet_page[offset+p1.y*(int)storage+p1.x];
-    CultMathPlanetaryPageSample ca,cb,cc,cd;
+    GameCultGeometryPlanetaryPageSample ca,cb,cc,cd;
     ca.height_gradient=a.height_gradient; ca.masks=a.masks.xy;
     cb.height_gradient=b.height_gradient; cb.masks=b.masks.xy;
     cc.height_gradient=c.height_gradient; cc.masks=c.masks.xy;
     cd.height_gradient=d.height_gradient; cd.masks=d.masks.xy;
-    CultMathPlanetaryPageSample sample=cultmath_planetary_page_lerp(ca,cb,cc,cd,fraction);
+    GameCultGeometryPlanetaryPageSample sample=gamecult_geometry_planetary_page_lerp(ca,cb,cc,cd,fraction);
     heightGradient=sample.height_gradient; masks=sample.masks;
 }
 
@@ -128,28 +128,28 @@ float3 zySphericalFieldGradient(float3 dir)
     float3 gradient = float3(dx,dy,dz)/(2.0*epsilon); return gradient-dir*dot(gradient,dir);
 }
 
-CultMathAdvancedErosionParameters zyErosionParameters(float radius)
+GameCultGeometryAdvancedErosionParameters zyErosionParameters(float radius)
 {
-    CultMathAdvancedErosionParameters p;
+    GameCultGeometryAdvancedErosionParameters p;
     p.scale=radius*0.075; p.strength=0.12; p.gully_weight=0.58; p.detail=1.45;
     p.rounding=float4(0.1,0.015,0.1,2.0); p.onset=float4(1.25,1.25,2.8,1.5); p.assumed_slope=float2(0.7,0.85);
     p.cell_scale=0.7; p.normalization=0.5; p.octaves=7; p.lacunarity=2.0; p.gain=0.5; return p;
 }
 
-CultMathPlanetarySurfaceSample zyAdvancedErosionSurface(float3 dir, float field, float radius, float sampleSpacing)
+GameCultGeometryPlanetarySurfaceSample zyAdvancedErosionSurface(float3 dir, float field, float radius, float sampleSpacing)
 {
-    CultMathPlanetaryFieldDefinition definition;
+    GameCultGeometryPlanetaryFieldDefinition definition;
     definition.radius=radius; definition.seed=0; definition.erosion=zyErosionParameters(radius);
-    CultMathPlanetaryBaseFieldSample base_sample;
+    GameCultGeometryPlanetaryBaseFieldSample base_sample;
     base_sample.radial_displacement=0.0; base_sample.radial_gradient=0.0;
     base_sample.field_value=field; base_sample.field_gradient=zySphericalFieldGradient(dir)/radius;
     base_sample.fade_target=saturate(field*0.5+0.5)*2.0-1.0;
-    return cultmath_planetary_field_sample(definition,dir,base_sample,sampleSpacing);
+    return gamecult_geometry_planetary_field_sample(definition,dir,base_sample,sampleSpacing);
 }
 
 float4 zyAdvancedErosion(float3 dir, float field, float radius, float sampleSpacing)
 {
-    CultMathPlanetarySurfaceSample sample=zyAdvancedErosionSurface(dir,field,radius,sampleSpacing);
+    GameCultGeometryPlanetarySurfaceSample sample=zyAdvancedErosionSurface(dir,field,radius,sampleSpacing);
     return float4(sample.radial_displacement,sample.ridge,sample.gully,sample.unresolved_height_bound);
 }
 

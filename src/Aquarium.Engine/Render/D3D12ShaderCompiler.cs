@@ -65,6 +65,41 @@ internal static class D3D12ShaderCompiler
                 }
             }
         }
+        const string cultMathUnityPrefix = "Packages/org.gamecult.cultmath/shaders/";
+        if (normalized.StartsWith(cultMathUnityPrefix, StringComparison.Ordinal))
+        {
+            var relative = normalized[cultMathUnityPrefix.Length..].Replace('/', Path.DirectorySeparatorChar);
+            foreach (var start in new[] { directory, AppContext.BaseDirectory })
+            {
+                var current = Path.GetFullPath(start);
+                while (!string.IsNullOrEmpty(current))
+                {
+                    var localPackage = Path.Combine(current, "CultMath", relative);
+                    if (File.Exists(localPackage)) return localPackage;
+                    var siblingRepository = Path.Combine(current, "CultMath", "shaders", relative);
+                    if (File.Exists(siblingRepository)) return siblingRepository;
+                    var parent = Path.GetDirectoryName(current);
+                    if (string.IsNullOrEmpty(parent) || parent == current) break;
+                    current = parent;
+                }
+            }
+        }
+        if (normalized.StartsWith("GameCult.Geometry/", StringComparison.Ordinal))
+        {
+            var relative = normalized["GameCult.Geometry/".Length..].Replace('/', Path.DirectorySeparatorChar);
+            foreach (var start in new[] { directory, AppContext.BaseDirectory })
+            {
+                var current = Path.GetFullPath(start);
+                while (!string.IsNullOrEmpty(current))
+                {
+                    var candidate = Path.Combine(current, "CultLib", "src", "GameCult.Geometry", "Shaders", relative);
+                    if (File.Exists(candidate)) return candidate;
+                    var parent = Path.GetDirectoryName(current);
+                    if (string.IsNullOrEmpty(parent) || parent == current) break;
+                    current = parent;
+                }
+            }
+        }
         return local;
     }
 }

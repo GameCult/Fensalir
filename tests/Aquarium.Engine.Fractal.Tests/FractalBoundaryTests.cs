@@ -1,5 +1,6 @@
 using Aquarium.Engine.Fractal;
 using CultMath;
+using GameCult.Geometry;
 
 namespace Aquarium.Engine.Fractal.Tests;
 

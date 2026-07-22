@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Aquarium.Engine.Render;
 using Aquarium.Zyphos;
 using CultMath;
+using GameCult.Geometry;
 
 namespace Aquarium.Engine.Tests;
 
@@ -214,6 +215,7 @@ public sealed class D3D12PlanetarySurfacePageTests
             CopyShaderTree(Path.Combine(RepositoryRoot(), "src", "Aquarium.Engine", "Render", "Shaders"), temporaryRoot);
             CopyShaderTree(Path.Combine(RepositoryRoot(), "src", "Aquarium.Zyphos", "Shaders"), temporaryRoot);
             CopyShaderTree(Path.GetFullPath(Path.Combine(RepositoryRoot(), "..", "CultMath", "shaders")), Path.Combine(temporaryRoot, "CultMath"));
+            CopyShaderTree(Path.GetFullPath(Path.Combine(RepositoryRoot(), "..", "CultLib", "src", "GameCult.Geometry", "Shaders")), Path.Combine(temporaryRoot, "GameCult.Geometry"));
             foreach (var shaderName in new[] { "D3D12ZyphosPlanet.hlsl", "D3D12ZyphosUmbros.hlsl", "D3D12ZyphosStar.hlsl" })
             {
                 var bytecode = D3D12ShaderCompiler.Compile(Path.Combine(temporaryRoot, shaderName), "D3D12SdfProxyPS", "ps_5_0");

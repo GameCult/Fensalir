@@ -9,7 +9,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aquarium.Engine.Contracts",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aquarium.Engine", "src\Aquarium.Engine\Aquarium.Engine.csproj", "{51FE01D8-9EEF-46B2-8D8C-3307AC2221C1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CultMath", "..\CultMath\src\CultMath\CultMath.csproj", "{0089E341-25F2-43FC-8FD9-CBD1AE646D91}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CultMath", "..\CultLib\packages\cultmath\src\CultMath\CultMath.csproj", "{0089E341-25F2-43FC-8FD9-CBD1AE646D91}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aquarium.Sample.Minimal", "src\Aquarium.Sample.Minimal\Aquarium.Sample.Minimal.csproj", "{7564E6C2-FF01-4B5B-8C2B-F9CD796858BA}"
 EndProject

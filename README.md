@@ -153,8 +153,8 @@ Requirements:
 
 - Windows
 - .NET SDK matching `global.json`
-- sibling repos currently expected at `E:\Projects\CultMath` and
-  `E:\Projects\CultLib`
+- sibling `CultLib` repo currently expected at `E:\Projects\CultLib`; CultMath
+  is consumed from `CultLib/packages/cultmath`
 
 ```powershell
 dotnet build Fensalir.sln

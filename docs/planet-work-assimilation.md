@@ -8,6 +8,18 @@ in any project.
 Adopting instruction (operator, 2026-09-30): "Fensalir planet work is old,
 needs validation and reorientation beside the Asura campaign".
 
+
+## Rulings (operator, 2026-09-30)
+
+- **Q-F1: no planet terrain in Fensalir for now.** The July planetary runtime retires behind an archive
+  tag. A landing-scale Zyphos would be a new campaign built on Asura, not a revival of that runtime.
+- **Q-F2: park the flow docs,** with a status line: parked, superseded by Asura for the field, no code.
+- **Q-F3: triage now.** Eyes classifies each non-planet line on the donor ref before anything is tagged or
+  deleted: the 66 Bokusho commits, the Eve native surface work, Leap/stereo, and the reservoir work. P1
+  waits for that triage.
+- **Q-F4: delete Geometry's duplicate vector types before Asura Cut 3** (P4, in CultLib). This is on
+  Asura's critical path.
+
 ## Pinned heads (every `file:line` below is against these)
 
 | Repo | Ref | SHA | Note |

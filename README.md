@@ -13,6 +13,14 @@ evidence, and synth-backed sound.
 The repo is not the Epiphany Aquarium client. Epiphany lives in
 `GameCult/Aquarium-Engine` and consumes Fensalir as the runtime dependency.
 
+**Valuable here:** the spatio-temporal evidence reservoir (`ResampledImportanceReservoir<TSample>` and `TemporalSpatialEvidenceReservoir` in `src/Aquarium.Engine.Fractal/Temporal/`), the `.aquageo` fractal field DSL in `src/Aquarium.Engine.Fractal`, and the engine/client contract in `src/Aquarium.Engine.Contracts/AquariumRuntimeContracts.cs` (`IAquariumRuntime`).
+
+**Problem it solves:** interactive visual clients need a renderer that decides which field evidence deserves rendering, fusion and residency under a budget, instead of each client owning temporal truth or drawing private geometry. Fensalir holds that machinery once; client repos own meaning.
+
+**Entry points:** `dotnet build Fensalir.sln`; run a client with `scripts/dev-reload.ps1 -ClientProject <csproj>` (see Run below). Start reading at `docs/engine-client-boundary.md` and `docs/temporal-spatial-evidence-reservoir.md`; the target pipeline is `docs/perfect-fensalir-machine-roadmap.md`. The smallest client is `src/Aquarium.Sample.Minimal`; `src/Aquarium.Fensalir` and `src/Aquarium.Zyphos` are demo clients.
+
+**Live versus planned:** live are the Win32 host, D3D12 renderer, hot reload, headless capture, AquaSynth/WASAPI audio, CPU reservoirs, fractal probe samples, evidence tracks and validator coverage. Planned (see the roadmap) are full GPU reservoir storage and page residency.
+
 ## What Runs
 
 The host executable in `src/Aquarium.Engine` loads a client assembly that
@@ -150,8 +158,8 @@ Requirements:
 
 - Windows
 - .NET SDK matching `global.json`
-- sibling `CultLib` repo currently expected at `E:\Projects\CultLib`; CultMath
-  is consumed from `CultLib/packages/cultmath`
+- sibling `CultLib` checkout beside this repo (override with the `CultLibRoot`
+  MSBuild property); CultMath is consumed from `CultLib/packages/cultmath`
 
 ```powershell
 dotnet build Fensalir.sln

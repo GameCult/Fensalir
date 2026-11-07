@@ -39,6 +39,23 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
     }
 
     [Fact]
+    public void SiblingDirectoryOfTheInitialAssemblyLoadsOnlyInsideTheExplicitRoot()
+    {
+        // dev-watch reloads from live-slots, a sibling of the slot the host started in.
+        var slot = Directory.CreateDirectory(Path.Combine(trusted, "slots", "s1")).FullName;
+        var live = Directory.CreateDirectory(Path.Combine(trusted, "live-slots", "s2")).FullName;
+        var sibling = Copy(live);
+        using var loader = new ClientRuntimeLoader(Options, Copy(slot), trustedRoot: trusted);
+        loader.Load();
+        loader.Reload(sibling, Options);
+        Assert.Throws<InvalidOperationException>(() => loader.Reload(Copy(outside), Options));
+
+        using var narrow = new ClientRuntimeLoader(Options, Path.Combine(slot, "client.dll"));
+        narrow.Load();
+        Assert.Throws<InvalidOperationException>(() => narrow.Reload(sibling, Options)); // default root is the initial directory
+    }
+
+    [Fact]
     public void InitialAssemblyOutsideTheExplicitRootIsRefused()
     {
         using var loader = new ClientRuntimeLoader(Options, Copy(outside), trustedRoot: trusted);

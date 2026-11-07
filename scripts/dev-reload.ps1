@@ -196,7 +196,7 @@ function Start-AquariumProcess {
         "--shader-source", (Join-Path $SlotPath "Render\Shaders\D3D12HeightField.hlsl"),
         "--client-assembly", $LiveAssemblyPath,
         "--client-reload-pointer", $liveReloadPointerPath,
-        "--client-trusted-root", $slotRoot
+        "--client-trusted-root", $devRoot
     )
     if ($RunHeadless) {
         $arguments += "--headless"

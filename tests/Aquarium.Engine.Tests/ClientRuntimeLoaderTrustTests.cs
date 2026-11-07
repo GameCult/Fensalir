@@ -254,24 +254,87 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
     }
 
     [Fact]
-    public void TheTrustedRootEnvironmentVariableIsClearedOnEveryPathAndAnEmptyFlagIsRefused()
+    public void TheTrustedRootEnvironmentVariableIsTakenOnceOnEveryPathAndCached()
     {
         const string Name = "AQUARIUM_CLIENT_TRUSTED_ROOT";
         Environment.SetEnvironmentVariable(Name, "/from/env");
-        Assert.Equal("/from/flag", AquariumHost.ParseClientTrustedRoot(["--client-trusted-root", "/from/flag"]));
-        Assert.Null(Environment.GetEnvironmentVariable(Name));
+        var setting = TrustedRootSetting.FromProcessEnvironment();
+        Assert.Equal("/from/flag", setting.Resolve(["--client-trusted-root", "/from/flag"]));
+        Assert.Null(Environment.GetEnvironmentVariable(Name)); // cleared although the flag won
+        Assert.Equal("/from/env", setting.Resolve([])); // cached: a second resolution does not fall to the default root
+    }
 
-        Environment.SetEnvironmentVariable(Name, "/from/env");
-        Assert.Equal("/from/env", AquariumHost.ParseClientTrustedRoot([]));
-        Assert.Null(Environment.GetEnvironmentVariable(Name));
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ABlankEnvironmentValueIsRefusedLikeABlankFlag(string value)
+    {
+        Assert.Throws<ArgumentException>(() => new TrustedRootSetting(() => value).Resolve([]));
+        Assert.Throws<ArgumentException>(() => new TrustedRootSetting(() => null).Resolve(["--client-trusted-root", value]));
+        Assert.Throws<ArgumentException>(() => new TrustedRootSetting(() => null).Resolve(["--client-trusted-root"]));
+    }
 
-        Environment.SetEnvironmentVariable(Name, "/from/env");
-        Assert.Throws<ArgumentException>(() => AquariumHost.ParseClientTrustedRoot(["--client-trusted-root", ""]));
-        Assert.Null(Environment.GetEnvironmentVariable(Name));
+    [Fact]
+    public void APathOutsideTheRootIsRefusedBeforeAnyLinkOnItIsFollowed()
+    {
+        // A link loop outside the root: following it would throw "Too many links"; the string check must refuse first.
+        var a = Path.Combine(outside, "a");
+        var b = Path.Combine(outside, "b");
+        try
+        {
+            Directory.CreateSymbolicLink(a, b);
+            Directory.CreateSymbolicLink(b, a);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // No links here: the check is still exercised by the nonexistent outside path below.
+        }
 
-        Environment.SetEnvironmentVariable(Name, "/from/env");
-        Assert.Throws<ArgumentException>(() => AquariumHost.ParseClientTrustedRoot(["--client-trusted-root"]));
-        Assert.Null(Environment.GetEnvironmentVariable(Name));
+        var error2 = Assert.Throws<InvalidOperationException>(
+            () => ClientRuntimeLoader.ResolveTrusted(ClientRuntimeLoader.ResolveLinks(trusted), Path.Combine(a, "client.dll")));
+        Assert.Contains("outside the trusted root", error2.Message);
+    }
+
+    [Fact]
+    public void ANonexistentPointerTargetOutsideTheRootIsRefusedAndReportedNotSilentlyIgnored()
+    {
+        var pointer = Path.Combine(work, "pointer.txt");
+        File.WriteAllText(pointer, Path.Combine(outside, "not-there.dll"));
+        using var loader = new ClientRuntimeLoader(Options, Copy(trusted, "a.dll"), pointer);
+        loader.Load();
+
+        var errors = CaptureError(() =>
+        {
+            Thread.Sleep(600);
+            loader.Update(0.01f, new InputState());
+        });
+
+        Assert.Contains("outside the trusted root", errors);
+    }
+
+    [SymlinkFact]
+    public void ARootReachedThroughALinkAsGivenStillAcceptsPathsUnderIt()
+    {
+        var real = Directory.CreateDirectory(Path.Combine(work, "real")).FullName;
+        var rootLink = Path.Combine(work, "rootlink");
+        Directory.CreateSymbolicLink(rootLink, real);
+        Copy(real, "a.dll");
+        var viaLink = Path.Combine(rootLink, "b.dll");
+        File.Copy(typeof(Aquarium.Sample.Minimal.MinimalRuntime).Assembly.Location, viaLink);
+        using var loader = new ClientRuntimeLoader(Options, Path.Combine(rootLink, "a.dll"), trustedRoot: rootLink);
+        loader.Load();
+        loader.Reload(viaLink, Options);
+    }
+
+    [Fact]
+    public void LoggedPathsEscapeBackslashesLineSeparatorsAndBidiAndZeroWidthControls()
+    {
+        Assert.Equal("a\\\\b", ClientRuntimeLoader.Printable("a\\b"));
+        Assert.Equal("a\\u2028b", ClientRuntimeLoader.Printable("a\u2028b"));
+        Assert.Equal("a\\u2029b", ClientRuntimeLoader.Printable("a\u2029b"));
+        Assert.Equal("a\\u202eb", ClientRuntimeLoader.Printable("a\u202eb"));
+        Assert.Equal("a\\u200bb", ClientRuntimeLoader.Printable("a\u200bb"));
+        Assert.Equal("plain-name.dll", ClientRuntimeLoader.Printable("plain-name.dll"));
     }
 
     [Fact]
@@ -285,6 +348,20 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
         Assert.DoesNotContain("\"--client-trusted-root\", $devRoot", reload);
         Assert.Contains("$slotRoot = Join-Path $assemblyRoot \"slots\"", reload);
         Assert.Contains("artifacts\\dev-reload\\assemblies\\live-slots", watch);
+    }
+
+    [Fact]
+    public void DevScriptsMatchTheHostAckByItsUniqueSlotLeafPruneLiveSlotsAndRejectStaleReopenState()
+    {
+        var scripts = Path.Combine(RepositoryRoot(), "scripts");
+        var reload = File.ReadAllText(Path.Combine(scripts, "dev-reload.ps1"));
+        var watch = File.ReadAllText(Path.Combine(scripts, "dev-watch.ps1"));
+
+        Assert.Contains(".Replace(\"\\\", \"\\\\\")", watch); // the host logs backslashes doubled
+        Assert.DoesNotContain("Contains($appliedLine)", watch);
+        Assert.Contains("@($slotRoot, $liveSlotRoot)", reload);
+        Assert.Contains("outside the assemblies root", reload);
+        Assert.Contains("no longer exists (pruned slot)", reload);
     }
 
     private static string CaptureError(Action action)

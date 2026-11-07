@@ -9,6 +9,7 @@ public sealed class ClientRuntimeLoader : IDisposable
     private readonly string? clientAssemblyPath;
     private readonly string? clientReloadPointerPath;
     private readonly string? trustedRoot;
+    private readonly string? trustedRootAsGiven;
     private readonly Stopwatch reloadClock = Stopwatch.StartNew();
     private readonly AquariumRuntimeOptions options;
     private ReloadedRuntime? current;
@@ -34,6 +35,7 @@ public sealed class ClientRuntimeLoader : IDisposable
         var root = string.IsNullOrWhiteSpace(trustedRoot)
             ? this.clientAssemblyPath is null ? null : Path.GetDirectoryName(this.clientAssemblyPath)
             : Path.GetFullPath(trustedRoot);
+        this.trustedRootAsGiven = root;
         if (root is not null)
         {
             root = ResolveLinks(root);
@@ -144,6 +146,7 @@ public sealed class ClientRuntimeLoader : IDisposable
         try
         {
             RequireLocalFullyQualified(candidatePath); // string rules first: no filesystem or network probe of a UNC path
+            RequireLexicallyUnderRoot(candidatePath); // and no probe of anything outside the root, whatever a link there points at
             if (!File.Exists(candidatePath))
             {
                 return;
@@ -171,15 +174,34 @@ public sealed class ClientRuntimeLoader : IDisposable
     private string ResolveTrusted(string assemblyPath) =>
         trustedRoot is null
             ? throw new InvalidOperationException("No trusted root for client runtime assemblies is set.")
-            : ResolveTrusted(trustedRoot, assemblyPath);
+            : ResolveTrusted(trustedRoot, assemblyPath, trustedRootAsGiven);
+
+    private void RequireLexicallyUnderRoot(string path) =>
+        RequireLexicallyUnder(Path.GetFullPath(path), trustedRoot, trustedRootAsGiven);
+
+    // Pure string comparison against the root as resolved and as given: a path outside both is refused before any
+    // filesystem access, so a link there (to a UNC share, a mapped drive) is never followed or probed.
+    private static void RequireLexicallyUnder(string fullPath, params string?[] roots)
+    {
+        if (!roots.Any(root => root is not null && IsUnder(root, fullPath)))
+        {
+            throw new InvalidOperationException($"Client runtime path is outside the trusted root '{Printable(roots[0] ?? "")}': {Printable(fullPath)}");
+        }
+    }
+
+    private static bool IsUnder(string root, string path)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return !(relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relative));
+    }
 
     // The final path of a local, fully qualified file under the already-resolved root; throws otherwise.
-    internal static string ResolveTrusted(string resolvedRoot, string path)
+    internal static string ResolveTrusted(string resolvedRoot, string path, string? rootAsGiven = null)
     {
         RequireLocalFullyQualified(path);
+        RequireLexicallyUnder(Path.GetFullPath(path), resolvedRoot, rootAsGiven);
         var resolved = ResolveLinks(Path.GetFullPath(path));
-        var relative = Path.GetRelativePath(resolvedRoot, resolved);
-        if (relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relative))
+        if (!IsUnder(resolvedRoot, resolved))
         {
             throw new InvalidOperationException($"Client runtime path is outside the trusted root '{Printable(resolvedRoot)}': {Printable(path)}");
         }
@@ -195,13 +217,19 @@ public sealed class ClientRuntimeLoader : IDisposable
         }
     }
 
-    // Paths come from files other people can write: show control characters escaped, never as raw log lines.
+    // Paths come from files other people can write: backslashes, control, format (bidi, zero-width) and line/paragraph
+    // separator characters are escaped, so a name cannot forge or hide a log line.
     internal static string Printable(string text)
     {
         var builder = new System.Text.StringBuilder(text.Length);
         foreach (var c in text)
         {
-            if (char.IsControl(c))
+            if (c == '\\')
+            {
+                builder.Append("\\\\");
+            }
+            else if (char.IsControl(c) || char.GetUnicodeCategory(c) is System.Globalization.UnicodeCategory.Format
+                or System.Globalization.UnicodeCategory.LineSeparator or System.Globalization.UnicodeCategory.ParagraphSeparator)
             {
                 builder.Append(c switch { '\n' => "\\n", '\r' => "\\r", '\t' => "\\t", _ => $"\\u{(int)c:x4}" });
             }

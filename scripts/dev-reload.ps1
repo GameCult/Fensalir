@@ -22,6 +22,7 @@ $devRoot = Join-Path $repoRoot "artifacts\dev-reload"
 # it is the host's trusted root, so state, cache and logs in $devRoot are not part of it.
 $assemblyRoot = Join-Path $devRoot "assemblies"
 $slotRoot = Join-Path $assemblyRoot "slots"
+$liveSlotRoot = Join-Path $assemblyRoot "live-slots"
 $visibleStatePath = Join-Path $devRoot "state.clixml"
 $headlessStatePath = Join-Path $devRoot "headless-state.clixml"
 $statePath = if ($Headless) { $headlessStatePath } else { $visibleStatePath }
@@ -82,9 +83,12 @@ function Remove-OldSlots {
         return
     }
 
-    $slots = Get-ChildItem -Path $slotRoot -Directory -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTimeUtc -Descending |
-        Select-Object -Skip $RetainSlots
+    # Both roots hold client code the host may load; dev-watch adds a live slot per change and never prunes.
+    $slots = foreach ($root in @($slotRoot, $liveSlotRoot)) {
+        Get-ChildItem -Path $root -Directory -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -Skip $RetainSlots
+    }
 
     foreach ($slot in $slots) {
         try {
@@ -243,6 +247,17 @@ function Reopen-VisibleProcess {
     $liveAssemblyPath = Join-Path $slotPath "$liveAssemblyName.dll"
     if ($state.PSObject.Properties.Name -contains "liveAssembly" -and $state.liveAssembly) {
         $liveAssemblyPath = [string]$state.liveAssembly
+    }
+
+    # Stale state fails here, in words, instead of as a refused load inside the host.
+    $assemblyRootPrefix = [System.IO.Path]::GetFullPath($assemblyRoot).TrimEnd('\') + '\'
+    foreach ($recorded in @($slotPath, $liveAssemblyPath)) {
+        if (-not [System.IO.Path]::GetFullPath($recorded).StartsWith($assemblyRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Visible dev-reload state names '$recorded', outside the assemblies root '$assemblyRoot' (state from before the trusted-root layout, or the root moved). Run dev-reload without -Reopen to rebuild."
+        }
+    }
+    if (-not (Test-Path -LiteralPath $liveAssemblyPath)) {
+        throw "Visible dev-reload state names '$liveAssemblyPath', which no longer exists (pruned slot). Run dev-reload without -Reopen to rebuild."
     }
 
     $process = Start-AquariumProcess -SlotPath $slotPath -LiveAssemblyPath $liveAssemblyPath -RunHeadless:$false

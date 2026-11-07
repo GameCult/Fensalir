@@ -258,30 +258,9 @@ public static class AquariumHost
             ?? Environment.GetEnvironmentVariable("AQUARIUM_LIVE_ASSEMBLY");
     }
 
-    internal static string? ParseClientTrustedRoot(IReadOnlyCollection<string> args)
-    {
-        // Read once and removed on every path, so processes this one starts do not inherit a root meant for it.
-        var fromEnvironment = Environment.GetEnvironmentVariable("AQUARIUM_CLIENT_TRUSTED_ROOT");
-        Environment.SetEnvironmentVariable("AQUARIUM_CLIENT_TRUSTED_ROOT", null);
+    private static readonly TrustedRootSetting TrustedRoot = TrustedRootSetting.FromProcessEnvironment();
 
-        var values = args.ToArray();
-        for (var index = 0; index < values.Length; index++)
-        {
-            if (!string.Equals(values[index], "--client-trusted-root", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (index + 1 >= values.Length || string.IsNullOrWhiteSpace(values[index + 1]))
-            {
-                throw new ArgumentException("--client-trusted-root needs a directory; an empty value would fall back to the default root.");
-            }
-
-            return values[index + 1];
-        }
-
-        return fromEnvironment;
-    }
+    private static string? ParseClientTrustedRoot(IReadOnlyCollection<string> args) => TrustedRoot.Resolve(args);
 
     private static string? ParseClientReloadPointerPath(IReadOnlyCollection<string> args)
     {

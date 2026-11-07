@@ -83,7 +83,7 @@ public sealed class ClientRuntimeLoader : IDisposable
 
         try
         {
-            var assembly = loadContext.LoadFromFileWithoutLock(assemblyPath);
+            var assembly = loadContext.LoadFromAssemblyPath(assemblyPath);
             var factoryTypes = assembly.GetTypes()
                 .Where(type => typeof(IAquariumRuntimeFactory).IsAssignableFrom(type)
                     && type is { IsAbstract: false, IsInterface: false })
@@ -336,23 +336,7 @@ public sealed class ClientRuntimeLoader : IDisposable
             }
 
             var path = resolver.ResolveAssemblyToPath(assemblyName);
-            return path == null ? null : LoadFromFileWithoutLock(ResolveTrusted(trustedRoot, path));
-        }
-
-        // LoadFromAssemblyPath maps the file and, on Windows, keeps it locked until the unloaded context is collected:
-        // a rebuilt or deleted client dll (and its temp directory) would stay blocked. Managed assemblies are read into
-        // memory instead, with their symbols when present, so no file handle outlives the load.
-        public Assembly LoadFromFileWithoutLock(string path)
-        {
-            using var image = new MemoryStream(File.ReadAllBytes(path));
-            var symbolsPath = Path.ChangeExtension(path, ".pdb");
-            if (!File.Exists(symbolsPath))
-            {
-                return LoadFromStream(image);
-            }
-
-            using var symbols = new MemoryStream(File.ReadAllBytes(symbolsPath));
-            return LoadFromStream(image, symbols);
+            return path == null ? null : LoadFromAssemblyPath(ResolveTrusted(trustedRoot, path));
         }
 
         protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)

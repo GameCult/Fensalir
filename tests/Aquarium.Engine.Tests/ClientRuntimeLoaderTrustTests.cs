@@ -60,7 +60,24 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
         outside = Directory.CreateDirectory(Path.Combine(work, "outside")).FullName;
     }
 
-    public void Dispose() => Directory.Delete(work, recursive: true);
+    // A loaded assembly stays locked on Windows until its unloaded context is collected: tolerate that here.
+    public void Dispose()
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                Directory.Delete(work, recursive: true);
+                return;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Thread.Sleep(100);
+            }
+        }
+    }
 
     // A real client assembly: the minimal sample, copied so its location is ours to choose.
     private static string Copy(string directory, string name = "client.dll")
@@ -374,6 +391,16 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
         Assert.Equal(1, exit);
         Assert.Contains("Client runtime failed to start.", errors);
         Assert.Contains("cannot be the client runtime trusted root", errors);
+    }
+
+    [Fact]
+    public void ALoadedClientSeesItsOwnFilePathAsAssemblyLocation()
+    {
+        var path = Copy(trusted, "a.dll");
+        using var loader = new ClientRuntimeLoader(Options, path);
+        loader.Load();
+
+        Assert.Equal(ClientRuntimeLoader.ResolveLinks(path), loader.Runtime.GetType().Assembly.Location);
     }
 
     [Fact]

@@ -35,6 +35,18 @@ public sealed class JunctionFactAttribute : FactAttribute
     }
 }
 
+/// <summary>Windows file names cannot contain a newline, so this setup cannot be built there.</summary>
+public sealed class NewlineInFileNameFactAttribute : FactAttribute
+{
+    public NewlineInFileNameFactAttribute()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Skip = "Windows file names cannot contain a newline; the escaping is covered by the Printable tests.";
+        }
+    }
+}
+
 public sealed class ClientRuntimeLoaderTrustTests : IDisposable
 {
     private static readonly AquariumRuntimeOptions Options = new(true, null);
@@ -157,7 +169,8 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
 
         using var loader = new ClientRuntimeLoader(Options, Copy(trusted, "a.dll"));
         loader.Load();
-        Assert.Throws<InvalidOperationException>(() => loader.Reload(Path.Combine(junction, "client.dll"), Options));
+        // Windows refuses an untrusted (non-administrator) mount point itself; the loader reports it as a refusal too.
+        Assert.ThrowsAny<InvalidOperationException>(() => loader.Reload(Path.Combine(junction, "client.dll"), Options));
     }
 
     [SymlinkFact]
@@ -231,7 +244,7 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
         Assert.Contains("local and fully qualified", errors);
     }
 
-    [Fact]
+    [NewlineInFileNameFact]
     public void ControlCharactersInAPointerTargetAreEscapedInTheLog()
     {
         var hostile = Path.Combine(outside, "a\nClient runtime reload applied: forged.dll");
@@ -324,6 +337,55 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
         using var loader = new ClientRuntimeLoader(Options, Path.Combine(rootLink, "a.dll"), trustedRoot: rootLink);
         loader.Load();
         loader.Reload(viaLink, Options);
+    }
+
+    [Fact]
+    public void ABackslashInAPointerTargetIsEscapedExactlyOnceInTheLog()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // a backslash is a separator in a Windows file name; the escaping itself is covered by the Printable tests
+        }
+
+        var hostile = Path.Combine(outside, "x\\y.dll");
+        File.Copy(typeof(Aquarium.Sample.Minimal.MinimalRuntime).Assembly.Location, hostile);
+        var pointer = Path.Combine(work, "pointer.txt");
+        File.WriteAllText(pointer, hostile);
+        using var loader = new ClientRuntimeLoader(Options, Copy(trusted, "a.dll"), pointer);
+        loader.Load();
+
+        var errors = CaptureError(() =>
+        {
+            Thread.Sleep(600);
+            loader.Update(0.01f, new InputState());
+        });
+
+        Assert.Contains("x\\\\y.dll", errors); // one literal backslash is shown as two characters
+        Assert.DoesNotContain("x\\\\\\\\y.dll", errors); // not four: the message is not escaped a second time
+    }
+
+    [Fact]
+    public void AStartupRefusalIsLoggedByTheHostAndExitsNonzero()
+    {
+        var volumeRoot = Path.GetPathRoot(Path.GetFullPath(work))!;
+        var exit = 0;
+        var errors = CaptureError(() => exit = AquariumHost.Run(["--headless", "--client-trusted-root", volumeRoot]));
+
+        Assert.Equal(1, exit);
+        Assert.Contains("Client runtime failed to start.", errors);
+        Assert.Contains("cannot be the client runtime trusted root", errors);
+    }
+
+    [Fact]
+    public void LoggedPathsEscapeAstralFormatCharactersAndLoneSurrogatesByCodePoint()
+    {
+        Assert.Equal("a\\U000e0001b", ClientRuntimeLoader.Printable("a\U000E0001b")); // language tag
+        Assert.Equal("a\\U000e0041b", ClientRuntimeLoader.Printable("a\U000E0041b")); // tag letter
+        Assert.Equal("a\\U0001d173b", ClientRuntimeLoader.Printable("a\U0001D173b")); // musical begin beam
+        Assert.Equal("a\\ud800b", ClientRuntimeLoader.Printable("a\ud800b")); // lone high surrogate
+        Assert.Equal("a\\udc00b", ClientRuntimeLoader.Printable("a\udc00b")); // lone low surrogate
+        Assert.Equal("a\\ud800\\ud800b", ClientRuntimeLoader.Printable("a\ud800\ud800b")); // two highs in a row
+        Assert.Equal("a\U0001F600b", ClientRuntimeLoader.Printable("a\U0001F600b")); // an ordinary astral character is kept
     }
 
     [Fact]

@@ -44,7 +44,7 @@ public sealed class ClientRuntimeLoader : IDisposable
                     Path.TrimEndingDirectorySeparator(Path.GetPathRoot(root) ?? root),
                     PathComparison))
             {
-                throw new ArgumentException($"A drive or volume root cannot be the client runtime trusted root: {Printable(root)}", nameof(trustedRoot));
+                throw new ArgumentException($"A drive or volume root cannot be the client runtime trusted root: {root}", nameof(trustedRoot));
             }
 
             Console.WriteLine($"Client runtime trusted root: {Printable(root)}");
@@ -83,7 +83,7 @@ public sealed class ClientRuntimeLoader : IDisposable
 
         try
         {
-            var assembly = loadContext.LoadFromAssemblyPath(assemblyPath);
+            var assembly = loadContext.LoadFromFileWithoutLock(assemblyPath);
             var factoryTypes = assembly.GetTypes()
                 .Where(type => typeof(IAquariumRuntimeFactory).IsAssignableFrom(type)
                     && type is { IsAbstract: false, IsInterface: false })
@@ -185,7 +185,7 @@ public sealed class ClientRuntimeLoader : IDisposable
     {
         if (!roots.Any(root => root is not null && IsUnder(root, fullPath)))
         {
-            throw new InvalidOperationException($"Client runtime path is outside the trusted root '{Printable(roots[0] ?? "")}': {Printable(fullPath)}");
+            throw new InvalidOperationException($"Client runtime path is outside the trusted root '{roots[0]}': {fullPath}");
         }
     }
 
@@ -203,7 +203,7 @@ public sealed class ClientRuntimeLoader : IDisposable
         var resolved = ResolveLinks(Path.GetFullPath(path));
         if (!IsUnder(resolvedRoot, resolved))
         {
-            throw new InvalidOperationException($"Client runtime path is outside the trusted root '{Printable(resolvedRoot)}': {Printable(path)}");
+            throw new InvalidOperationException($"Client runtime path is outside the trusted root '{resolvedRoot}': {path}");
         }
 
         return resolved;
@@ -213,29 +213,46 @@ public sealed class ClientRuntimeLoader : IDisposable
     {
         if (!Path.IsPathFullyQualified(path) || (path.Length >= 2 && IsSeparator(path[0]) && IsSeparator(path[1])))
         {
-            throw new InvalidOperationException($"Client runtime path must be local and fully qualified: {Printable(path)}");
+            throw new InvalidOperationException($"Client runtime path must be local and fully qualified: {path}");
         }
     }
 
-    // Paths come from files other people can write: backslashes, control, format (bidi, zero-width) and line/paragraph
-    // separator characters are escaped, so a name cannot forge or hide a log line.
+    // Paths come from files other people can write. Exception messages carry them raw; every console write escapes
+    // them here, once: backslashes, control, format (bidi, zero-width, tag characters) and line/paragraph separator
+    // characters, by code point, and lone surrogates.
     internal static string Printable(string text)
     {
         var builder = new System.Text.StringBuilder(text.Length);
-        foreach (var c in text)
+        for (var index = 0; index < text.Length;)
         {
-            if (c == '\\')
+            if (!System.Text.Rune.TryGetRuneAt(text, index, out var rune))
+            {
+                builder.Append($"\\u{(int)text[index]:x4}"); // a lone surrogate
+                index++;
+                continue;
+            }
+
+            index += rune.Utf16SequenceLength;
+            var category = System.Text.Rune.GetUnicodeCategory(rune);
+            if (rune.Value == '\\')
             {
                 builder.Append("\\\\");
             }
-            else if (char.IsControl(c) || char.GetUnicodeCategory(c) is System.Globalization.UnicodeCategory.Format
+            else if (category is System.Globalization.UnicodeCategory.Control or System.Globalization.UnicodeCategory.Format
                 or System.Globalization.UnicodeCategory.LineSeparator or System.Globalization.UnicodeCategory.ParagraphSeparator)
             {
-                builder.Append(c switch { '\n' => "\\n", '\r' => "\\r", '\t' => "\\t", _ => $"\\u{(int)c:x4}" });
+                builder.Append(rune.Value switch
+                {
+                    '\n' => "\\n",
+                    '\r' => "\\r",
+                    '\t' => "\\t",
+                    <= 0xFFFF => $"\\u{rune.Value:x4}",
+                    _ => $"\\U{rune.Value:x8}",
+                });
             }
             else
             {
-                builder.Append(c);
+                builder.Append(rune.ToString());
             }
         }
 
@@ -249,7 +266,7 @@ public sealed class ClientRuntimeLoader : IDisposable
     {
         if (depth > 32)
         {
-            throw new InvalidOperationException($"Too many links resolving {Printable(path)}.");
+            throw new InvalidOperationException($"Too many links resolving {path}.");
         }
 
         for (var probe = path; probe is not null; probe = Path.GetDirectoryName(probe))
@@ -260,8 +277,18 @@ public sealed class ClientRuntimeLoader : IDisposable
                 continue;
             }
 
-            var target = info.ResolveLinkTarget(returnFinalTarget: true)?.FullName
-                ?? throw new InvalidOperationException($"Link does not resolve: {Printable(probe)}");
+            string target;
+            try
+            {
+                target = info.ResolveLinkTarget(returnFinalTarget: true)?.FullName
+                    ?? throw new InvalidOperationException($"Link does not resolve: {probe}");
+            }
+            catch (IOException error)
+            {
+                // Windows refuses to traverse a mount point made by a non-administrator ("untrusted mount point"):
+                // that is a refusal like any other, not a crash with a different type.
+                throw new InvalidOperationException($"Link cannot be resolved: {probe} ({error.GetType().Name})", error);
+            }
             var rest = Path.GetRelativePath(probe, path);
             return ResolveLinks(rest == "." ? target : Path.GetFullPath(Path.Combine(target, rest)), depth + 1);
         }
@@ -309,7 +336,23 @@ public sealed class ClientRuntimeLoader : IDisposable
             }
 
             var path = resolver.ResolveAssemblyToPath(assemblyName);
-            return path == null ? null : LoadFromAssemblyPath(ResolveTrusted(trustedRoot, path));
+            return path == null ? null : LoadFromFileWithoutLock(ResolveTrusted(trustedRoot, path));
+        }
+
+        // LoadFromAssemblyPath maps the file and, on Windows, keeps it locked until the unloaded context is collected:
+        // a rebuilt or deleted client dll (and its temp directory) would stay blocked. Managed assemblies are read into
+        // memory instead, with their symbols when present, so no file handle outlives the load.
+        public Assembly LoadFromFileWithoutLock(string path)
+        {
+            using var image = new MemoryStream(File.ReadAllBytes(path));
+            var symbolsPath = Path.ChangeExtension(path, ".pdb");
+            if (!File.Exists(symbolsPath))
+            {
+                return LoadFromStream(image);
+            }
+
+            using var symbols = new MemoryStream(File.ReadAllBytes(symbolsPath));
+            return LoadFromStream(image, symbols);
         }
 
         protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)

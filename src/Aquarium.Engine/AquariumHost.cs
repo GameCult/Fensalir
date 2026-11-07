@@ -18,8 +18,22 @@ public static class AquariumHost
             ParseFieldReservoirMode(args),
             ParseFieldReservoirScale(args),
             ParseFieldReservoirSpatialReuseBudget(args));
-        using var runtimeLoader = new ClientRuntimeLoader(runtimeOptions, ParseClientAssemblyPath(args), ParseClientReloadPointerPath(args), ParseClientTrustedRoot(args));
-        var runtime = runtimeLoader.Load();
+        ClientRuntimeLoader? loader = null;
+        IAquariumRuntime runtime;
+        try
+        {
+            loader = new ClientRuntimeLoader(runtimeOptions, ParseClientAssemblyPath(args), ParseClientReloadPointerPath(args), ParseClientTrustedRoot(args));
+            runtime = loader.Load();
+        }
+        catch (Exception error)
+        {
+            // Startup refusals carry raw, attacker-writable paths; the console gets them escaped, once, here.
+            Console.Error.WriteLine($"Client runtime failed to start. {ClientRuntimeLoader.Printable(error.Message)}");
+            loader?.Dispose();
+            return 1;
+        }
+
+        using var runtimeLoader = loader;
         if (runtimeOptions.RenderDebugModeOverride is { } renderDebugModeOverride)
         {
             runtime.GraphicsSettings = (runtime.GraphicsSettings with

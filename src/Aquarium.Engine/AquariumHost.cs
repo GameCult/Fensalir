@@ -28,7 +28,7 @@ public static class AquariumHost
         catch (Exception error)
         {
             // Startup refusals carry raw, attacker-writable paths; the console gets them escaped, once, here.
-            Console.Error.WriteLine($"Client runtime failed to start. {ClientRuntimeLoader.Printable(error.Message)}");
+            Console.Error.WriteLine($"Client runtime failed to start ({ClientRuntimeLoader.Printable(error.GetType().FullName ?? error.GetType().Name)}). {ClientRuntimeLoader.Printable(error.Message)}");
             loader?.Dispose();
             return 1;
         }

@@ -77,6 +77,8 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
                 Thread.Sleep(100);
             }
         }
+
+        Console.Error.WriteLine($"Warning: test cleanup could not delete (locked loaded assembly?): {ClientRuntimeLoader.Printable(work)}");
     }
 
     // A real client assembly: the minimal sample, copied so its location is ours to choose.
@@ -389,7 +391,7 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
         var errors = CaptureError(() => exit = AquariumHost.Run(["--headless", "--client-trusted-root", volumeRoot]));
 
         Assert.Equal(1, exit);
-        Assert.Contains("Client runtime failed to start.", errors);
+        Assert.Contains("Client runtime failed to start (System.ArgumentException).", errors);
         Assert.Contains("cannot be the client runtime trusted root", errors);
     }
 

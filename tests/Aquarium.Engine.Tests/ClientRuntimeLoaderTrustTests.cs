@@ -212,4 +212,106 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
 
         Assert.Same(before, loader.Runtime);
     }
+
+    [Fact]
+    public void AnUncPointerIsRefusedAndReportedBeforeAnyFilesystemProbe()
+    {
+        var pointer = Path.Combine(work, "pointer.txt");
+        File.WriteAllText(pointer, "//no-such-host.invalid/share/client.dll");
+        using var loader = new ClientRuntimeLoader(Options, Copy(trusted, "a.dll"), pointer);
+        loader.Load();
+
+        var errors = CaptureError(() =>
+        {
+            Thread.Sleep(600);
+            loader.Update(0.01f, new InputState());
+        });
+
+        // File.Exists on this path would return false silently; the string rule must speak first.
+        Assert.Contains("local and fully qualified", errors);
+    }
+
+    [Fact]
+    public void ControlCharactersInAPointerTargetAreEscapedInTheLog()
+    {
+        var hostile = Path.Combine(outside, "a\nClient runtime reload applied: forged.dll");
+        File.Copy(typeof(Aquarium.Sample.Minimal.MinimalRuntime).Assembly.Location, hostile);
+        var pointer = Path.Combine(work, "pointer.txt");
+        File.WriteAllText(pointer, hostile);
+        using var loader = new ClientRuntimeLoader(Options, Copy(trusted, "a.dll"), pointer);
+        loader.Load();
+
+        var errors = CaptureError(() =>
+        {
+            Thread.Sleep(600);
+            loader.Update(0.01f, new InputState());
+        });
+
+        Assert.Contains("outside the trusted root", errors);
+        Assert.DoesNotContain("\nClient runtime reload applied", errors);
+        Assert.Contains("\\nClient runtime reload applied", errors);
+        Assert.Equal("a\\u0007b", ClientRuntimeLoader.Printable("a\u0007b"));
+    }
+
+    [Fact]
+    public void TheTrustedRootEnvironmentVariableIsClearedOnEveryPathAndAnEmptyFlagIsRefused()
+    {
+        const string Name = "AQUARIUM_CLIENT_TRUSTED_ROOT";
+        Environment.SetEnvironmentVariable(Name, "/from/env");
+        Assert.Equal("/from/flag", AquariumHost.ParseClientTrustedRoot(["--client-trusted-root", "/from/flag"]));
+        Assert.Null(Environment.GetEnvironmentVariable(Name));
+
+        Environment.SetEnvironmentVariable(Name, "/from/env");
+        Assert.Equal("/from/env", AquariumHost.ParseClientTrustedRoot([]));
+        Assert.Null(Environment.GetEnvironmentVariable(Name));
+
+        Environment.SetEnvironmentVariable(Name, "/from/env");
+        Assert.Throws<ArgumentException>(() => AquariumHost.ParseClientTrustedRoot(["--client-trusted-root", ""]));
+        Assert.Null(Environment.GetEnvironmentVariable(Name));
+
+        Environment.SetEnvironmentVariable(Name, "/from/env");
+        Assert.Throws<ArgumentException>(() => AquariumHost.ParseClientTrustedRoot(["--client-trusted-root"]));
+        Assert.Null(Environment.GetEnvironmentVariable(Name));
+    }
+
+    [Fact]
+    public void DevScriptsKeepEverythingLoadableUnderOneAssembliesRootThatIsNotTheWholeDevRoot()
+    {
+        var scripts = Path.Combine(RepositoryRoot(), "scripts");
+        var reload = File.ReadAllText(Path.Combine(scripts, "dev-reload.ps1"));
+        var watch = File.ReadAllText(Path.Combine(scripts, "dev-watch.ps1"));
+
+        Assert.Contains("\"--client-trusted-root\", $assemblyRoot", reload);
+        Assert.DoesNotContain("\"--client-trusted-root\", $devRoot", reload);
+        Assert.Contains("$slotRoot = Join-Path $assemblyRoot \"slots\"", reload);
+        Assert.Contains("artifacts\\dev-reload\\assemblies\\live-slots", watch);
+    }
+
+    private static string CaptureError(Action action)
+    {
+        var original = Console.Error;
+        using var captured = new StringWriter();
+        Console.SetError(captured);
+        try
+        {
+            action();
+        }
+        finally
+        {
+            Console.SetError(original);
+        }
+
+        return captured.ToString();
+    }
+
+    private static string RepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Fensalir.sln")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory?.FullName ?? throw new InvalidOperationException("Fensalir.sln not found above the test binaries.");
+    }
 }

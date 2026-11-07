@@ -42,10 +42,10 @@ public sealed class ClientRuntimeLoader : IDisposable
                     Path.TrimEndingDirectorySeparator(Path.GetPathRoot(root) ?? root),
                     PathComparison))
             {
-                throw new ArgumentException($"A drive or volume root cannot be the client runtime trusted root: {root}", nameof(trustedRoot));
+                throw new ArgumentException($"A drive or volume root cannot be the client runtime trusted root: {Printable(root)}", nameof(trustedRoot));
             }
 
-            Console.WriteLine($"Client runtime trusted root: {root}");
+            Console.WriteLine($"Client runtime trusted root: {Printable(root)}");
         }
 
         this.trustedRoot = root;
@@ -136,13 +136,19 @@ public sealed class ClientRuntimeLoader : IDisposable
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(candidatePath) || !File.Exists(candidatePath))
+        if (string.IsNullOrWhiteSpace(candidatePath))
         {
             return;
         }
 
         try
         {
+            RequireLocalFullyQualified(candidatePath); // string rules first: no filesystem or network probe of a UNC path
+            if (!File.Exists(candidatePath))
+            {
+                return;
+            }
+
             var resolved = ResolveTrusted(candidatePath);
             if (string.Equals(resolved, currentAssemblyPath, PathComparison))
             {
@@ -151,11 +157,11 @@ public sealed class ClientRuntimeLoader : IDisposable
 
             current?.Runtime.FlushState();
             LoadResolved(resolved, options);
-            Console.WriteLine($"Client runtime reload applied: {resolved}");
+            Console.WriteLine($"Client runtime reload applied: {Printable(resolved)}");
         }
         catch (Exception error)
         {
-            Console.Error.WriteLine($"Client runtime reload failed; keeping previous runtime. {error.Message}");
+            Console.Error.WriteLine($"Client runtime reload failed; keeping previous runtime. {Printable(error.Message)}");
         }
     }
 
@@ -170,19 +176,42 @@ public sealed class ClientRuntimeLoader : IDisposable
     // The final path of a local, fully qualified file under the already-resolved root; throws otherwise.
     internal static string ResolveTrusted(string resolvedRoot, string path)
     {
-        if (!Path.IsPathFullyQualified(path) || (path.Length >= 2 && IsSeparator(path[0]) && IsSeparator(path[1])))
-        {
-            throw new InvalidOperationException($"Client runtime path must be local and fully qualified: {path}");
-        }
-
+        RequireLocalFullyQualified(path);
         var resolved = ResolveLinks(Path.GetFullPath(path));
         var relative = Path.GetRelativePath(resolvedRoot, resolved);
         if (relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relative))
         {
-            throw new InvalidOperationException($"Client runtime path is outside the trusted root '{resolvedRoot}': {path}");
+            throw new InvalidOperationException($"Client runtime path is outside the trusted root '{Printable(resolvedRoot)}': {Printable(path)}");
         }
 
         return resolved;
+    }
+
+    internal static void RequireLocalFullyQualified(string path)
+    {
+        if (!Path.IsPathFullyQualified(path) || (path.Length >= 2 && IsSeparator(path[0]) && IsSeparator(path[1])))
+        {
+            throw new InvalidOperationException($"Client runtime path must be local and fully qualified: {Printable(path)}");
+        }
+    }
+
+    // Paths come from files other people can write: show control characters escaped, never as raw log lines.
+    internal static string Printable(string text)
+    {
+        var builder = new System.Text.StringBuilder(text.Length);
+        foreach (var c in text)
+        {
+            if (char.IsControl(c))
+            {
+                builder.Append(c switch { '\n' => "\\n", '\r' => "\\r", '\t' => "\\t", _ => $"\\u{(int)c:x4}" });
+            }
+            else
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static bool IsSeparator(char c) => c is '/' or '\\';
@@ -192,7 +221,7 @@ public sealed class ClientRuntimeLoader : IDisposable
     {
         if (depth > 32)
         {
-            throw new InvalidOperationException($"Too many links resolving {path}.");
+            throw new InvalidOperationException($"Too many links resolving {Printable(path)}.");
         }
 
         for (var probe = path; probe is not null; probe = Path.GetDirectoryName(probe))
@@ -204,7 +233,7 @@ public sealed class ClientRuntimeLoader : IDisposable
             }
 
             var target = info.ResolveLinkTarget(returnFinalTarget: true)?.FullName
-                ?? throw new InvalidOperationException($"Link does not resolve: {probe}");
+                ?? throw new InvalidOperationException($"Link does not resolve: {Printable(probe)}");
             var rest = Path.GetRelativePath(probe, path);
             return ResolveLinks(rest == "." ? target : Path.GetFullPath(Path.Combine(target, rest)), depth + 1);
         }

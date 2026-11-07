@@ -18,7 +18,10 @@ $liveProjectPath = if ([System.IO.Path]::IsPathRooted($ClientProject)) { $Client
 $liveProjectPath = (Resolve-Path $liveProjectPath).Path
 $liveAssemblyName = [System.IO.Path]::GetFileNameWithoutExtension($liveProjectPath)
 $devRoot = Join-Path $repoRoot "artifacts\dev-reload"
-$slotRoot = Join-Path $devRoot "slots"
+# Everything the host may load as client code lives under $assemblyRoot (slots here, live-slots from dev-watch);
+# it is the host's trusted root, so state, cache and logs in $devRoot are not part of it.
+$assemblyRoot = Join-Path $devRoot "assemblies"
+$slotRoot = Join-Path $assemblyRoot "slots"
 $visibleStatePath = Join-Path $devRoot "state.clixml"
 $headlessStatePath = Join-Path $devRoot "headless-state.clixml"
 $statePath = if ($Headless) { $headlessStatePath } else { $visibleStatePath }
@@ -196,7 +199,7 @@ function Start-AquariumProcess {
         "--shader-source", (Join-Path $SlotPath "Render\Shaders\D3D12HeightField.hlsl"),
         "--client-assembly", $LiveAssemblyPath,
         "--client-reload-pointer", $liveReloadPointerPath,
-        "--client-trusted-root", $devRoot
+        "--client-trusted-root", $assemblyRoot
     )
     if ($RunHeadless) {
         $arguments += "--headless"

@@ -1,8 +1,39 @@
+using System.Diagnostics;
 using Aquarium.Engine;
 using Aquarium.Engine.Input;
 using Aquarium.Engine.Runtime;
 
 namespace Aquarium.Engine.Tests;
+
+/// <summary>Runs only where this process can create symbolic links; otherwise reported as skipped with the reason.</summary>
+public sealed class SymlinkFactAttribute : FactAttribute
+{
+    public SymlinkFactAttribute()
+    {
+        var probe = Path.Combine(Path.GetTempPath(), "aquarium-symlink-probe-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            File.CreateSymbolicLink(probe, Path.GetTempPath());
+            File.Delete(probe);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Skip = "This account cannot create symbolic links: " + error.Message;
+        }
+    }
+}
+
+/// <summary>Junctions exist only on Windows.</summary>
+public sealed class JunctionFactAttribute : FactAttribute
+{
+    public JunctionFactAttribute()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip = "NTFS junctions exist only on Windows; run this test there.";
+        }
+    }
+}
 
 public sealed class ClientRuntimeLoaderTrustTests : IDisposable
 {
@@ -34,8 +65,9 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
         var second = Copy(Directory.CreateDirectory(Path.Combine(trusted, "slot2")).FullName);
         using var loader = new ClientRuntimeLoader(Options, first);
         loader.Load();
+        var before = loader.Runtime;
         loader.Reload(second, Options);
-        Assert.NotNull(loader.Runtime);
+        Assert.NotSame(before, loader.Runtime);
     }
 
     [Fact]
@@ -48,7 +80,6 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
         using var loader = new ClientRuntimeLoader(Options, Copy(slot), trustedRoot: trusted);
         loader.Load();
         loader.Reload(sibling, Options);
-        Assert.Throws<InvalidOperationException>(() => loader.Reload(Copy(outside), Options));
 
         using var narrow = new ClientRuntimeLoader(Options, Path.Combine(slot, "client.dll"));
         narrow.Load();
@@ -63,7 +94,7 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
     }
 
     [Fact]
-    public void ReloadOutsideTheRootDotDotRelativeAndUncPathsAreRefused()
+    public void ReloadOutsideTheRootViaDotDotOrRelativePathIsRefused()
     {
         using var loader = new ClientRuntimeLoader(Options, Copy(trusted, "a.dll"));
         loader.Load();
@@ -71,30 +102,100 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => loader.Reload(escaped, Options));
         Assert.Throws<InvalidOperationException>(() => loader.Reload(Path.Combine(trusted, "..", "outside", "client.dll"), Options));
         Assert.Throws<InvalidOperationException>(() => loader.Reload("a.dll", Options));
-        Assert.Throws<InvalidOperationException>(() => loader.Reload("//host/share/client.dll", Options));
-        Assert.Throws<InvalidOperationException>(() => loader.Reload(@"\\host\share\client.dll", Options));
+    }
+
+    [Theory]
+    [InlineData("//host/share/client.dll")]
+    [InlineData(@"\\host\share\client.dll")]
+    [InlineData(@"\/host/share\client.dll")]
+    [InlineData(@"/\host\share/client.dll")]
+    public void UncPathsInAnySeparatorMixAreRefused(string path)
+    {
+        Assert.Throws<InvalidOperationException>(() => ClientRuntimeLoader.ResolveTrusted(trusted, path));
     }
 
     [Fact]
+    public void AVolumeRootCannotBeTheTrustedRoot()
+    {
+        Assert.Throws<ArgumentException>(() => new ClientRuntimeLoader(Options, Copy(trusted), trustedRoot: Path.GetPathRoot(trusted)));
+    }
+
+    [Fact]
+    public void ADependencyOrNativeLibraryOutsideTheRootIsRefused()
+    {
+        // The load context resolves dependencies through the same check; assert the check it calls.
+        var dependency = Path.Combine(outside, "dep.dll");
+        File.WriteAllText(dependency, "");
+        Assert.Throws<InvalidOperationException>(() => ClientRuntimeLoader.ResolveTrusted(ClientRuntimeLoader.ResolveLinks(trusted), dependency));
+        var inside = Path.Combine(trusted, "dep.so");
+        File.WriteAllText(inside, "");
+        Assert.Equal(inside, ClientRuntimeLoader.ResolveTrusted(ClientRuntimeLoader.ResolveLinks(trusted), inside));
+    }
+
+    [SymlinkFact]
     public void SymlinkedFileOrDirectoryPointingOutsideTheRootIsRefused()
     {
-        var target = Copy(outside);
         var fileLink = Path.Combine(trusted, "link.dll");
         var dirLink = Path.Combine(trusted, "dirlink");
-        try
-        {
-            File.CreateSymbolicLink(fileLink, target);
-            Directory.CreateSymbolicLink(dirLink, outside);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return; // this host cannot create links
-        }
+        File.CreateSymbolicLink(fileLink, Copy(outside));
+        Directory.CreateSymbolicLink(dirLink, outside);
 
         using var loader = new ClientRuntimeLoader(Options, Copy(trusted, "a.dll"));
         loader.Load();
         Assert.Throws<InvalidOperationException>(() => loader.Reload(fileLink, Options));
         Assert.Throws<InvalidOperationException>(() => loader.Reload(Path.Combine(dirLink, "client.dll"), Options));
+    }
+
+    [JunctionFact]
+    public void JunctionPointingOutsideTheRootIsRefused()
+    {
+        var junction = Path.Combine(trusted, "junction");
+        Copy(outside);
+        var mklink = Process.Start(new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{junction}\" \"{outside}\"") { UseShellExecute = false, CreateNoWindow = true })!;
+        mklink.WaitForExit();
+        Assert.Equal(0, mklink.ExitCode);
+
+        using var loader = new ClientRuntimeLoader(Options, Copy(trusted, "a.dll"));
+        loader.Load();
+        Assert.Throws<InvalidOperationException>(() => loader.Reload(Path.Combine(junction, "client.dll"), Options));
+    }
+
+    [SymlinkFact]
+    public void ALoadedLinkIsStoredByItsResolvedPathSoThePointerDoesNotReloadItEveryPoll()
+    {
+        var real = Copy(Directory.CreateDirectory(Path.Combine(trusted, "real")).FullName);
+        var link = Path.Combine(trusted, "link.dll");
+        File.CreateSymbolicLink(link, real);
+        var pointer = Path.Combine(work, "pointer.txt");
+        File.WriteAllText(pointer, link);
+        using var loader = new ClientRuntimeLoader(Options, Copy(trusted, "a.dll"), pointer);
+        loader.Load();
+
+        Thread.Sleep(600); // the loader polls the pointer at most every 500 ms
+        loader.Update(0.01f, new InputState());
+        var afterFirst = loader.Runtime; // the link was loaded once, by its resolved path
+        Thread.Sleep(600);
+        loader.Update(0.01f, new InputState());
+
+        Assert.Same(afterFirst, loader.Runtime);
+    }
+
+    [SymlinkFact]
+    public void TheTrustedRootIsPinnedAtConstructionAndNotReResolved()
+    {
+        var first = Directory.CreateDirectory(Path.Combine(work, "first")).FullName;
+        var second = Directory.CreateDirectory(Path.Combine(work, "second")).FullName;
+        var rootLink = Path.Combine(work, "root");
+        Directory.CreateSymbolicLink(rootLink, first);
+        using var loader = new ClientRuntimeLoader(Options, Copy(first), trustedRoot: rootLink);
+        loader.Load();
+
+        Directory.Delete(rootLink);
+        Directory.CreateSymbolicLink(rootLink, second); // the root now names another directory
+        var elsewhere = Copy(second, "other.dll");
+
+        Assert.Throws<InvalidOperationException>(() => loader.Reload(Path.Combine(rootLink, "other.dll"), Options));
+        Assert.Throws<InvalidOperationException>(() => loader.Reload(elsewhere, Options));
     }
 
     [Fact]
@@ -106,7 +207,7 @@ public sealed class ClientRuntimeLoaderTrustTests : IDisposable
         loader.Load();
         var before = loader.Runtime;
 
-        Thread.Sleep(600); // the loader polls the pointer at most every 500 ms
+        Thread.Sleep(600);
         loader.Update(0.01f, new InputState());
 
         Assert.Same(before, loader.Runtime);

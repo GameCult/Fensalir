@@ -16,9 +16,10 @@ public sealed class ClientRuntimeLoader : IDisposable
     private string? currentAssemblyPath;
 
     /// <summary>
-    /// Every assembly this loader runs must resolve, links followed, to a path under <paramref name="trustedRoot"/>
-    /// (default: the directory of the initial assembly). A relative initial path is taken against the working directory;
-    /// a relative or UNC reload target is refused.
+    /// Every assembly this loader runs, and every dependency or native library it resolves, must lie, links followed,
+    /// under <paramref name="trustedRoot"/> (default: the directory of the initial assembly). The root is resolved once
+    /// here and pinned; a volume root is refused. A relative initial path is taken against the working directory;
+    /// a relative or UNC reload target is refused. The boundary this enforces is the root directory's own ACLs.
     /// </summary>
     public ClientRuntimeLoader(
         AquariumRuntimeOptions options,
@@ -28,10 +29,26 @@ public sealed class ClientRuntimeLoader : IDisposable
     {
         this.clientAssemblyPath = string.IsNullOrWhiteSpace(clientAssemblyPath) ? null : Path.GetFullPath(clientAssemblyPath);
         this.clientReloadPointerPath = clientReloadPointerPath;
-        this.trustedRoot = string.IsNullOrWhiteSpace(trustedRoot)
+        this.options = options;
+
+        var root = string.IsNullOrWhiteSpace(trustedRoot)
             ? this.clientAssemblyPath is null ? null : Path.GetDirectoryName(this.clientAssemblyPath)
             : Path.GetFullPath(trustedRoot);
-        this.options = options;
+        if (root is not null)
+        {
+            root = ResolveLinks(root);
+            if (string.Equals(
+                    Path.TrimEndingDirectorySeparator(root),
+                    Path.TrimEndingDirectorySeparator(Path.GetPathRoot(root) ?? root),
+                    PathComparison))
+            {
+                throw new ArgumentException($"A drive or volume root cannot be the client runtime trusted root: {root}", nameof(trustedRoot));
+            }
+
+            Console.WriteLine($"Client runtime trusted root: {root}");
+        }
+
+        this.trustedRoot = root;
     }
 
     public IAquariumRuntime Runtime
@@ -53,11 +70,13 @@ public sealed class ClientRuntimeLoader : IDisposable
         return Runtime;
     }
 
-    public void Reload(string assemblyPath, AquariumRuntimeOptions options)
+    public void Reload(string assemblyPath, AquariumRuntimeOptions options) =>
+        LoadResolved(ResolveTrusted(assemblyPath), options);
+
+    private void LoadResolved(string assemblyPath, AquariumRuntimeOptions options)
     {
-        RequireTrusted(assemblyPath);
         var previous = current;
-        var loadContext = new ClientAssemblyLoadContext(assemblyPath);
+        var loadContext = new ClientAssemblyLoadContext(assemblyPath, trustedRoot!);
         IAquariumRuntime? nextRuntime = null;
 
         try
@@ -117,18 +136,22 @@ public sealed class ClientRuntimeLoader : IDisposable
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(candidatePath)
-            || string.Equals(candidatePath, currentAssemblyPath, StringComparison.OrdinalIgnoreCase)
-            || !File.Exists(candidatePath))
+        if (string.IsNullOrWhiteSpace(candidatePath) || !File.Exists(candidatePath))
         {
             return;
         }
 
         try
         {
+            var resolved = ResolveTrusted(candidatePath);
+            if (string.Equals(resolved, currentAssemblyPath, PathComparison))
+            {
+                return;
+            }
+
             current?.Runtime.FlushState();
-            Reload(candidatePath, options);
-            Console.WriteLine($"Client runtime reload applied: {candidatePath}");
+            LoadResolved(resolved, options);
+            Console.WriteLine($"Client runtime reload applied: {resolved}");
         }
         catch (Exception error)
         {
@@ -136,29 +159,36 @@ public sealed class ClientRuntimeLoader : IDisposable
         }
     }
 
-    private void RequireTrusted(string assemblyPath)
+    private static StringComparison PathComparison =>
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+    private string ResolveTrusted(string assemblyPath) =>
+        trustedRoot is null
+            ? throw new InvalidOperationException("No trusted root for client runtime assemblies is set.")
+            : ResolveTrusted(trustedRoot, assemblyPath);
+
+    // The final path of a local, fully qualified file under the already-resolved root; throws otherwise.
+    internal static string ResolveTrusted(string resolvedRoot, string path)
     {
-        if (trustedRoot is null)
+        if (!Path.IsPathFullyQualified(path) || (path.Length >= 2 && IsSeparator(path[0]) && IsSeparator(path[1])))
         {
-            throw new InvalidOperationException("No trusted root for client runtime assemblies is set.");
+            throw new InvalidOperationException($"Client runtime path must be local and fully qualified: {path}");
         }
 
-        if (!Path.IsPathFullyQualified(assemblyPath)
-            || assemblyPath.StartsWith(@"\\", StringComparison.Ordinal)
-            || assemblyPath.StartsWith("//", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException($"Client runtime assembly path must be local and fully qualified: {assemblyPath}");
-        }
-
-        var relative = Path.GetRelativePath(ResolveLinks(trustedRoot), ResolveLinks(Path.GetFullPath(assemblyPath)));
+        var resolved = ResolveLinks(Path.GetFullPath(path));
+        var relative = Path.GetRelativePath(resolvedRoot, resolved);
         if (relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relative))
         {
-            throw new InvalidOperationException($"Client runtime assembly is outside the trusted root '{trustedRoot}': {assemblyPath}");
+            throw new InvalidOperationException($"Client runtime path is outside the trusted root '{resolvedRoot}': {path}");
         }
+
+        return resolved;
     }
 
+    private static bool IsSeparator(char c) => c is '/' or '\\';
+
     // The path with every symlink or junction on it replaced by its final target.
-    private static string ResolveLinks(string path, int depth = 0)
+    internal static string ResolveLinks(string path, int depth = 0)
     {
         if (depth > 32)
         {
@@ -210,7 +240,7 @@ public sealed class ClientRuntimeLoader : IDisposable
         }
     }
 
-    private sealed class ClientAssemblyLoadContext(string assemblyPath) : AssemblyLoadContext(isCollectible: true)
+    private sealed class ClientAssemblyLoadContext(string assemblyPath, string trustedRoot) : AssemblyLoadContext(isCollectible: true)
     {
         private readonly AssemblyDependencyResolver resolver = new(assemblyPath);
 
@@ -222,13 +252,13 @@ public sealed class ClientRuntimeLoader : IDisposable
             }
 
             var path = resolver.ResolveAssemblyToPath(assemblyName);
-            return path == null ? null : LoadFromAssemblyPath(path);
+            return path == null ? null : LoadFromAssemblyPath(ResolveTrusted(trustedRoot, path));
         }
 
         protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
         {
             var path = resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
-            return path == null ? IntPtr.Zero : LoadUnmanagedDllFromPath(path);
+            return path == null ? IntPtr.Zero : LoadUnmanagedDllFromPath(ResolveTrusted(trustedRoot, path));
         }
     }
 }

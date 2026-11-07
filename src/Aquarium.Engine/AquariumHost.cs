@@ -269,7 +269,10 @@ public static class AquariumHost
             }
         }
 
-        return Environment.GetEnvironmentVariable("AQUARIUM_CLIENT_TRUSTED_ROOT");
+        // Read once and removed, so processes this one starts do not inherit a root meant for it.
+        var fromEnvironment = Environment.GetEnvironmentVariable("AQUARIUM_CLIENT_TRUSTED_ROOT");
+        Environment.SetEnvironmentVariable("AQUARIUM_CLIENT_TRUSTED_ROOT", null);
+        return fromEnvironment;
     }
 
     private static string? ParseClientReloadPointerPath(IReadOnlyCollection<string> args)

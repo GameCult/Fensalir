@@ -8,16 +8,29 @@ public sealed class ClientRuntimeLoader : IDisposable
 {
     private readonly string? clientAssemblyPath;
     private readonly string? clientReloadPointerPath;
+    private readonly string? trustedRoot;
     private readonly Stopwatch reloadClock = Stopwatch.StartNew();
     private readonly AquariumRuntimeOptions options;
     private ReloadedRuntime? current;
     private TimeSpan lastReloadCheck;
     private string? currentAssemblyPath;
 
-    public ClientRuntimeLoader(AquariumRuntimeOptions options, string? clientAssemblyPath = null, string? clientReloadPointerPath = null)
+    /// <summary>
+    /// Every assembly this loader runs must resolve, links followed, to a path under <paramref name="trustedRoot"/>
+    /// (default: the directory of the initial assembly). A relative initial path is taken against the working directory;
+    /// a relative or UNC reload target is refused.
+    /// </summary>
+    public ClientRuntimeLoader(
+        AquariumRuntimeOptions options,
+        string? clientAssemblyPath = null,
+        string? clientReloadPointerPath = null,
+        string? trustedRoot = null)
     {
-        this.clientAssemblyPath = clientAssemblyPath;
+        this.clientAssemblyPath = string.IsNullOrWhiteSpace(clientAssemblyPath) ? null : Path.GetFullPath(clientAssemblyPath);
         this.clientReloadPointerPath = clientReloadPointerPath;
+        this.trustedRoot = string.IsNullOrWhiteSpace(trustedRoot)
+            ? this.clientAssemblyPath is null ? null : Path.GetDirectoryName(this.clientAssemblyPath)
+            : Path.GetFullPath(trustedRoot);
         this.options = options;
     }
 
@@ -42,6 +55,7 @@ public sealed class ClientRuntimeLoader : IDisposable
 
     public void Reload(string assemblyPath, AquariumRuntimeOptions options)
     {
+        RequireTrusted(assemblyPath);
         var previous = current;
         var loadContext = new ClientAssemblyLoadContext(assemblyPath);
         IAquariumRuntime? nextRuntime = null;
@@ -120,6 +134,52 @@ public sealed class ClientRuntimeLoader : IDisposable
         {
             Console.Error.WriteLine($"Client runtime reload failed; keeping previous runtime. {error.Message}");
         }
+    }
+
+    private void RequireTrusted(string assemblyPath)
+    {
+        if (trustedRoot is null)
+        {
+            throw new InvalidOperationException("No trusted root for client runtime assemblies is set.");
+        }
+
+        if (!Path.IsPathFullyQualified(assemblyPath)
+            || assemblyPath.StartsWith(@"\\", StringComparison.Ordinal)
+            || assemblyPath.StartsWith("//", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Client runtime assembly path must be local and fully qualified: {assemblyPath}");
+        }
+
+        var relative = Path.GetRelativePath(ResolveLinks(trustedRoot), ResolveLinks(Path.GetFullPath(assemblyPath)));
+        if (relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relative))
+        {
+            throw new InvalidOperationException($"Client runtime assembly is outside the trusted root '{trustedRoot}': {assemblyPath}");
+        }
+    }
+
+    // The path with every symlink or junction on it replaced by its final target.
+    private static string ResolveLinks(string path, int depth = 0)
+    {
+        if (depth > 32)
+        {
+            throw new InvalidOperationException($"Too many links resolving {path}.");
+        }
+
+        for (var probe = path; probe is not null; probe = Path.GetDirectoryName(probe))
+        {
+            FileSystemInfo info = Directory.Exists(probe) ? new DirectoryInfo(probe) : new FileInfo(probe);
+            if (info.LinkTarget is null)
+            {
+                continue;
+            }
+
+            var target = info.ResolveLinkTarget(returnFinalTarget: true)?.FullName
+                ?? throw new InvalidOperationException($"Link does not resolve: {probe}");
+            var rest = Path.GetRelativePath(probe, path);
+            return ResolveLinks(rest == "." ? target : Path.GetFullPath(Path.Combine(target, rest)), depth + 1);
+        }
+
+        return path;
     }
 
     private string RequireClientAssemblyPath()

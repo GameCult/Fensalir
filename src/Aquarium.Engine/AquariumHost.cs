@@ -18,7 +18,7 @@ public static class AquariumHost
             ParseFieldReservoirMode(args),
             ParseFieldReservoirScale(args),
             ParseFieldReservoirSpatialReuseBudget(args));
-        using var runtimeLoader = new ClientRuntimeLoader(runtimeOptions, ParseClientAssemblyPath(args), ParseClientReloadPointerPath(args));
+        using var runtimeLoader = new ClientRuntimeLoader(runtimeOptions, ParseClientAssemblyPath(args), ParseClientReloadPointerPath(args), ParseClientTrustedRoot(args));
         var runtime = runtimeLoader.Load();
         if (runtimeOptions.RenderDebugModeOverride is { } renderDebugModeOverride)
         {
@@ -256,6 +256,20 @@ public static class AquariumHost
 
         return Environment.GetEnvironmentVariable("AQUARIUM_CLIENT_ASSEMBLY")
             ?? Environment.GetEnvironmentVariable("AQUARIUM_LIVE_ASSEMBLY");
+    }
+
+    private static string? ParseClientTrustedRoot(IReadOnlyCollection<string> args)
+    {
+        var values = args.ToArray();
+        for (var index = 0; index < values.Length - 1; index++)
+        {
+            if (string.Equals(values[index], "--client-trusted-root", StringComparison.OrdinalIgnoreCase))
+            {
+                return values[index + 1];
+            }
+        }
+
+        return Environment.GetEnvironmentVariable("AQUARIUM_CLIENT_TRUSTED_ROOT");
     }
 
     private static string? ParseClientReloadPointerPath(IReadOnlyCollection<string> args)

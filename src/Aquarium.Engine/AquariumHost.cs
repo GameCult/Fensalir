@@ -18,8 +18,22 @@ public static class AquariumHost
             ParseFieldReservoirMode(args),
             ParseFieldReservoirScale(args),
             ParseFieldReservoirSpatialReuseBudget(args));
-        using var runtimeLoader = new ClientRuntimeLoader(runtimeOptions, ParseClientAssemblyPath(args), ParseClientReloadPointerPath(args));
-        var runtime = runtimeLoader.Load();
+        ClientRuntimeLoader? loader = null;
+        IAquariumRuntime runtime;
+        try
+        {
+            loader = new ClientRuntimeLoader(runtimeOptions, ParseClientAssemblyPath(args), ParseClientReloadPointerPath(args), ParseClientTrustedRoot(args));
+            runtime = loader.Load();
+        }
+        catch (Exception error)
+        {
+            // Startup refusals carry raw, attacker-writable paths; the console gets them escaped, once, here.
+            Console.Error.WriteLine($"Client runtime failed to start ({ClientRuntimeLoader.Printable(error.GetType().FullName ?? error.GetType().Name)}). {ClientRuntimeLoader.Printable(error.Message)}");
+            loader?.Dispose();
+            return 1;
+        }
+
+        using var runtimeLoader = loader;
         if (runtimeOptions.RenderDebugModeOverride is { } renderDebugModeOverride)
         {
             runtime.GraphicsSettings = (runtime.GraphicsSettings with
@@ -257,6 +271,10 @@ public static class AquariumHost
         return Environment.GetEnvironmentVariable("AQUARIUM_CLIENT_ASSEMBLY")
             ?? Environment.GetEnvironmentVariable("AQUARIUM_LIVE_ASSEMBLY");
     }
+
+    private static readonly TrustedRootSetting TrustedRoot = TrustedRootSetting.FromProcessEnvironment();
+
+    private static string? ParseClientTrustedRoot(IReadOnlyCollection<string> args) => TrustedRoot.Resolve(args);
 
     private static string? ParseClientReloadPointerPath(IReadOnlyCollection<string> args)
     {

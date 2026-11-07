@@ -20,7 +20,7 @@ $liveProjectPath = (Resolve-Path $liveProjectPath).Path
 $liveAssemblyName = [System.IO.Path]::GetFileNameWithoutExtension($liveProjectPath)
 $clientSourceRoot = Split-Path $liveProjectPath
 $watchLogPath = Join-Path $repoRoot "artifacts\dev-reload\watch.log"
-$liveSlotRoot = Join-Path $repoRoot "artifacts\dev-reload\live-slots"
+$liveSlotRoot = Join-Path $repoRoot "artifacts\dev-reload\assemblies\live-slots"
 $liveReloadPointerPath = Join-Path $repoRoot "artifacts\dev-reload\live-current.txt"
 $shaderPath = Join-Path $repoRoot "src\Aquarium.Engine\Render\Shaders\Aquarium.hlsl"
 $engineShaderRoot = Join-Path $repoRoot "src\Aquarium.Engine\Render\Shaders"
@@ -455,12 +455,15 @@ function Wait-LiveReloadAcknowledged {
     $stderrLog = if ($state.stderrLog) { [string]$state.stderrLog } else { $null }
     $timeoutSeconds = [Math]::Max(1, $LiveReloadAckTimeoutSeconds)
     $deadline = (Get-Date).AddSeconds($timeoutSeconds)
-    $appliedLine = "Client runtime reload applied: $liveAssemblyPath"
+    # The host logs the resolved path with backslashes doubled, which can differ from the path built here when the
+    # repo sits under a link. The slot directory name is unique, so match its leaf and the assembly name.
+    $slotLeaf = Split-Path -Leaf (Split-Path -Parent $liveAssemblyPath)
+    $appliedSuffix = ("$slotLeaf\" + (Split-Path -Leaf $liveAssemblyPath)).Replace("\", "\\")
 
     while ((Get-Date) -lt $deadline) {
         if (Test-Path $stdoutLog) {
             $stdoutTail = (Get-Content -Path $stdoutLog -Tail 120 -ErrorAction SilentlyContinue) -join "`n"
-            if ($stdoutTail.Contains($appliedLine)) {
+            if ($stdoutTail -match ("(?m)^Client runtime reload applied: .*" + [regex]::Escape($appliedSuffix) + "\s*$")) {
                 Write-WatchLog "Live reload acknowledged by host: $liveAssemblyPath"
                 return
             }
